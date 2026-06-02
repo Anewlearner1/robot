@@ -1,6 +1,11 @@
 import { render, screen } from '@testing-library/react'
 import PhasesTabs from '@/components/PhasesTabs'
 
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: jest.fn() }),
+  usePathname: () => '/',
+}))
+
 const mockPhases = {
   acute: [
     {

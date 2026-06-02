@@ -7,36 +7,30 @@
     "phases": {
       "acute": [
         {
-          "id": "knee-to-chest",
+          "id": "lower-back-pain-knee-to-chest",
           "name": "抱膝運動",
-          "gif": "/gifs/knee-to-chest.gif",
+          "gif": "/gifs/lower-back-pain-knee-to-chest.gif",
           "steps": [
             "平躺於床上或瑜珈墊，雙腿伸直",
             "緩慢將一側膝蓋抱向胸前，維持 10–15 秒",
             "放鬆還原，換另一側重複"
           ],
-          "cautions": [
-            "若疼痛加劇，立即停止",
-            "急性疼痛期避免過度施力"
-          ],
+          "cautions": ["若疼痛加劇，立即停止", "急性疼痛期避免過度施力"],
           "sets": "3 組",
           "reps": "每組 10 次",
           "equipment": "徒手"
         },
         {
-          "id": "cat-cow",
+          "id": "lower-back-pain-cat-cow",
           "name": "貓牛式伸展",
-          "gif": "/gifs/cat-cow.gif",
+          "gif": "/gifs/lower-back-pain-cat-cow.gif",
           "steps": [
             "四足跪地，雙手在肩膀正下方，膝蓋在臀部正下方",
             "吸氣時背部下沉、頭部抬起（牛式）",
             "吐氣時拱背、低頭（貓式）",
             "緩慢交替進行"
           ],
-          "cautions": [
-            "動作宜緩，避免過度伸展",
-            "頸部不要強行後仰"
-          ],
+          "cautions": ["動作宜緩，避免過度伸展", "頸部不要強行後仰"],
           "sets": "3 組",
           "reps": "每組 10 次",
           "equipment": "徒手"
@@ -44,41 +38,580 @@
       ],
       "recovery": [
         {
-          "id": "bird-dog",
+          "id": "lower-back-pain-bird-dog",
           "name": "鳥狗式",
-          "gif": "/gifs/bird-dog.gif",
+          "gif": "/gifs/lower-back-pain-bird-dog.gif",
           "steps": [
             "四足跪地，保持脊椎中立",
             "同時伸展右手與左腳，維持 3–5 秒",
-            "回到起始姿勢，換左手右腳",
-            "交替進行"
+            "回到起始姿勢，換左手右腳"
           ],
-          "cautions": [
-            "保持骨盆水平，避免歪斜",
-            "核心持續收縮"
-          ],
+          "cautions": ["保持骨盆水平，避免歪斜", "核心持續收縮"],
           "sets": "3 組",
           "reps": "每側 10 次",
+          "equipment": "徒手"
+        },
+        {
+          "id": "lower-back-pain-pelvic-tilt",
+          "name": "骨盆後傾運動",
+          "gif": "/gifs/lower-back-pain-pelvic-tilt.gif",
+          "steps": [
+            "平躺，膝蓋彎曲，雙腳踩地",
+            "收縮腹肌，將腰部輕壓向地面",
+            "維持 5 秒後放鬆"
+          ],
+          "cautions": ["不要憋氣", "動作幅度小而精確"],
+          "sets": "3 組",
+          "reps": "每組 15 次",
           "equipment": "徒手"
         }
       ],
       "strengthening": [
         {
-          "id": "dead-bug",
+          "id": "lower-back-pain-dead-bug",
           "name": "死蟲式",
-          "gif": "/gifs/dead-bug.gif",
+          "gif": "/gifs/lower-back-pain-dead-bug.gif",
           "steps": [
             "平躺，雙臂垂直舉起，雙腳抬起膝蓋彎曲 90 度",
-            "吸氣，右手往頭頂方向延伸，同時左腳往地面延伸",
+            "吸氣，右手往頭頂延伸，同時左腳往地面延伸",
             "吐氣回到起始位置，換另一側"
           ],
-          "cautions": [
-            "腰背始終貼地",
-            "動作過程中保持正常呼吸"
-          ],
+          "cautions": ["腰背始終貼地", "動作過程中保持正常呼吸"],
           "sets": "3 組",
           "reps": "每側 8 次",
           "equipment": "徒手"
+        },
+        {
+          "id": "lower-back-pain-bridge",
+          "name": "橋式",
+          "gif": "/gifs/lower-back-pain-bridge.gif",
+          "steps": [
+            "平躺，膝蓋彎曲，雙腳踩地與臀同寬",
+            "收縮臀肌，緩慢將臀部抬離地面",
+            "維持頂端 3 秒，再緩慢放下"
+          ],
+          "cautions": ["避免腰部過度拱起", "不要聳肩"],
+          "sets": "3 組",
+          "reps": "每組 12 次",
+          "equipment": "徒手"
+        }
+      ]
+    }
+  },
+  {
+    "id": "frozen-shoulder",
+    "name": "五十肩",
+    "aliases": ["肩膀僵硬", "沾黏性關節囊炎", "肩關節炎"],
+    "description": "肩關節囊發炎沾黏，造成肩部疼痛與活動度受限，好發於 40–60 歲族群",
+    "phases": {
+      "acute": [
+        {
+          "id": "frozen-shoulder-pendulum",
+          "name": "鐘擺運動",
+          "gif": "/gifs/frozen-shoulder-pendulum.gif",
+          "steps": [
+            "身體前傾，健側手扶桌面支撐",
+            "患側手臂自然下垂，利用重力輕輕前後、左右擺動",
+            "以畫圓方式順逆時針各擺動 10 次"
+          ],
+          "cautions": ["不要主動出力擺動，靠重力自然晃動", "若疼痛明顯加劇則停止"],
+          "sets": "3 組",
+          "reps": "每方向 10 次",
+          "equipment": "徒手"
+        },
+        {
+          "id": "frozen-shoulder-table-slide",
+          "name": "桌面滑行伸展",
+          "gif": "/gifs/frozen-shoulder-table-slide.gif",
+          "steps": [
+            "坐於桌前，患側手臂放於桌面",
+            "身體前傾，讓手臂沿桌面向前滑行",
+            "感到輕微拉伸時停留 15 秒，再緩慢退回"
+          ],
+          "cautions": ["拉伸感應輕微，不應產生劇烈疼痛"],
+          "sets": "3 組",
+          "reps": "每組 10 次",
+          "equipment": "桌子"
+        }
+      ],
+      "recovery": [
+        {
+          "id": "frozen-shoulder-wall-walk",
+          "name": "手指爬牆",
+          "gif": "/gifs/frozen-shoulder-wall-walk.gif",
+          "steps": [
+            "面對牆壁站立，患側手指接觸牆面",
+            "手指像蜘蛛走路般緩慢沿牆向上爬行",
+            "到達疼痛範圍邊緣後停留 5 秒，再緩慢下滑"
+          ],
+          "cautions": ["不要聳肩代償", "每天記錄最高高度以追蹤進步"],
+          "sets": "3 組",
+          "reps": "每組 10 次",
+          "equipment": "牆壁"
+        }
+      ],
+      "strengthening": [
+        {
+          "id": "frozen-shoulder-resistance-band",
+          "name": "彈力帶外旋訓練",
+          "gif": "/gifs/frozen-shoulder-resistance-band.gif",
+          "steps": [
+            "站立，彈力帶固定於門把，患側手握帶",
+            "上臂夾緊身體，前臂向外旋轉",
+            "緩慢回到起始位置"
+          ],
+          "cautions": ["上臂始終貼近身體", "選擇適合阻力，不造成代償"],
+          "sets": "3 組",
+          "reps": "每組 15 次",
+          "equipment": "彈力帶"
+        }
+      ]
+    }
+  },
+  {
+    "id": "knee-osteoarthritis",
+    "name": "膝關節炎",
+    "aliases": ["膝蓋痛", "膝退化", "退化性膝關節炎"],
+    "description": "膝關節軟骨磨損退化，造成疼痛、腫脹與活動困難，是最常見的關節疾病之一",
+    "phases": {
+      "acute": [
+        {
+          "id": "knee-oa-ankle-pump",
+          "name": "踝關節幫浦運動",
+          "gif": "/gifs/knee-oa-ankle-pump.gif",
+          "steps": [
+            "坐於椅上或平躺，腿部放鬆",
+            "腳踝上下彎曲（腳尖向上、向下），緩慢有節律地進行",
+            "有助促進循環，減少腫脹"
+          ],
+          "cautions": ["膝蓋急性腫脹期避免負重", "動作幅度以舒適為主"],
+          "sets": "3 組",
+          "reps": "每組 20 次",
+          "equipment": "徒手"
+        }
+      ],
+      "recovery": [
+        {
+          "id": "knee-oa-quad-set",
+          "name": "股四頭肌等長收縮",
+          "gif": "/gifs/knee-oa-quad-set.gif",
+          "steps": [
+            "坐於床緣或地面，患腿伸直",
+            "收縮大腿前側肌肉，將膝蓋往下壓",
+            "維持 5 秒後放鬆"
+          ],
+          "cautions": ["不要憋氣", "感覺大腿前側用力即正確"],
+          "sets": "3 組",
+          "reps": "每組 15 次",
+          "equipment": "徒手"
+        }
+      ],
+      "strengthening": [
+        {
+          "id": "knee-oa-mini-squat",
+          "name": "迷你深蹲",
+          "gif": "/gifs/knee-oa-mini-squat.gif",
+          "steps": [
+            "雙腳與肩同寬站立，雙手扶椅背",
+            "緩慢彎曲膝蓋至 30–45 度（不完全蹲下）",
+            "維持 3 秒後緩慢站起"
+          ],
+          "cautions": ["膝蓋不超過腳尖", "若膝蓋疼痛加劇立即停止"],
+          "sets": "3 組",
+          "reps": "每組 10 次",
+          "equipment": "椅子"
+        }
+      ]
+    }
+  },
+  {
+    "id": "tennis-elbow",
+    "name": "網球肘",
+    "aliases": ["肱骨外上髁炎", "手肘外側痛"],
+    "description": "前臂伸肌群過度使用造成手肘外側疼痛，不只網球選手，電腦族也常見",
+    "phases": {
+      "acute": [
+        {
+          "id": "tennis-elbow-wrist-rest",
+          "name": "手腕休息擺位",
+          "gif": "/gifs/tennis-elbow-wrist-rest.gif",
+          "steps": [
+            "前臂置於桌面，手腕自然下垂放鬆",
+            "避免任何抓握或旋轉動作",
+            "必要時使用護肘支撐"
+          ],
+          "cautions": ["急性期避免提重物", "握力工作需暫停或減量"],
+          "sets": "全天進行",
+          "reps": "每次 10–15 分鐘",
+          "equipment": "護肘（選用）"
+        }
+      ],
+      "recovery": [
+        {
+          "id": "tennis-elbow-wrist-extension",
+          "name": "手腕伸展運動",
+          "gif": "/gifs/tennis-elbow-wrist-extension.gif",
+          "steps": [
+            "手臂伸直，手心朝下",
+            "用另一手輕壓手背，讓手腕向下彎曲",
+            "感到輕微拉伸時停留 20 秒"
+          ],
+          "cautions": ["拉伸力道要輕柔", "不應有劇烈疼痛"],
+          "sets": "3 組",
+          "reps": "每組 5 次",
+          "equipment": "徒手"
+        }
+      ],
+      "strengthening": [
+        {
+          "id": "tennis-elbow-eccentric-wrist",
+          "name": "離心式手腕訓練",
+          "gif": "/gifs/tennis-elbow-eccentric-wrist.gif",
+          "steps": [
+            "坐於椅上，前臂置於大腿，手心朝下握輕啞鈴",
+            "用另一手協助將手腕舉起",
+            "移除協助，患側手腕緩慢（3–5 秒）放下"
+          ],
+          "cautions": ["離心阶段要非常緩慢", "起始重量選最輕（0.5–1 kg）"],
+          "sets": "3 組",
+          "reps": "每組 10 次",
+          "equipment": "輕啞鈴"
+        }
+      ]
+    }
+  },
+  {
+    "id": "carpal-tunnel",
+    "name": "腕隧道症候群",
+    "aliases": ["手腕麻痛", "正中神經壓迫", "滑鼠手"],
+    "description": "正中神經在腕隧道受壓，造成拇指到無名指的麻木、刺痛，電腦族常見",
+    "phases": {
+      "acute": [
+        {
+          "id": "carpal-tunnel-neutral",
+          "name": "手腕中立位擺位",
+          "gif": "/gifs/carpal-tunnel-neutral.gif",
+          "steps": [
+            "工作時讓手腕保持直線，不上翹或下彎",
+            "使用護腕或折疊毛巾支撐",
+            "夜間睡眠時佩戴護腕固定"
+          ],
+          "cautions": ["避免長時間手腕極度彎曲", "打字時手腕懸空不靠桌"],
+          "sets": "全天注意",
+          "reps": "持續維持姿勢",
+          "equipment": "護腕（建議）"
+        }
+      ],
+      "recovery": [
+        {
+          "id": "carpal-tunnel-tendon-glide",
+          "name": "肌腱滑動運動",
+          "gif": "/gifs/carpal-tunnel-tendon-glide.gif",
+          "steps": [
+            "手指伸直，然後彎曲成鉤狀（第一指節彎曲）",
+            "再彎曲成拳狀（全握），最後完全伸直",
+            "每個姿勢維持 3 秒"
+          ],
+          "cautions": ["動作要緩慢且完整", "若有明顯麻痛加劇請停止"],
+          "sets": "3 組",
+          "reps": "每組 10 次",
+          "equipment": "徒手"
+        }
+      ],
+      "strengthening": [
+        {
+          "id": "carpal-tunnel-grip-strength",
+          "name": "握力訓練",
+          "gif": "/gifs/carpal-tunnel-grip-strength.gif",
+          "steps": [
+            "手握軟球或捲起的毛巾",
+            "緩慢用力握緊，維持 5 秒",
+            "緩慢放鬆，完全伸直手指"
+          ],
+          "cautions": ["疼痛期間不進行此訓練", "力道由輕漸重"],
+          "sets": "3 組",
+          "reps": "每組 10 次",
+          "equipment": "軟球或毛巾"
+        }
+      ]
+    }
+  },
+  {
+    "id": "cervical-spondylosis",
+    "name": "頸椎病",
+    "aliases": ["頸椎退化", "頸因性頭痛", "頸部僵硬", "落枕"],
+    "description": "頸椎椎間盤退化或骨刺造成頸部疼痛、僵硬，有時伴隨手臂麻痛",
+    "phases": {
+      "acute": [
+        {
+          "id": "cervical-chin-tuck",
+          "name": "下巴收縮運動",
+          "gif": "/gifs/cervical-chin-tuck.gif",
+          "steps": [
+            "坐直或站立，視線平視前方",
+            "輕柔地將下巴向後收（做出雙下巴動作）",
+            "維持 5 秒後放鬆"
+          ],
+          "cautions": ["不要低頭，是向後收而非向下", "感到頸後輕微拉伸為正確"],
+          "sets": "3 組",
+          "reps": "每組 10 次",
+          "equipment": "徒手"
+        }
+      ],
+      "recovery": [
+        {
+          "id": "cervical-rotation",
+          "name": "頸部旋轉伸展",
+          "gif": "/gifs/cervical-rotation.gif",
+          "steps": [
+            "坐直，保持肩膀放鬆",
+            "緩慢將頭部轉向右側，到達活動範圍邊緣",
+            "停留 15–20 秒，換左側重複"
+          ],
+          "cautions": ["動作要緩慢，不要突然快速旋轉", "頭暈時立即停止"],
+          "sets": "3 組",
+          "reps": "每側 5 次",
+          "equipment": "徒手"
+        }
+      ],
+      "strengthening": [
+        {
+          "id": "cervical-isometric",
+          "name": "頸部等長阻力訓練",
+          "gif": "/gifs/cervical-isometric.gif",
+          "steps": [
+            "坐直，將手放在額頭上",
+            "頭部向前施力，手掌給予等量阻力，頭部不移動",
+            "維持 5 秒後放鬆，依序做前後左右四個方向"
+          ],
+          "cautions": ["力道輕柔，頭部不應移動", "頸部有急性疼痛時不做"],
+          "sets": "3 組",
+          "reps": "每方向 10 次",
+          "equipment": "徒手"
+        }
+      ]
+    }
+  },
+  {
+    "id": "plantar-fasciitis",
+    "name": "足底筋膜炎",
+    "aliases": ["腳跟痛", "足弓痛", "腳底痛"],
+    "description": "足底筋膜發炎，造成早晨起床踩地時劇烈腳跟疼痛，久站久走加劇",
+    "phases": {
+      "acute": [
+        {
+          "id": "plantar-ice-roll",
+          "name": "冰水瓶滾壓",
+          "gif": "/gifs/plantar-ice-roll.gif",
+          "steps": [
+            "坐於椅上，將裝滿水的寶特瓶冷凍後放於地面",
+            "患足踩在寶特瓶上，前後滾動按壓",
+            "重點按壓足弓至腳跟區域"
+          ],
+          "cautions": ["每次不超過 10 分鐘，避免凍傷", "力道輕柔，以舒適為主"],
+          "sets": "2 組",
+          "reps": "每組 5 分鐘",
+          "equipment": "冰凍寶特瓶"
+        }
+      ],
+      "recovery": [
+        {
+          "id": "plantar-calf-stretch",
+          "name": "小腿伸展",
+          "gif": "/gifs/plantar-calf-stretch.gif",
+          "steps": [
+            "面對牆壁站立，雙手扶牆",
+            "患腿向後退一大步，腳跟踩實地面",
+            "身體前傾，感到小腿後側拉伸，維持 30 秒"
+          ],
+          "cautions": ["腳跟全程不離地", "不要彎曲後腳膝蓋"],
+          "sets": "3 組",
+          "reps": "每組 3 次",
+          "equipment": "牆壁"
+        }
+      ],
+      "strengthening": [
+        {
+          "id": "plantar-towel-scrunch",
+          "name": "毛巾抓握運動",
+          "gif": "/gifs/plantar-towel-scrunch.gif",
+          "steps": [
+            "坐於椅上，地面放一條小毛巾",
+            "用腳趾抓住毛巾往腳心堆疊",
+            "重複展開再抓握"
+          ],
+          "cautions": ["若有足部痙攣立即停止", "赤腳進行效果最佳"],
+          "sets": "3 組",
+          "reps": "每組 10 次",
+          "equipment": "毛巾"
+        }
+      ]
+    }
+  },
+  {
+    "id": "rotator-cuff",
+    "name": "旋轉肌袖損傷",
+    "aliases": ["肩旋轉肌受傷", "肩夾擠症候群", "肩膀無力"],
+    "description": "肩部旋轉肌群（棘上肌等）撕裂或發炎，造成肩膀無力、抬手疼痛",
+    "phases": {
+      "acute": [
+        {
+          "id": "rotator-scapular-setting",
+          "name": "肩胛骨穩定運動",
+          "gif": "/gifs/rotator-scapular-setting.gif",
+          "steps": [
+            "坐直或站立，雙臂自然下垂",
+            "輕輕將肩胛骨向後、向下收緊，如同夾住一支筆",
+            "維持 5 秒後放鬆"
+          ],
+          "cautions": ["不要聳肩", "力道輕柔，不需過度用力"],
+          "sets": "3 組",
+          "reps": "每組 15 次",
+          "equipment": "徒手"
+        }
+      ],
+      "recovery": [
+        {
+          "id": "rotator-side-lying-rotation",
+          "name": "側臥外旋訓練",
+          "gif": "/gifs/rotator-side-lying-rotation.gif",
+          "steps": [
+            "側臥，患側朝上，膝蓋彎曲穩定身體",
+            "患側上臂夾緊身體，前臂向上旋轉",
+            "緩慢放回，避免代償"
+          ],
+          "cautions": ["上臂必須夾緊不離開身體", "有急性疼痛不做"],
+          "sets": "3 組",
+          "reps": "每組 15 次",
+          "equipment": "輕啞鈴（選用）"
+        }
+      ],
+      "strengthening": [
+        {
+          "id": "rotator-band-pull-apart",
+          "name": "彈力帶水平後拉",
+          "gif": "/gifs/rotator-band-pull-apart.gif",
+          "steps": [
+            "雙手握彈力帶，手臂向前平伸",
+            "將彈力帶水平向外拉開至胸口寬度",
+            "緩慢回到起始位置"
+          ],
+          "cautions": ["保持肩胛骨下沉，不聳肩", "阻力選擇以能控制動作為準"],
+          "sets": "3 組",
+          "reps": "每組 15 次",
+          "equipment": "彈力帶"
+        }
+      ]
+    }
+  },
+  {
+    "id": "hip-osteoarthritis",
+    "name": "髖關節炎",
+    "aliases": ["髖部疼痛", "退化性髖關節炎", "髖關節退化"],
+    "description": "髖關節軟骨磨損，造成髖部深處疼痛、活動受限，上下樓梯或久坐起立時明顯",
+    "phases": {
+      "acute": [
+        {
+          "id": "hip-oa-lying-abduction",
+          "name": "仰臥髖外展",
+          "gif": "/gifs/hip-oa-lying-abduction.gif",
+          "steps": [
+            "平躺，雙腿伸直",
+            "患腿向外側滑動 30–40 公分",
+            "緩慢回到中線"
+          ],
+          "cautions": ["動作在無痛範圍內進行", "不要旋轉骨盆"],
+          "sets": "3 組",
+          "reps": "每組 10 次",
+          "equipment": "徒手"
+        }
+      ],
+      "recovery": [
+        {
+          "id": "hip-oa-clam-shell",
+          "name": "蛤蜊式運動",
+          "gif": "/gifs/hip-oa-clam-shell.gif",
+          "steps": [
+            "側臥，膝蓋彎曲疊放，腳踝靠攏",
+            "保持腳踝不分離，將上方膝蓋向上打開",
+            "緩慢放回，重複"
+          ],
+          "cautions": ["骨盆保持不動，不要後仰", "動作幅度以舒適為主"],
+          "sets": "3 組",
+          "reps": "每組 15 次",
+          "equipment": "徒手"
+        }
+      ],
+      "strengthening": [
+        {
+          "id": "hip-oa-squat",
+          "name": "扶椅深蹲",
+          "gif": "/gifs/hip-oa-squat.gif",
+          "steps": [
+            "雙手扶椅背，雙腳與肩同寬",
+            "緩慢彎曲膝蓋下蹲，膝蓋朝向腳尖方向",
+            "大腿平行地面後緩慢站起"
+          ],
+          "cautions": ["膝蓋不超過腳尖", "若髖部疼痛加劇立即停止"],
+          "sets": "3 組",
+          "reps": "每組 10 次",
+          "equipment": "椅子"
+        }
+      ]
+    }
+  },
+  {
+    "id": "achilles-tendinopathy",
+    "name": "阿基里斯腱炎",
+    "aliases": ["跟腱炎", "腳踝後側痛", "跟腱疼痛"],
+    "description": "跟腱過度使用或退化造成腳踝後側疼痛，跑者與長時間站立者好發",
+    "phases": {
+      "acute": [
+        {
+          "id": "achilles-eccentric-seated",
+          "name": "坐姿踝關節活動",
+          "gif": "/gifs/achilles-eccentric-seated.gif",
+          "steps": [
+            "坐於椅上，患腳腳尖著地",
+            "緩慢進行腳踝上下彎曲動作",
+            "避免任何負重下的踮腳"
+          ],
+          "cautions": ["急性期禁止跑步或跳躍", "有明顯腫脹時先冰敷再活動"],
+          "sets": "3 組",
+          "reps": "每組 15 次",
+          "equipment": "徒手"
+        }
+      ],
+      "recovery": [
+        {
+          "id": "achilles-eccentric-calf",
+          "name": "離心小腿訓練（平地）",
+          "gif": "/gifs/achilles-eccentric-calf.gif",
+          "steps": [
+            "雙腳站立，踮起腳尖",
+            "患側單腳站立，緩慢（3–5 秒）將腳跟放下至地面",
+            "用雙腳踮起後再換患側放下"
+          ],
+          "cautions": ["放下動作要非常緩慢", "疼痛超過 3/10 時停止"],
+          "sets": "3 組",
+          "reps": "每組 15 次",
+          "equipment": "徒手"
+        }
+      ],
+      "strengthening": [
+        {
+          "id": "achilles-eccentric-step",
+          "name": "離心小腿訓練（階梯）",
+          "gif": "/gifs/achilles-eccentric-step.gif",
+          "steps": [
+            "單腳站在階梯邊緣，腳跟懸空",
+            "雙腳踮起後，換患側單腳站立",
+            "患側腳跟緩慢（5 秒）下降至低於階梯平面"
+          ],
+          "cautions": ["確保安全，手扶扶手", "若有劇烈疼痛立即停止"],
+          "sets": "3 組",
+          "reps": "每組 15 次",
+          "equipment": "階梯"
         }
       ]
     }
