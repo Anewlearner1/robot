@@ -1,24 +1,58 @@
+'use client'
+
 import Image from 'next/image'
+import dynamic from 'next/dynamic'
 import type { Exercise } from '@/lib/types'
+
+const Lottie = dynamic(() => import('lottie-react'), { ssr: false })
 
 interface Props {
   exercise: Exercise
 }
+
+function ExerciseAnimation({ exercise }: { exercise: Exercise }) {
+  if (exercise.lottie) {
+    return (
+      <LottiePlayer src={exercise.lottie} name={exercise.name} />
+    )
+  }
+  return (
+    <Image
+      src={exercise.gif}
+      alt={`${exercise.name} 示範動作`}
+      fill
+      className="object-contain"
+      unoptimized
+    />
+  )
+}
+
+function LottiePlayer({ src, name }: { src: string; name: string }) {
+  // dynamically import the JSON so Next.js bundles it correctly
+  const [data, setData] = React.useState<object | null>(null)
+
+  React.useEffect(() => {
+    fetch(src)
+      .then(r => r.json())
+      .then(setData)
+      .catch(() => setData(null))
+  }, [src])
+
+  if (!data) return null
+  return <Lottie animationData={data} loop className="w-full h-full object-contain" aria-label={`${name} 示範動作`} />
+}
+
+// import React for hooks used in LottiePlayer
+import React from 'react'
 
 export default function ExerciseCard({ exercise }: Props) {
   return (
     <div className="rounded-xl shadow-sm bg-white p-4 space-y-4">
       <h3 className="text-lg font-semibold text-gray-800">{exercise.name}</h3>
 
-      {/* GIF — unoptimized 保留 GIF 動畫迴圈 */}
+      {/* 動畫區域 — 優先 Lottie，退回 GIF */}
       <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-gray-100">
-        <Image
-          src={exercise.gif}
-          alt={`${exercise.name} 示範動作`}
-          fill
-          className="object-contain"
-          unoptimized
-        />
+        <ExerciseAnimation exercise={exercise} />
       </div>
 
       {/* 步驟說明 */}
@@ -28,7 +62,7 @@ export default function ExerciseCard({ exercise }: Props) {
         ))}
       </ol>
 
-      {/* 注意事項 — 橘色左框線；空陣列時不渲染 */}
+      {/* 注意事項 */}
       {exercise.cautions.length > 0 && (
         <div
           data-testid="cautions-block"

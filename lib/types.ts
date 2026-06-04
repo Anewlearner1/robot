@@ -2,6 +2,7 @@ export interface Exercise {
   id: string
   name: string
   gif: string
+  lottie?: string   // Lottie JSON 路徑，優先於 gif
   steps: string[]
   cautions: string[]
   sets: string
