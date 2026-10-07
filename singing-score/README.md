@@ -24,7 +24,7 @@ npm run build      # tsc + vite build + service worker → dist/
 
 ## Deploy
 
-`.github/workflows/singing-score.yml` tests and builds on every PR and deploys `dist/` to GitHub Pages on `main`
+`.github/workflows/singing-score.yml` tests and builds on every PR and deploys `dist/` to GitHub Pages from the repo's default branch
 (one-time: repo Settings → Pages → Source: GitHub Actions).
 
 ## Still to do by hand (PRD milestones)

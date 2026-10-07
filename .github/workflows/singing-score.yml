@@ -2,7 +2,6 @@ name: singing-score
 
 on:
   push:
-    branches: [main]
     paths: ['singing-score/**', '.github/workflows/singing-score.yml']
   pull_request:
     paths: ['singing-score/**', '.github/workflows/singing-score.yml']
@@ -29,14 +28,14 @@ jobs:
       - run: npm test
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch
         with:
           path: singing-score/dist
 
   deploy:
     # Free hosting on GitHub Pages (HTTPS is required for microphone access).
     # One-time setup: repo Settings → Pages → Source: "GitHub Actions".
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch
     needs: build
     runs-on: ubuntu-latest
     permissions:
