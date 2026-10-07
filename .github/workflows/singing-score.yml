@@ -1,0 +1,50 @@
+name: singing-score
+
+on:
+  push:
+    branches: [main]
+    paths: ['singing-score/**', '.github/workflows/singing-score.yml']
+  pull_request:
+    paths: ['singing-score/**', '.github/workflows/singing-score.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: singing-score
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: singing-score/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        with:
+          path: singing-score/dist
+
+  deploy:
+    # Free hosting on GitHub Pages (HTTPS is required for microphone access).
+    # One-time setup: repo Settings → Pages → Source: "GitHub Actions".
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
