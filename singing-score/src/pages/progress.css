@@ -1,0 +1,323 @@
+/* 進步 page. Uses shared tokens from index.css; fallbacks keep it readable if a token is missing. */
+.progress-page {
+  --p-bg: var(--bg, #121218);
+  --p-surface: var(--surface, #1d1e26);
+  --p-text: var(--text, #e8e8ee);
+  --p-muted: var(--text-muted, #9a9aa8);
+  --p-border: var(--border, #2e303a);
+  --p-accent: var(--accent, #c084fc);
+  --p-accent-contrast: var(--accent-contrast, #16171d);
+  --p-good: var(--good, #4ade80);
+  --p-warn: var(--warn, #fbbf24);
+  --p-bad: var(--bad, #f87171);
+  --p-radius: var(--radius, 12px);
+
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 0; /* .app-main supplies the side gutter and safe-area padding */
+  text-align: left;
+  color: var(--p-text);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.progress-page *,
+.progress-page *::before,
+.progress-page *::after {
+  box-sizing: border-box;
+}
+
+.progress-title {
+  font-size: 1.5rem;
+  line-height: 1.2;
+  letter-spacing: 0;
+  margin: 0;
+  color: var(--p-text);
+}
+
+.progress-h2 {
+  font-size: 1.05rem;
+  line-height: 1.3;
+  margin: 0;
+  color: var(--p-text);
+}
+
+.progress-muted {
+  margin: 0;
+  color: var(--p-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.progress-card {
+  background: var(--p-surface);
+  border: 1px solid var(--p-border);
+  border-radius: var(--p-radius);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.progress-empty {
+  background: var(--p-surface);
+  border: 1px dashed var(--p-border);
+  border-radius: var(--p-radius);
+  padding: 32px 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progress-empty-title {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--p-text);
+}
+
+.progress-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.progress-field-label {
+  font-size: 0.8rem;
+  color: var(--p-muted);
+}
+
+.progress-select {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--p-text);
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: calc(var(--p-radius) - 4px);
+}
+
+.progress-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+.progress-chip {
+  min-height: 40px;
+  padding: 6px 4px;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--p-text);
+  background: transparent;
+  border: 1px solid var(--p-border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.progress-chip.active {
+  background: var(--p-accent);
+  border-color: var(--p-accent);
+  color: var(--p-accent-contrast);
+  font-weight: 600;
+}
+
+.progress-hint {
+  margin: 0;
+  padding: 28px 8px;
+  text-align: center;
+  color: var(--p-muted);
+  font-size: 0.95rem;
+}
+
+.trend-chart {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.progress-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.progress-item {
+  background: var(--p-surface);
+  border: 1px solid var(--p-border);
+  border-radius: var(--p-radius);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.progress-item-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.progress-item-date {
+  font-weight: 600;
+  color: var(--p-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-item-meta {
+  font-size: 0.85rem;
+  color: var(--p-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-total {
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-scores {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 0;
+}
+
+.progress-scores > div {
+  text-align: center;
+  padding: 6px 0;
+  border-radius: calc(var(--p-radius) - 6px);
+  background: var(--p-bg);
+}
+
+.progress-scores dt {
+  font-size: 0.75rem;
+  color: var(--p-muted);
+}
+
+.progress-scores dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-good { color: var(--p-good); }
+.score-warn { color: var(--p-warn); }
+.score-bad { color: var(--p-bad); }
+.score-na { color: var(--p-muted); font-weight: 400; }
+.progress-total.score-na { font-size: 1.1rem; }
+
+.progress-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.progress-confirm-text {
+  font-size: 0.85rem;
+  color: var(--p-bad);
+  margin-right: auto;
+}
+
+.progress-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--p-text);
+  background: transparent;
+  border: 1px solid var(--p-border);
+  border-radius: calc(var(--p-radius) - 4px);
+  cursor: pointer;
+  position: relative;
+}
+
+.progress-btn.primary {
+  background: var(--p-accent);
+  border-color: var(--p-accent);
+  color: var(--p-accent-contrast);
+  font-weight: 600;
+}
+
+.progress-btn.danger {
+  background: var(--p-bad);
+  border-color: var(--p-bad);
+  color: #fff;
+}
+
+.progress-btn.ghost {
+  color: var(--p-muted);
+  min-height: 36px;
+  padding: 6px 12px;
+}
+
+.progress-btn:disabled,
+.progress-btn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.progress-btn:focus-visible,
+.progress-chip:focus-visible,
+.progress-select:focus-visible,
+label.progress-btn:focus-within {
+  outline: 2px solid var(--p-accent);
+  outline-offset: 2px;
+}
+
+.progress-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.progress-backup-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.progress-banner {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: calc(var(--p-radius) - 4px);
+  border: 1px solid var(--p-warn);
+  color: var(--p-warn);
+  background: color-mix(in srgb, var(--p-warn) 12%, transparent);
+  font-size: 0.9rem;
+}
+
+.progress-msg {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--p-good);
+}
+
+.progress-msg.error {
+  color: var(--p-bad);
+}
+
+/* uPlot hover cursor colours follow the theme */
+.progress-page .u-cursor-x,
+.progress-page .u-cursor-y {
+  border-color: var(--p-muted) !important;
+}
