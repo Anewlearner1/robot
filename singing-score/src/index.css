@@ -649,6 +649,40 @@ input {
   padding: 12px 14px;
 }
 
+.issue-card.selected {
+  border-color: var(--accent);
+  border-left-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* Tappable issue card (F11): fills the card, keeps its typography. */
+.issue-card-button {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.section-head .section-title {
+  margin: 0;
+}
+
 .issue-card-head {
   display: flex;
   align-items: center;
@@ -691,4 +725,18 @@ input {
   color: var(--good);
   font-weight: 700;
   text-align: center;
+}
+
+/* ---------- first-run tips (F10) ---------- */
+.tips {
+  margin-bottom: 16px;
+}
+
+.tips-list {
+  margin: 0 0 12px;
+  padding-left: 1.2em;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text);
 }

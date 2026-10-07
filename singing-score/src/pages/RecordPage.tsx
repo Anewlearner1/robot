@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'preact/hoo
 import { analyzeInWorker, createRecorder, MicPermissionError } from '../audio'
 import { listSongNames, newRecord, saveRecord } from '../storage'
 import type { AnalysisReport, RecordedAudio } from '../types'
+import { FirstRunTips } from '../components/FirstRunTips'
 import { RecordingPanel } from '../components/RecordingPanel'
 import { ReportView } from '../components/ReportView'
 import { SongNameField } from '../components/SongNameField'
@@ -220,6 +221,7 @@ export function RecordPage() {
       return (
         <section class="page">
           <h1 class="page-title">練唱</h1>
+          <FirstRunTips />
           <form
             class="stack"
             onSubmit={(e) => {

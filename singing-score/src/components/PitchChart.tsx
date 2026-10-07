@@ -11,6 +11,19 @@ export interface PitchChartProps {
   issues?: Issue[]
   /** Chart height in CSS px (default 200). */
   height?: number
+  /** Time range (s) to zoom into, e.g. a tapped issue; null/undefined = whole recording. */
+  zoom?: { start: number; end: number } | null
+}
+
+/** Seconds of context shown either side of a zoomed range. */
+const ZOOM_PAD_SEC = 1
+
+function applyZoom(chart: uPlot, points: PitchPoint[], zoom: PitchChartProps['zoom']) {
+  const first = points[0]?.t ?? 0
+  const last = points[points.length - 1]?.t ?? 0
+  const min = zoom ? Math.max(first, zoom.start - ZOOM_PAD_SEC) : first
+  const max = zoom ? Math.min(last, zoom.end + ZOOM_PAD_SEC) : last
+  if (max > min) chart.setScale('x', { min, max })
 }
 
 /** Read a design-system colour token from the chart container (follows light/dark mode). */
@@ -90,8 +103,11 @@ function buildOptions(el: HTMLElement, width: number, height: number, issues: Is
 }
 
 /** Pitch curve: x = time (s, m:ss labels), y = MIDI with note-name ticks (C4, D4 …). */
-export function PitchChart({ points, issues = [], height = 200 }: PitchChartProps) {
+export function PitchChart({ points, issues = [], height = 200, zoom = null }: PitchChartProps) {
   const ref = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<uPlot | null>(null)
+  const zoomRef = useRef(zoom)
+  zoomRef.current = zoom
 
   useEffect(() => {
     const el = ref.current
@@ -99,6 +115,8 @@ export function PitchChart({ points, issues = [], height = 200 }: PitchChartProp
     const data: uPlot.AlignedData = [points.map((p) => p.t), points.map((p) => p.midi)]
     const width = Math.max(200, el.clientWidth)
     const chart = new uPlot(buildOptions(el, width, height, issues), data, el)
+    chartRef.current = chart
+    applyZoom(chart, points, zoomRef.current)
 
     const ro =
       typeof ResizeObserver === 'undefined'
@@ -118,8 +136,16 @@ export function PitchChart({ points, issues = [], height = 200 }: PitchChartProp
       ro?.disconnect()
       mq?.removeEventListener?.('change', onScheme)
       chart.destroy()
+      chartRef.current = null
     }
   }, [points, issues, height])
+
+  // Zoom without rebuilding the chart.
+  const zoomStart = zoom?.start
+  const zoomEnd = zoom?.end
+  useEffect(() => {
+    if (chartRef.current) applyZoom(chartRef.current, points, zoomRef.current)
+  }, [zoomStart, zoomEnd, points])
 
   const voiced = points.some((p) => p.midi != null)
   return (

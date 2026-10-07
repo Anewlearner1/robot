@@ -1,4 +1,4 @@
-import { useMemo } from 'preact/hooks'
+import { useMemo, useRef, useState } from 'preact/hooks'
 import type { Issue, PitchPoint, ScoreKey, Scores } from '../types'
 import { formatClock, SCORE_LABELS, scoreTone, UNSCORED_REASONS } from './format'
 import { PitchChart } from './PitchChart'
@@ -51,9 +51,16 @@ function ScoreItem({ item, score }: { item: ScoreKey; score: number | null }) {
   )
 }
 
-export function IssueCard({ issue }: { issue: Issue }) {
-  return (
-    <li class="issue-card">
+export interface IssueCardProps {
+  issue: Issue
+  /** When given, the card is a button that zooms the pitch chart to this passage (F11). */
+  onSelect?: () => void
+  selected?: boolean
+}
+
+export function IssueCard({ issue, onSelect, selected = false }: IssueCardProps) {
+  const body = (
+    <>
       <div class="issue-card-head">
         <span class="issue-time">
           {formatClock(issue.start)}–{formatClock(issue.end)}
@@ -61,6 +68,17 @@ export function IssueCard({ issue }: { issue: Issue }) {
         <span class="issue-tag">{SCORE_LABELS[issue.type]}</span>
       </div>
       <p class="issue-message">{issue.message}</p>
+    </>
+  )
+  return (
+    <li class={`issue-card${selected ? ' selected' : ''}`}>
+      {onSelect ? (
+        <button type="button" class="issue-card-button" aria-pressed={selected} onClick={onSelect}>
+          {body}
+        </button>
+      ) : (
+        body
+      )}
     </li>
   )
 }
@@ -70,6 +88,14 @@ export function ReportView({ data }: ReportViewProps) {
   const { scores, issues, pitchSummary, durationSec, bpm, keyLabel } = data
   // Memoised so the chart is not rebuilt on unrelated re-renders.
   const top = useMemo(() => issues.slice(0, MAX_ISSUES), [issues])
+  const [selected, setSelected] = useState<number | null>(null)
+  const chartSection = useRef<HTMLElement>(null)
+  const zoomed = selected != null ? top[selected] ?? null : null
+
+  const select = (i: number) => {
+    setSelected((cur) => (cur === i ? null : i))
+    chartSection.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+  }
   return (
     <article class="report">
       <TotalScore total={scores.total} />
@@ -95,10 +121,23 @@ export function ReportView({ data }: ReportViewProps) {
         </div>
       </dl>
 
-      <section class="card">
-        <h3 class="section-title">音高曲線</h3>
-        <PitchChart points={pitchSummary} issues={top} />
-        {top.length > 0 && <p class="muted small">色塊為需要加強的段落</p>}
+      <section class="card" ref={chartSection}>
+        <div class="section-head">
+          <h3 class="section-title">音高曲線</h3>
+          {zoomed && (
+            <button type="button" class="btn btn-ghost btn-small" onClick={() => setSelected(null)}>
+              顯示全部
+            </button>
+          )}
+        </div>
+        <PitchChart points={pitchSummary} issues={top} zoom={zoomed} />
+        {top.length > 0 && (
+          <p class="muted small">
+            {zoomed
+              ? `放大顯示 ${formatClock(zoomed.start)}–${formatClock(zoomed.end)}`
+              : '色塊為需要加強的段落，點選下方建議可放大'}
+          </p>
+        )}
       </section>
 
       <section>
@@ -108,7 +147,7 @@ export function ReportView({ data }: ReportViewProps) {
         ) : (
           <ul class="issue-list">
             {top.map((is, i) => (
-              <IssueCard key={`${is.start}-${i}`} issue={is} />
+              <IssueCard key={`${is.start}-${i}`} issue={is} selected={selected === i} onSelect={() => select(i)} />
             ))}
           </ul>
         )}
