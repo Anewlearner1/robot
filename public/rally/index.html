@@ -416,29 +416,33 @@ textarea{width:100%;min-height:180px;margin-top:8px;border-radius:7px;border:1px
     /* x: [1, h, w, 9] float32, h and w multiples of 8. Returns {idx:int32 [h,w], val:float32 [h,w]} (tensors, caller disposes). */
     forward(x) {
       const tf = this.tf, L = this.L;
-      const cb = (t, l) => {
-        const y = tf.fused.conv2d({ x: t, filter: l.w, strides: 1, pad: 'same', bias: l.b, activation: 'relu' });
-        return y.mul(l.s).add(l.t);
-      };
-      const up = t => tf.image.resizeNearestNeighbor(t, [t.shape[1] * 2, t.shape[2] * 2]);
-      return tf.tidy(() => {
-        let t = x;
-        t = cb(t, L[0]); t = cb(t, L[1]); t = tf.maxPool(t, 2, 2, 'valid');
-        t = cb(t, L[2]); t = cb(t, L[3]); t = tf.maxPool(t, 2, 2, 'valid');
-        t = cb(t, L[4]); t = cb(t, L[5]); t = cb(t, L[6]); t = tf.maxPool(t, 2, 2, 'valid');
-        t = cb(t, L[7]); t = cb(t, L[8]); t = cb(t, L[9]); t = up(t);
-        t = cb(t, L[10]); t = cb(t, L[11]); t = cb(t, L[12]); t = up(t);
-        t = cb(t, L[13]); t = cb(t, L[14]); t = up(t);
-        t = cb(t, L[15]); t = cb(t, L[16]);
-        let bestV = null, bestI = null;
-        for (const c of L[17].chunks) {
-          const y = cb(t, c);
-          const v = y.max(3), i = y.argMax(3).add(c.offset);
-          if (bestV === null) { bestV = v; bestI = i; }
-          else { const better = v.greater(bestV); bestI = tf.where(better, i, bestI); bestV = tf.where(better, v, bestV); }
+      // free each activation as soon as the next layer has used it: one big tidy() would keep all 18 layers' outputs
+      // alive until the end of the frame (hundreds of MB of GPU memory at 640x360)
+      let t = x;
+      const step = f => { const n = tf.tidy(() => f(t)); if (t !== x) t.dispose(); t = n; };
+      const cb = l => step(u => tf.fused.conv2d({ x: u, filter: l.w, strides: 1, pad: 'same', bias: l.b, activation: 'relu' }).mul(l.s).add(l.t));
+      const pool = () => step(u => tf.maxPool(u, 2, 2, 'valid'));
+      const up = () => step(u => tf.image.resizeNearestNeighbor(u, [u.shape[1] * 2, u.shape[2] * 2]));
+      cb(L[0]); cb(L[1]); pool();
+      cb(L[2]); cb(L[3]); pool();
+      cb(L[4]); cb(L[5]); cb(L[6]); pool();
+      cb(L[7]); cb(L[8]); cb(L[9]); up();
+      cb(L[10]); cb(L[11]); cb(L[12]); up();
+      cb(L[13]); cb(L[14]); up();
+      cb(L[15]); cb(L[16]);
+      let bestV = null, bestI = null;
+      for (const c of L[17].chunks) {
+        const [v, i] = tf.tidy(() => { const y = tf.fused.conv2d({ x: t, filter: c.w, strides: 1, pad: 'same', bias: c.b, activation: 'relu' }).mul(c.s).add(c.t); return [y.max(3), y.argMax(3).add(c.offset)]; });
+        if (bestV === null) { bestV = v; bestI = i; }
+        else {
+          const [nv, ni] = tf.tidy(() => { const better = v.greater(bestV); return [tf.where(better, v, bestV), tf.where(better, i, bestI)]; });
+          bestV.dispose(); bestI.dispose(); v.dispose(); i.dispose(); bestV = nv; bestI = ni;
         }
-        return { idx: bestI.squeeze([0]).cast('int32'), val: bestV.squeeze([0]) };
-      });
+      }
+      if (t !== x) t.dispose();
+      const out = tf.tidy(() => ({ idx: bestI.squeeze([0]).cast('int32'), val: bestV.squeeze([0]) }));
+      bestI.dispose(); bestV.dispose();
+      return out;
     }
 
     dispose() {
@@ -1596,7 +1600,7 @@ async function tnMap(net, stack){
   const m = new Uint8Array(d.length); for (let k = 0; k < d.length; k++) m[k] = d[k];
   return m;
 }
-const TN = {net:null, promise:null};
+const TN = {net:null, promise:null, backend:null, float32:true};
 function loadScript(src){
   return new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = src; sc.onload = res; sc.onerror = () => rej(new Error('無法下載 ' + src)); document.head.appendChild(sc); });
 }
@@ -1625,21 +1629,96 @@ function b64ToBuffer(txt){
   else if (n - i === 2){ const v = lut[src[i]] << 18 | lut[src[i+1]] << 12; out[o++] = v >> 16; }
   return out.buffer;
 }
+// Deterministic input for the WebGPU self-test: a flat green-ish scene with faint noise and a small bright ball that moves
+// across the three frames (random noise alone leaves the network's heat map empty, which would test nothing).
+// Same numbers on every run, so both backends see exactly the same input.
+function tnSelfTestInput(S){
+  const a = new Float32Array(S*S*9); let seed = 7;
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) for (let f = 0; f < 3; f++) for (let c = 0; c < 3; c++){
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    let v = [0.25, 0.45, 0.3][c] + 0.03*(seed/4294967296 - 0.5) + 0.1*Math.sin(x*0.2 + y*0.15);
+    if ((x - (14 + f*8))**2 + (y - (26 - f*5))**2 <= 6) v = 0.95;
+    a[(y*S + x)*9 + f*3 + c] = Math.min(1, Math.max(0, v));
+  }
+  return a;
+}
+// Build the net on backend `name` (weights are tensors bound to that backend) and run the self-test input through it.
+async function tnProbe(name, parsed, inp, S, token){
+  if (token.dead) throw new Error('cancelled');
+  if (!(await tf.setBackend(name))) throw new Error(name + ' unavailable');
+  await tf.ready();
+  if (token.dead || tf.getBackend() !== name) throw new Error(name + ' unavailable');
+  const net = new TrackNetLite.TrackNet(tf, parsed), x = tf.tensor4d(inp, [1, S, S, 9]);
+  try {
+    const r = net.forward(x);
+    const idx = await r.idx.data(), val = await r.val.data();
+    r.idx.dispose(); r.val.dispose();
+    if (token.dead) throw new Error('cancelled');   // timed out meanwhile: nobody will use this net
+    return {net, idx, val};
+  } catch (e) { net.dispose(); throw e; }
+  finally { x.dispose(); }
+}
+// Same answer as WebGL? Float rounding differs a little between backends, so heat values only need to agree closely and the
+// class map near the ball must match. A reference map with (almost) no structure proves nothing, so that counts as "no".
+function tnAgree(a, b){
+  const n = a.idx.length, classes = new Set(b.idx);
+  if (classes.size < 5) return false;
+  let badVal = 0, act = 0, badAct = 0;
+  for (let i = 0; i < n; i++){
+    if (!isFinite(a.val[i]) || !(Math.abs(a.val[i] - b.val[i]) <= 0.02 + 0.01*Math.abs(b.val[i]))) badVal++;
+    if (a.idx[i] > 0 || b.idx[i] > 0){ act++; if (Math.abs(a.idx[i] - b.idx[i]) > 2) badAct++; }
+  }
+  return badVal <= 0.01*n && badAct <= 0.1*act;
+}
 async function ensureModel(onStatus){
   if (TN.net) return TN.net;
   if (!TN.promise) TN.promise = (async () => {
     onStatus('載入 TensorFlow.js…', 0.01);
     if (!window.tf) await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js');
-    try { await tf.setBackend('webgl'); } catch {}
-    await tf.ready();
-    if (tf.getBackend() !== 'webgl') throw new Error('這個瀏覽器沒有開啟 WebGL（GPU 加速），AI 偵測無法在合理時間內完成');
-    // the host only serves text files, so the weights travel as base64 text
-    const buf = b64ToBuffer(await fetchWithProgress('tracknet-int8.b64.txt', f => onStatus(`下載 AI 模型 ${Math.round(f*100)}%`, 0.01 + 0.03*f)));
-    onStatus('建立 AI 模型…', 0.04);
-    const net = new TrackNetLite.TrackNet(tf, TrackNetLite.parseWeights(buf));
+    let glOk = false;
+    try { glOk = (await tf.setBackend('webgl')) && (await tf.ready(), tf.getBackend() === 'webgl'); } catch {}
+    const hasGpu = typeof navigator !== 'undefined' && !!navigator.gpu;
+    if (!glOk && !hasGpu) throw new Error('這個瀏覽器沒有開啟 WebGL（GPU 加速），AI 偵測無法在合理時間內完成');
+    // the raw weights (10.7 MB) where the host serves them; else the base64 copy (14 MB) for hosts that only serve text
+    const prog = f => onStatus(`下載 AI 模型 ${Math.round(f*100)}%`, 0.01 + 0.03*f);
+    let buf = null;
+    try { const b = await fetchWithProgress('tracknet-int8.bin', prog); if (b.byteLength > 8 && String.fromCharCode(...new Uint8Array(b, 0, 4)) === 'TNI8') buf = b; } catch {}
+    if (!buf) buf = b64ToBuffer(await fetchWithProgress('tracknet-int8.b64.txt', prog));
+    const parsed = TrackNetLite.parseWeights(buf);
+    let net = null, backend = null;
+    // WebGPU is faster where it works, but it is only used after it reproduces WebGL's answer on a fixed test input
+    if (hasGpu){
+      const token = {dead: false}; let gpu = null, gl = null;
+      try {
+        onStatus('測試 WebGPU 加速…', 0.04);
+        if (!tf.findBackendFactory('webgpu')) await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgpu@4.22.0/dist/tf-backend-webgpu.min.js');
+        const S = 48, inp = tnSelfTestInput(S);
+        await Promise.race([
+          (async () => {
+            gpu = await tnProbe('webgpu', parsed, inp, S, token);
+            if (glOk){ gl = await tnProbe('webgl', parsed, inp, S, token); if (!tnAgree(gpu, gl)) throw new Error('mismatch'); }
+            else if (!gpu.val.every(isFinite) || new Set(gpu.idx).size < 5) throw new Error('implausible');
+          })(),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 20000)),
+        ]);
+        net = gpu.net; backend = 'webgpu'; gpu = null;
+        if (gl) gl.net.dispose();
+      } catch (e) {
+        token.dead = true;
+        if (gpu) gpu.net.dispose();
+        if (gl){ net = gl.net; backend = 'webgl'; }   // the reference net is already built: keep it
+      }
+    }
+    if (!backend && !glOk) throw new Error('這個瀏覽器沒有開啟 WebGL（GPU 加速），AI 偵測無法在合理時間內完成');
+    if (!backend) backend = 'webgl';
+    await tf.setBackend(backend); await tf.ready();
+    if (tf.getBackend() !== backend) throw new Error('無法啟用 ' + backend);
+    onStatus('建立 AI 模型…', 0.045);
+    if (!net) net = new TrackNetLite.TrackNet(tf, parsed);
     // warm up on a tiny input so the GPU programs compile now, not in the middle of the first frame
     const z = tf.zeros([1, 64, 64, 9]); const r = net.forward(z); await r.idx.data(); r.idx.dispose(); r.val.dispose(); z.dispose();
-    TN.net = net; TN.float32 = tf.env().getBool('WEBGL_RENDER_FLOAT32_CAPABLE');
+    TN.net = net; TN.backend = backend;
+    TN.float32 = backend === 'webgpu' ? true : tf.env().getBool('WEBGL_RENDER_FLOAT32_CAPABLE');
     return net;
   })().catch(e => { TN.promise = null; throw e; });
   return TN.promise;
@@ -1775,10 +1854,10 @@ async function analyzeVideo(vid, opts, onProgress, isCancelled){
   }
   const buf = {mask:new Uint8Array(n), lab:new Int32Array(n), stack:new Int32Array(n), edge:edgeMap(bg, roi.w, roi.h)};
   const frames = new Array(N), boxes = new Array(N), ctx = {H, Hi, prm};
-  let done = 0, quiet = false;
+  let done = 0, quiet = false, frameSrc = vid;   // frameSrc: what to draw (the video, or one exact VideoFrame)
   const processFrame = i => {
     const ta = performance.now();
-    c2.drawImage(vid, 0, 0, pw, ph);
+    c2.drawImage(frameSrc, 0, 0, pw, ph);
     const px = c2.getImageData(roi.x, roi.y, roi.w, roi.h).data;
     const {cands, players} = classifyComps(detectFrame(px, bg, roi, prm, buf), ctx);
     frames[i] = cands; boxes[i] = players; done++;
@@ -1807,33 +1886,139 @@ async function analyzeVideo(vid, opts, onProgress, isCancelled){
     quiet = true;
     const cn = document.createElement('canvas'); cn.width = 640; cn.height = 360;
     const cnx = cn.getContext('2d');
-    const grabT = () => tf.tidy(() => { cnx.drawImage(vid, 0, 0, 640, 360); return tf.reverse(tf.browser.fromPixels(cn).slice([tn.y0, tn.x0, 0], [tn.h, tn.w, 3]), -1).toFloat().div(255); });
-    const ring = [];
-    const push = t => { ring.unshift(t); while (ring.length > 3) ring.pop().dispose(); };
+    const grabT = () => tf.tidy(() => { cnx.drawImage(frameSrc, 0, 0, 640, 360); return tf.reverse(tf.browser.fromPixels(cn).slice([tn.y0, tn.x0, 0], [tn.h, tn.w, 3]), -1).toFloat().div(255); });
+    // The net needs frames [i, i-S, i-2S]. Tensors are kept by frame index, so it does not matter if playback
+    // skipped a frame: the net runs on every frame whose three tensors are there, and the skipped ones are fetched
+    // by seeking afterwards (or earlier, if too many tensors pile up), so the result is complete.
+    const held = new Map(), inferred = new Set();
     const t0 = performance.now(); let lastTick = t0;
-    try {
-      for (const k of [-2*S, -S]){ await seekVideo(vid, (Math.max(0, f0 + k) + 0.5)/fpsV); push(grabT()); }
-      for (let i = 0; i < N; i += S){
-        if (isCancelled()){ ring.forEach(t => t.dispose()); return {cancelled:true}; }
-        await seekVideo(vid, (f0 + i + 0.5)/fpsV);
-        processFrame(i);
-        push(grabT());
-        if (!tnFailed){
-          try {
-            const stack = tf.tidy(() => tf.concat([ring[0], ring[1], ring[2]], 2).expandDims(0));
-            const m = await tnMap(net, stack, i, tn); stack.dispose();
-            tnCands[i] = TrackNetLite.blobsFromMap(m, tn.w, tn.h, 128, 1, 1).slice(0, 3)
-              .map(b => ({u:(b.x + tn.x0)*pw/640, v:(b.y + tn.y0)*ph/360, a:b.n, yf:1}));
-            tnDone++;
-          } catch (err){ tnFailed = err; console.warn('TrackNet failed', err); }
-        }
-        const el = (performance.now() - t0)/1000, per = el/(i/S + 1);
-        if (performance.now() - lastTick > 250 || i >= N - S){
-          lastTick = performance.now();
-          onProgress(0.1 + 0.8*(i + 1)/N, `AI 偵測球 ${i + 1}/${N} 格 · 約剩 ${fmtEta(per*(N - i - 1)/S)}`);
-        }
+    const lastA = Math.floor((N - 1)/S)*S;     // last frame the net looks at
+    let avgC = 0, avgT = 15;                   // average ms to capture a frame / to run the net on it
+    // the video shows frame j right now: give it to the colour detector and keep its tensor
+    const capture = j => {
+      const tc = performance.now();
+      if (j >= 0 && !frames[j]) processFrame(j);
+      if (!tnFailed && !held.has(j)){
+        try { held.set(j, grabT()); } catch (err){ tnFailed = err; console.warn('TrackNet failed', err); }
       }
-    } finally { ring.forEach(t => t.dispose()); }
+      if (j >= 0) avgC = avgC ? 0.8*avgC + 0.2*(performance.now() - tc) : performance.now() - tc;
+    };
+    const infer = async i => {
+      const a = held.get(i), b = held.get(i - S), c = held.get(i - 2*S);
+      if (tnFailed || !a || !b || !c) return;
+      try {
+        const stack = tf.tidy(() => tf.concat([a, b, c], 2).expandDims(0));
+        let m; try { m = await tnMap(net, stack, i, tn); } finally { stack.dispose(); }
+        tnCands[i] = TrackNetLite.blobsFromMap(m, tn.w, tn.h, 128, 1, 1).slice(0, 3)
+          .map(b => ({u:(b.x + tn.x0)*pw/640, v:(b.y + tn.y0)*ph/360, a:b.n, yf:1}));
+        tnDone++;
+      } catch (err){ tnFailed = err; console.warn('TrackNet failed', err); }
+    };
+    let lo = 0, lastCap = 0;                   // lo: first frame the net has not run on; lastCap: newest frame we hold
+    const isReady = i => !inferred.has(i) && frames[i] && (tnFailed || (held.has(i) && held.has(i - S) && held.has(i - 2*S)));
+    const nextReady = () => { for (let i = lo; i <= lastCap; i += S) if (isReady(i)) return i; return -1; };
+    const backlog = () => { let n = 0; for (let i = lo; i <= lastCap; i += S) if (isReady(i)) n++; return n; };
+    // a tensor is needed until the net has run on its own frame and the two after it
+    const release = i => {
+      for (const k of [i, i - S, i - 2*S]){
+        if (held.has(k) && [k, k + S, k + 2*S].every(m => m < 0 || m > lastA || inferred.has(m))){ held.get(k).dispose(); held.delete(k); }
+      }
+    };
+    // one worker runs the net on ready frames, in order
+    let pumping = false, inflight = Promise.resolve(), fatal = null;
+    const run = async () => {
+      try {
+        for (let i = nextReady(); i >= 0 && !isCancelled(); i = nextReady()){
+          const ta = performance.now();
+          await infer(i);
+          avgT = 0.8*avgT + 0.2*(performance.now() - ta);
+          inferred.add(i); while (inferred.has(lo)) lo += S;
+          release(i);
+          const el = (performance.now() - t0)/1000, per = el/inferred.size;
+          if (performance.now() - lastTick > 250 || inferred.size >= lastA/S + 1){
+            lastTick = performance.now();
+            onProgress(0.1 + 0.8*(i + 1)/N, `AI 偵測球 ${inferred.size*S}/${N} 格 · 約剩 ${fmtEta(per*(lastA/S + 1 - inferred.size))}`);
+          }
+        }
+      } catch (e){ fatal = e; }
+      pumping = false;
+    };
+    const launch = () => { if (!pumping){ pumping = true; inflight = run(); } };
+    // fetch by seeking every frame up to `upto` that playback missed (the video must not be playing)
+    const fill = async upto => {
+      let seeks = 0;
+      for (let i = 0; i <= upto && !isCancelled(); i += S){
+        if (inferred.has(i) || (frames[i] && (tnFailed || held.has(i)))) continue;
+        await seekVideo(vid, (f0 + i + 0.5)/fpsV); capture(i); seeks++;
+      }
+      return seeks;
+    };
+    try {
+      for (const k of [-2*S, -S]){ await seekVideo(vid, (Math.max(0, f0 + k) + 0.5)/fpsV); capture(k); }
+      await seekVideo(vid, (f0 + 0.5)/fpsV);
+      capture(0);
+      launch();
+      // Play through the range and take frames as they are shown. Inference runs while playback goes on, and playback
+      // slows down when capturing or the net is the bottleneck.
+      // A callback can run after the player has moved on, and drawing the <video> then gives a newer frame than
+      // mediaTime says. Where available, a VideoFrame is grabbed from the video: it carries its own timestamp, so
+      // the index is exact and drawing it gives exactly that frame.
+      let useVF = typeof VideoFrame === 'function';
+      if (lastA > 0 && 'requestVideoFrameCallback' in vid) await new Promise(res => {
+        let finished = false, guard = 0;
+        const arm = () => { clearTimeout(guard); guard = setTimeout(stop, 5000); };   // playback that stops delivering frames
+        const stop = () => { if (finished) return; finished = true; clearTimeout(guard); vid.pause(); vid.removeEventListener('ended', stop); res(); };
+        vid.addEventListener('ended', stop);
+        // playback speed: leave capturing and the net as long as one analysed frame takes, and slow down while a backlog builds
+        const rateNow = () => {
+          const bl = backlog();
+          let r = (S*1000/fpsV)/(1.5*Math.max(avgT, avgC, 1));
+          if (bl >= 2) r *= Math.pow(0.7, bl - 1);
+          return clamp(r, 0.1, 1);
+        };
+        const play = () => { vid.playbackRate = rateNow(); vid.requestVideoFrameCallback(cb); arm(); return vid.play().catch(stop); };
+        const step = async md => {
+          if (finished) return;
+          if (isCancelled() || fatal) return stop();
+          let vf = null;
+          if (useVF){ try { vf = new VideoFrame(vid); } catch (e){ useVF = false; } }
+          const j = Math.round((vf ? vf.timestamp/1e6 : md.mediaTime)*fpsV) - f0;   // frame k is shown from time k/fps; seekVideo targets its middle
+          if (j % S || j <= lastCap || j > lastA){         // not a frame the net looks at, or already have it
+            if (vf) vf.close();
+            if (lastCap >= lastA || j >= N - 1 || vid.ended) return stop();
+            vid.requestVideoFrameCallback(cb); arm(); return;
+          }
+          if (vf) frameSrc = vf;
+          try { capture(j); } finally { frameSrc = vid; if (vf) vf.close(); }
+          lastCap = j;
+          launch();
+          if (lastCap >= lastA) return stop();
+          if (held.size > 24){                             // too many tensors waiting (a skipped frame, or a slow net): catch up
+            vid.pause(); clearTimeout(guard);
+            await inflight;
+            const moved = await fill(lastCap);
+            launch();
+            if (finished) return;
+            if (moved) await seekVideo(vid, (f0 + lastCap + 0.5)/fpsV);
+            if (finished) return;
+            return void play();
+          }
+          vid.playbackRate = rateNow();
+          vid.requestVideoFrameCallback(cb);
+          arm();
+        };
+        const cb = (now, md) => { step(md).catch(e => { fatal = e; stop(); }); };
+        play();
+      });
+      vid.pause(); vid.playbackRate = 1;
+      await inflight;
+      if (fatal) throw fatal;
+      if (isCancelled()) return {cancelled:true};
+      await fill(lastA);      // anything playback never reached (or no frame callbacks at all): seek to it
+      lastCap = lastA; launch(); await inflight;
+      if (fatal) throw fatal;
+      if (isCancelled()) return {cancelled:true};
+    } finally { held.forEach(t => t.dispose()); held.clear(); }
   } else {
     // play through the range and take every frame as it is shown; slow playback down if we fall behind
     await playThrough(vid, f0, N, fpsV, i => frames[i] ? 0 : processFrame(i), isCancelled, 1, true);
@@ -2332,10 +2517,13 @@ async function firstFrameTime(){
 }
 async function stepBySeeking(t0){
   // exact: seek just past a frame and read the presentation time of the next one. Not fooled by a busy machine dropping frames.
+  // the frame a seek lands on: its presentation time, or null when the seek stayed on the frame already shown (then no new
+  // frame is composited; wait for 'seeked' first so a busy machine is not mistaken for that)
   const shown = t => new Promise(res => {
-    let d = false; const fin = v => { if (!d){ d = true; res(v); } };
-    vid.requestVideoFrameCallback((_, md) => fin(md.mediaTime));
-    vid.currentTime = t; setTimeout(() => fin(null), 400);
+    let got = null, d = false; const fin = v => { if (!d){ d = true; res(v); } };
+    vid.requestVideoFrameCallback((_, md) => { got = md.mediaTime; });
+    vid.addEventListener('seeked', () => setTimeout(() => fin(got), 150), {once:true});
+    vid.currentTime = t; setTimeout(() => fin(got), 3000);
   });
   let cur = await shown(t0); if (cur === null) return null;
   const steps = [];
@@ -2346,37 +2534,36 @@ async function stepBySeeking(t0){
     steps.push(nxt - cur); cur = nxt;
   }
   steps.sort((a, b) => a - b);
-  const dtm = steps[steps.length >> 1];
-  return steps.filter(x => Math.abs(x - dtm) < 0.1*dtm).length >= 4 ? 1/dtm : null;
+  const med = steps[steps.length >> 1], ok = steps.filter(x => Math.abs(x - med) < 0.1*med);
+  // timestamps are often stored in whole milliseconds (60 fps: 16, 17, 17 ms ...): average them
+  return ok.length >= 4 ? ok.length/ok.reduce((a, x) => a + x, 0) : null;
 }
 async function detectFps(){
   if (!('requestVideoFrameCallback' in HTMLVideoElement.prototype)) return null;
+  vid.pause();
   const ff = await firstFrameTime();
   {
-    const fs = await stepBySeeking(Math.min(Math.max(ff, 0) + 0.5, Math.max(0, VS.dur - 0.5)));
+    let fs = null;
+    for (const off of [0.5, 1.5, 3]){                 // a busy machine can spoil one try: take another spot
+      fs = await stepBySeeking(Math.min(Math.max(ff, 0) + off, Math.max(0, VS.dur - 0.5)));
+      if (fs) break;
+    }
     if (fs && fs > 10 && fs < 300){
       VS.firstFrame = ff > 0 ? ff : 0;
       const sn = SNAP.reduce((a, s) => Math.abs(s - fs) < Math.abs(a - fs) ? s : a);
       return Math.abs(sn - fs)/sn < 0.04 ? sn : Math.round(fs*100)/100;
     }
   }
-  const times = []; let q0 = null, q1 = null;
-  // the browser's own count of decoded frames (shown or dropped) is not fooled by a busy machine skipping frames
-  const qNow = () => { try { return {n:vid.getVideoPlaybackQuality().totalVideoFrames, t:vid.currentTime}; } catch { return null; } };
+  const times = [];
   await new Promise(res => {
     let n = 0;
-    const cb = (_, md) => { times.push(md.mediaTime); if (n === 0) q0 = qNow(); if (++n < 16) vid.requestVideoFrameCallback(cb); else { q1 = qNow(); res(); } };
+    const cb = (_, md) => { times.push(md.mediaTime); if (++n < 16) vid.requestVideoFrameCallback(cb); else res(); };
     vid.requestVideoFrameCallback(cb);
     vid.play().catch(res);
     setTimeout(res, 1600);
   });
   vid.pause();
-  VS.firstFrame = ff > 0 ? ff : (times.length ? times[0] : 0);
-  if (q0 && q1 && times.length >= 8 && times[times.length-1] > times[0] + 0.1){
-    // total decoded frames between the first and last callback divided by the media time they span
-    const fps2 = (q1.n - q0.n + 0)/(times[times.length-1] - times[0]);
-    if (fps2 > 12 && fps2 < 130){ const sn = SNAP.reduce((a, s) => Math.abs(s - fps2) < Math.abs(a - fps2) ? s : a); if (Math.abs(sn - fps2)/sn < 0.08) return sn; }
-  }
+  VS.firstFrame = ff > 0 ? ff : 0;
   const d = [];
   for (let i = 1; i < times.length; i++){ const x = times[i] - times[i-1]; if (x > 0.002) d.push(x); }
   if (d.length < 4) return null;
@@ -2538,14 +2725,14 @@ $('bAnalyze').onclick = async () => {
   const st = out.fit.stats, warn = [];
   if (modelNote) warn.push(modelNote.replace(/。$/, ''));
   if (st.aiError) warn.push(`AI 偵測中途失敗（${st.aiError}），後半段改用顏色偵測`);
-  if (st.detector === 'ai' && TN.float32 === false) warn.push('這個裝置的 GPU 只支援半精度運算，球速可能偏差');
+  if (st.detector === 'ai' && TN.backend === 'webgl' && TN.float32 === false) warn.push('這個裝置的 GPU 只支援半精度運算，球速可能偏差');
   if (st.coverage < 0.5) warn.push('球在不少畫面中沒有被找到，結果可能不完整');
   if (st.rms > 8) warn.push('球的軌跡有大半對不上影像，這段的結果多半不可信（請只選一分球、鏡頭固定、球看得見的範圍）');
   else if (st.rms > 3) warn.push('軌跡誤差偏大，請檢查校正的四個角');
   if (st.dropped) warn.push(`另有 ${st.dropped} 球因軌跡對不上影像而略過`);
   if (!st.focalOk) warn.push('攝影機參數是用預設值推算，球的高度可能不準');
   if (st.cut != null) warn.push(`影片在 ${st.cut} 秒切換了鏡頭，只分析了切換之前的部分`);
-  res.innerHTML = `找到 <b>${out.shots.length}</b> 球 · ${st.detector === 'ai' ? 'AI 偵測' : '顏色偵測'}，球偵測率 ${Math.round(st.coverage*100)}% · 軌跡平均誤差 ${st.rms} px` +
+  res.innerHTML = `找到 <b>${out.shots.length}</b> 球 · ${st.detector === 'ai' ? (TN.backend === 'webgpu' ? 'AI 偵測（WebGPU）' : 'AI 偵測') : '顏色偵測'}，球偵測率 ${Math.round(st.coverage*100)}% · 軌跡平均誤差 ${st.rms} px` +
     (warn.length ? `<div class="warn" style="margin-top:4px">${warn.join('；')}。</div>` : '') +
     `<div class="muted" style="margin-top:4px">球種是依擊球位置推測的，可以在上方「球種」選單修正。</div>`;
   commit(); setView('video'); seekShot(0); refreshSteps();
