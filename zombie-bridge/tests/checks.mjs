@@ -39,6 +39,9 @@ const results = await page.evaluate(() => {
   zb.bus.on('win', () => counts.win++);
   zb.bus.on('bossDied', () => counts.bossDied++);
   zb.bus.on('soldierContact', () => counts.contact++);
+  // Teleport to the bridge end. Gates the squad jumps over are marked used, otherwise the first step would "pass" them
+  // all at once from the centre line (worse-gate rule) and a random gate value could wipe the squad before the boss.
+  const skipToBoss = () => { for (const e of G.events) if (e.type === 'gate') e.used = true; G.z = -G.L + 2; };
   const reset = () => { counts.gameOver = counts.win = counts.bossDied = counts.contact = 0; };
   const sig = () => JSON.stringify(G.events.map(e => [e.type, +e.z.toFixed(3), +(e.x || 0).toFixed(3), e.side || 0, e.val || 0, e.kind || '', e.tier || 0, e.need || 0, e.pair, e.spec ? [e.spec.kind, e.spec.count, +e.spec.hp.toFixed(3), +e.spec.cx.toFixed(3)] : 0]));
   const now0 = () => performance.now();
@@ -100,7 +103,7 @@ const results = await page.evaluate(() => {
   {
     reset(); zb.prepare(1); zb.start();
     G.squad = 25; G.weapon = 3; zb.syncSoldiers(); G.shield = 1e9;
-    G.z = -G.L + 2;
+    skipToBoss();
     let guard = 0;
     while (G.phase !== 'win' && guard++ < 6000) { G.shield = Math.max(G.shield, 5); zb.step(1 / 60); }
     check('boss kill leads to win', G.phase === 'win', `${G.phase} after ${guard} steps`);
@@ -115,7 +118,7 @@ const results = await page.evaluate(() => {
     // squad wiped while the boss corpse is still falling (boss dead, minions alive) must not flip a won fight into a loss
     reset(); zb.prepare(1); zb.start();
     G.squad = 5; G.weapon = 3; zb.syncSoldiers(); G.shield = 0;
-    G.z = -G.L + 2;
+    skipToBoss();
     let guard = 0;
     while (!(G.boss && !G.boss.alive) && guard++ < 6000) { G.shield = 1e9; zb.step(1 / 60); }
     G.shield = 0;
@@ -131,7 +134,7 @@ const results = await page.evaluate(() => {
     G.squad = 20; G.weapon = 3; zb.syncSoldiers();
     const hero = G.events.find(e => e.type === 'hero');
     zb.activateHero(hero);
-    G.z = -G.L + 2;
+    skipToBoss();
     for (let i = 0; i < 400; i++) { G.shield = Math.max(G.shield, 1); zb.step(1 / 60); }     // boss, bullets, particles, pops
     check('messy run really produced state to clean (bullets/pops/mech/boss)', zb.stats().bullets + zb.pops.length > 0 && G.mech && G.boss, JSON.stringify(zb.stats()) + ' pops ' + zb.pops.length);
     zb.prepare(2);

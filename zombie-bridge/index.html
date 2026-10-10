@@ -49,16 +49,20 @@ body {
 }
 .chip b { color: var(--hazard); font-weight: 400; }
 .track { flex: 1; min-width: 0; height: 10px; background: var(--panel); border-radius: 6px; overflow: hidden; }
-.fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--hazard), #ffd76a); border-radius: 6px; }
-#mute {
-  pointer-events: auto; border: 0; width: 36px; height: 36px; border-radius: 50%;
+.fill { height: 100%; width: 100%; background: linear-gradient(90deg, var(--hazard), #ffd76a); transform: scaleX(0); transform-origin: 0 50%; will-change: transform; }
+#mute, #pause {
+  pointer-events: auto; border: 0; width: 36px; height: 36px; border-radius: 50%; flex: none; padding: 0;
   background: var(--panel); color: var(--paper); font: 900 13px var(--body); cursor: pointer;
+  display: grid; place-items: center;
 }
-#mute:focus-visible, .btn:focus-visible { outline: 3px solid var(--holo); outline-offset: 3px; }
+#pause svg { width: 14px; height: 14px; fill: currentColor; }
+#mute:focus-visible, #pause:focus-visible, .btn:focus-visible, .step:focus-visible { outline: 3px solid var(--holo); outline-offset: 3px; }
 #bossbar { display: grid; gap: 4px; }
 #bossbar .label { font-family: var(--display); font-size: 13px; letter-spacing: .08em; color: #ffd0d0; text-shadow: 0 1px 2px #000; }
 #bossbar .track { height: 12px; flex: none; }
-#bossbar .fill { background: linear-gradient(90deg, #8f1218, var(--blood)); width: 100%; }
+#bossbar .track { position: relative; }
+#bossbar .fill { background: linear-gradient(90deg, #8f1218, var(--blood)); transform: none; position: relative; z-index: 1; }
+#bossbar .ghost { position: absolute; inset: 0; background: #ffe3e3; transform-origin: 0 50%; will-change: transform; }
 
 .hud-bottom {
   position: absolute; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
@@ -66,7 +70,7 @@ body {
 }
 .squad { display: grid; gap: 2px; }
 .squad .k { font-size: 12px; letter-spacing: .12em; color: var(--muted); text-shadow: 0 1px 2px #000; }
-.squad .v { font-family: var(--display); font-size: 40px; line-height: 1; text-shadow: 0 2px 0 var(--ink), 0 0 12px rgba(47,123,255,.6); font-variant-numeric: tabular-nums; }
+.squad .v { display: inline-block; transform-origin: 0 100%; font-family: var(--display); font-size: 40px; line-height: 1; text-shadow: 0 2px 0 var(--ink), 0 0 12px rgba(47,123,255,.6); font-variant-numeric: tabular-nums; }
 .weapon { text-align: right; display: grid; gap: 2px; }
 .weapon .v { font-weight: 900; font-size: 20px; text-shadow: 0 2px 0 var(--ink); }
 .weapon .k { font-size: 12px; letter-spacing: .12em; color: var(--muted); text-shadow: 0 1px 2px #000; }
@@ -117,6 +121,69 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 .best { font-size: 13px; color: var(--muted); letter-spacing: .08em; }
 #loading { font-family: var(--display); letter-spacing: .1em; }
 @media (prefers-reduced-motion: reduce) { .btn, #hint { transition: none; } }
+
+/* ---- juice layers ---- */
+#flash, #vignette { position: fixed; inset: 0; pointer-events: none; opacity: 0; }
+#vignette { background: radial-gradient(ellipse at 50% 50%, rgba(226,54,59,0) 38%, rgba(226,54,59,.55) 78%, rgba(150,10,20,.9) 100%); }
+#tips { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.tip { position: absolute; left: 0; top: 0; opacity: 0; transition: opacity .25s; will-change: transform, opacity; }
+.tip.on { opacity: 1; }
+.tip span {
+  display: block; position: relative; transform: translateY(-14px); background: var(--hazard); color: var(--ink);
+  font: 900 15px/1 var(--body); letter-spacing: .06em; padding: 8px 12px; border-radius: 10px; white-space: nowrap;
+  box-shadow: 0 3px 0 var(--hazard-deep), 0 6px 14px rgba(0,0,0,.35); animation: tipbob 1s ease-in-out infinite;
+}
+.tip span::after { content: ''; position: absolute; left: 50%; top: 100%; margin-left: -7px; border: 7px solid transparent; border-top-color: var(--hazard); }
+@keyframes tipbob { 50% { transform: translateY(-20px); } }
+.tip.below span { transform: translateY(14px); animation-name: tipbob2; }
+.tip.below span::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: var(--hazard); }
+@keyframes tipbob2 { 50% { transform: translateY(20px); } }
+
+/* ---- HUD extras ---- */
+.row .push { margin-left: auto; }
+#hudSquad.up { text-shadow: 0 2px 0 var(--ink), 0 0 16px rgba(80,160,255,.95); }
+
+/* ---- overlays: scroll instead of clip on short screens ---- */
+.overlay { display: flex; overflow-y: auto; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+.overlay > .card { margin: auto; }
+#pauseOv { background: rgba(16, 21, 27, .8); z-index: 5; }
+.btn.ghost { background: rgba(16,21,27,.55); color: var(--paper); box-shadow: inset 0 0 0 2px rgba(243,241,236,.55); padding: 11px 32px; font-size: 17px; }
+.btn.ghost:active { transform: translateY(2px); }
+.btn.wide { width: 100%; max-width: 260px; box-sizing: border-box; padding-left: 16px; padding-right: 16px; }
+.btnstack { display: grid; gap: 12px; width: 100%; justify-items: center; }
+.stagepick { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.step {
+  pointer-events: auto; border: 0; width: 44px; height: 44px; border-radius: 50%; cursor: pointer;
+  background: var(--panel); color: var(--hazard); display: grid; place-items: center; padding: 0;
+}
+.step svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+.step:active { transform: scale(.92); }
+.step[hidden] { display: none !important; }
+.stagepick .eyebrow { min-width: 9ch; }
+.link { background: none; border: 0; color: var(--muted); font: 500 14px var(--body); letter-spacing: .1em; text-decoration: underline; text-underline-offset: 4px; padding: 10px 16px; cursor: pointer; }
+
+/* short phones (iPhone SE 667) and landscape */
+@media (max-height: 700px) {
+  .overlay { padding-top: calc(env(safe-area-inset-top, 0px) + 12px); padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); }
+  .card { gap: 10px; }
+  h1 { font-size: clamp(44px, 13vw, 56px); }
+  h2 { font-size: clamp(32px, 9vw, 42px); }
+  .lede { font-size: 15px; line-height: 1.45; }
+  .rules { padding: 10px 14px; gap: 6px; }
+  .rules li { font-size: 13px; line-height: 1.4; }
+  .btn { padding: 12px 40px; font-size: 18px; }
+  .step { width: 38px; height: 38px; }
+}
+@media (max-height: 520px) and (min-width: 560px) {
+  .overlay > .card { max-width: 720px; display: grid; grid-template-columns: 1fr 1fr; text-align: left; justify-items: stretch; align-items: center; column-gap: 28px; row-gap: 8px; }
+  .card > * { grid-column: 1; }
+  .card > .rules { grid-column: 2; grid-row: 1 / span 5; }
+  .card .btn, .card .best, .card .btnstack, .card .stagepick, .card .link { justify-self: start; }
+}
+@media (min-width: 900px) and (min-height: 600px) {
+  .card { max-width: 400px; }
+}
+@media (prefers-reduced-motion: reduce) { .tip span { animation: none; } .tip { transition: none; } }
 </style>
 </head>
 <body>
@@ -128,11 +195,12 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
       <span class="chip">LV <b id="hudLevel">1</b></span>
       <div class="track" aria-label="前進進度"><div class="fill" id="hudProg"></div></div>
       <span class="chip"><span id="hudKills">0</span> 殺</span>
+      <button id="pause" type="button" aria-label="暫停"><svg viewBox="0 0 14 14" aria-hidden="true"><rect x="2" y="1" width="3.6" height="12" rx="1"/><rect x="8.4" y="1" width="3.6" height="12" rx="1"/></svg></button>
       <button id="mute" type="button" aria-label="切換音效">音</button>
     </div>
     <div id="bossbar" hidden>
       <span class="label">巨屍 BOSS</span>
-      <div class="track"><div class="fill" id="bossFill"></div></div>
+      <div class="track"><div class="ghost" id="bossGhost"></div><div class="fill" id="bossFill"></div></div>
     </div>
   </div>
   <div id="hint">按住左右拖曳移動 · 小隊自動開火</div>
@@ -142,10 +210,17 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
   </div>
 </div>
 <div id="pops"></div>
+<div id="tips" aria-hidden="true"></div>
+<div id="vignette"></div>
+<div id="flash"></div>
 
 <section class="overlay" id="menu">
   <div class="card">
-    <span class="eyebrow" id="menuLevel">STAGE 1</span>
+    <div class="stagepick">
+      <button class="step" id="stagePrev" type="button" aria-label="上一關" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <span class="eyebrow" id="menuLevel">STAGE 1</span>
+      <button class="step" id="stageNext" type="button" aria-label="下一關" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
+    </div>
     <h1>屍潮斷橋</h1>
     <p class="lede">已經有很多人倒在這座橋上。你能帶著小隊衝到對岸嗎？</p>
     <ul class="rules">
@@ -168,7 +243,10 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
       <div class="stat"><span class="v" id="overKills">0</span><span class="k">擊殺</span></div>
       <div class="stat"><span class="v" id="overDist">0%</span><span class="k">進度</span></div>
     </div>
-    <button class="btn" id="btnRetry" type="button">再試一次</button>
+    <div class="btnstack">
+      <button class="btn" id="btnRetry" type="button">再試一次</button>
+      <button class="link" id="btnMenu1" type="button">回主選單</button>
+    </div>
   </div>
 </section>
 
@@ -181,7 +259,22 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
       <div class="stat"><span class="v" id="winKills">0</span><span class="k">擊殺</span></div>
       <div class="stat"><span class="v" id="winSquad">0</span><span class="k">生還隊員</span></div>
     </div>
-    <button class="btn" id="btnNext" type="button">下一關</button>
+    <div class="btnstack">
+      <button class="btn" id="btnNext" type="button">下一關</button>
+      <button class="link" id="btnMenu2" type="button">回主選單</button>
+    </div>
+  </div>
+</section>
+
+<section class="overlay" id="pauseOv" hidden role="dialog" aria-modal="true" aria-label="暫停">
+  <div class="card">
+    <span class="eyebrow">PAUSED</span>
+    <h2>已暫停</h2>
+    <div class="btnstack">
+      <button class="btn wide" id="btnResume" type="button">繼續</button>
+      <button class="btn ghost wide" id="btnRestart" type="button">重新開始</button>
+      <button class="btn ghost wide" id="btnMenu3" type="button">回主選單</button>
+    </div>
   </div>
 </section>
 
@@ -281,20 +374,25 @@ const bus = {
 // ---------------------------------------------------------------- renderer
 const stage = $('#stage');
 const renderer = new T.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 stage.appendChild(renderer.domElement);
 const scene = new T.Scene();
 const FOG = 0x8fa3b3;
 scene.background = new T.Color(FOG);
 scene.fog = new T.Fog(FOG, 24, 78);
-const camera = new T.PerspectiveCamera(60, 1, 0.1, 220);
+const camera = new T.PerspectiveCamera(60, 1, 0.5, 100); // fog is opaque by 78, so 100 is invisible but culls the far scenery
 scene.add(new T.HemisphereLight(0xe2e9f1, 0x4a4038, 0.95));
 const sun = new T.DirectionalLight(0xfff2dc, 0.75);
 sun.position.set(6, 12, 5);
 scene.add(sun);
 
+// Adaptive resolution: PR_STEPS runs from min(dpr, 2) down to 1; Perf.tick() steps down when frames stay slow.
+const PR_STEPS = [2, 1.5, 1].filter(v => v <= Math.min(window.devicePixelRatio || 1, 2) + 1e-6);
+if (!PR_STEPS.length || PR_STEPS[0] < Math.min(window.devicePixelRatio || 1, 2) - 1e-6) PR_STEPS.unshift(Math.min(window.devicePixelRatio || 1, 2));
+let prIdx = 0;
+let vw = window.innerWidth, vh = window.innerHeight;   // cached so per-frame code never reads layout
 function resize() {
-  const w = window.innerWidth, h = window.innerHeight;
+  const w = vw = window.innerWidth, h = vh = window.innerHeight;
+  renderer.setPixelRatio(PR_STEPS[prIdx]);
   renderer.setSize(w, h);
   camera.aspect = w / h;
   camera.fov = w / h < 0.8 ? 62 : 50;
@@ -367,6 +465,25 @@ const GUNGEO = boxes([
   [0.5, 0.07, 0.07, 0.85, 0.03, 0, 0x2a2622],
   [0.12, 0.26, 0.12, -0.15, -0.2, 0, 0xb5652b],
 ]);
+// Per-vertex tag for the shader walk cycle (36 vertices per box): +-1 = leg swinging about the hip, 2 = arm bob, 0 = rigid.
+function tagParts(geo, tags) {
+  const a = new Float32Array(geo.attributes.position.count);
+  tags.forEach((t, i) => a.fill(t, i * 36, i * 36 + 36));
+  geo.setAttribute('aAnim', new T.BufferAttribute(a, 1));
+}
+tagParts(ZGEO, [1, -1, 0, 0, 2, 2]);
+tagParts(SGEO, [1, -1, 0, 0, 0, 0, 0, 0, 0]);
+// Tracer: white-hot core plus a dim wide halo; drawn additively so overlapping volleys bloom instead of z-fighting.
+const BULLET_GEO = boxes([
+  [0.07, 0.07, 1.3, 0, 0, 0, 0xffffff],
+  [0.2, 0.2, 1.6, 0, 0, 0, 0x3c2a10],
+]);
+// Gate base: two posts plus a lane strip painted on the deck (tinted per gate so red/blue reads from far away).
+const GATEBASE = boxes([
+  [0.16, 1.5, 0.16, -1.75, 0.75, 0.15, 0xffffff],
+  [0.16, 1.5, 0.16, 1.75, 0.75, 0.15, 0xffffff],
+  [3.7, 0.03, 2.2, 0, 0.025, -0.5, 0x8a8a8a],
+]);
 
 const M = {
   road: new T.MeshLambertMaterial({ color: 0x8a837c }),
@@ -391,16 +508,84 @@ const M = {
 
 function disposeTree(o) {
   o.traverse(n => {
-    if (n.geometry && ![ZGEO, SGEO, MGEO, GUNGEO].includes(n.geometry)) n.geometry.dispose();
-    if (n.material && n.material.map) { n.material.map.dispose(); n.material.dispose(); }
+    if (n.geometry && ![ZGEO, SGEO, MGEO, GUNGEO, GATEBASE].includes(n.geometry)) n.geometry.dispose();
+    if (n.material && (n.material.map || n.material.userData.own)) {
+      if (n.material.map) n.material.map.dispose();
+      n.material.dispose();
+    }
   });
 }
+
+// Shared shader clock (seconds of game time; freezes while paused).
+const CLOCK = { uTime: { value: 0 } };
+// Walk cycle in the vertex shader: legs swing about the hip, arms bob. Per instance (aWalk = phase, amplitude, speed)
+// so one InstancedMesh draw call animates the whole horde; non-instanced meshes (boss) use a fixed phase.
+function walkify(mat, hip, freq) {
+  mat.onBeforeCompile = sh => {
+    sh.uniforms.uTime = CLOCK.uTime;
+    sh.uniforms.uHip = { value: hip };
+    sh.uniforms.uFreq = { value: freq };
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', `#include <common>
+attribute float aAnim;
+#ifdef USE_INSTANCING
+attribute vec3 aWalk;
+#endif
+uniform float uTime; uniform float uHip; uniform float uFreq;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+{
+  #ifdef USE_INSTANCING
+  vec3 wk = aWalk;
+  #else
+  vec3 wk = vec3(0.0, 1.0, 1.0);
+  #endif
+  float k = abs(aAnim);
+  if (k > 0.5 && wk.y > 0.0) {
+    float th = uTime * uFreq * wk.z + wk.x;
+    float a; float py;
+    if (k < 1.5) { a = sin(th) * 0.72 * sign(aAnim) * wk.y; py = uHip; }
+    else { a = sin(th * 2.0 + 1.0) * 0.16 * wk.y; py = 1.36; }
+    float c = cos(a); float sn = sin(a);
+    float yy = transformed.y - py; float zz = transformed.z;
+    transformed.y = py + yy * c - zz * sn;
+    transformed.z = yy * sn + zz * c;
+  }
+}`);
+  };
+  mat.customProgramCacheKey = () => 'walk1';
+  return mat;
+}
+// Hologram: horizontal scan lines, a bright sweep climbing the mech, and an occasional sideways glitch.
+function holoify(mat) {
+  mat.onBeforeCompile = sh => {
+    sh.uniforms.uTime = CLOCK.uTime;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying float vHy;\nuniform float uTime;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+  transformed.x += step(0.985, sin(uTime * 3.1 + transformed.y * 2.3)) * 0.14 * sin(uTime * 41.0);
+  vHy = (modelMatrix * vec4(transformed, 1.0)).y;`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vHy;\nuniform float uTime;')
+      .replace('#include <dithering_fragment>', `#include <dithering_fragment>
+  float scan = 0.55 + 0.45 * step(0.5, fract(vHy * 9.0 - uTime * 1.3));
+  float sweep = max(0.0, 1.0 - abs(fract(uTime * 0.5) * 3.8 - vHy) * 2.6);
+  gl_FragColor.a = clamp(gl_FragColor.a * scan + sweep * 0.5, 0.0, 1.0);
+  gl_FragColor.rgb += vec3(0.35, 0.8, 1.0) * sweep * 0.7;`);
+  };
+  mat.customProgramCacheKey = () => 'holo1';
+}
+holoify(M.holo); holoify(M.holoWire);
 
 // ---------------------------------------------------------------- instanced pools
 const dummy = new T.Object3D();
 const tmpC = new T.Color();
 
-const zMesh = new T.InstancedMesh(ZGEO, M.vc, MAXZ);
+// aWalk (phase, amplitude, speed) per instance drives the shader walk cycle; the geometry is a private clone so the boss's
+// non-instanced use of ZGEO never sees the instanced attribute.
+const zWalk = new T.InstancedBufferAttribute(new Float32Array(MAXZ * 3), 3).setUsage(T.DynamicDrawUsage);
+const zGeoI = ZGEO.clone();
+zGeoI.setAttribute('aWalk', zWalk);
+const zMesh = new T.InstancedMesh(zGeoI, walkify(new T.MeshLambertMaterial({ vertexColors: true }), 0.78, 4), MAXZ);
 zMesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
 zMesh.frustumCulled = false;
 for (let i = 0; i < MAXZ; i++) zMesh.setColorAt(i, tmpC.setRGB(1, 1, 1));
@@ -408,7 +593,7 @@ zMesh.count = 0;
 scene.add(zMesh);
 const Z = [];
 
-const bMesh = new T.InstancedMesh(new T.BoxGeometry(0.09, 0.09, 0.8), new T.MeshBasicMaterial({ color: 0xffffff, fog: false }), MAXB);
+const bMesh = new T.InstancedMesh(BULLET_GEO, new T.MeshBasicMaterial({ vertexColors: true, fog: false, transparent: true, blending: T.AdditiveBlending, depthWrite: false }), MAXB);
 bMesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
 bMesh.frustumCulled = false;
 for (let i = 0; i < MAXB; i++) bMesh.setColorAt(i, tmpC.setRGB(1, 0.85, 0.45));
@@ -438,7 +623,10 @@ const pvx = new Float32Array(MAXP), pvy = new Float32Array(MAXP), pvz = new Floa
 const pl = new Float32Array(MAXP), pm = new Float32Array(MAXP), pr = new Float32Array(MAXP), pg = new Float32Array(MAXP), pb = new Float32Array(MAXP);
 let np = 0;
 
+let fxScale = 1;   // 1 normally, lowered by the adaptive-quality governor when even the lowest resolution is slow
 function burst(x, y, z, n, col, speed, life) {
+  // particle budget: thin out new bursts as the pool fills so a big volley can't starve the important ones
+  n = Math.ceil(n * fxScale * (np > MAXP * 0.7 ? 0.35 : np > MAXP * 0.45 ? 0.6 : 1));
   for (let i = 0; i < n && np < MAXP; i++, np++) {
     px[np] = x; py[np] = y; pz[np] = z;
     const a = Math.random() * Math.PI * 2, u = Math.random();
@@ -482,15 +670,26 @@ function buildLevel(n) {
   G.L = L;
   const len = L + 130, mid = 30 - len / 2;
 
-  const add = (geo, mat, x, y, z) => { const m = new T.Mesh(geo, mat); m.position.set(x, y, z); levelGroup.add(m); return m; };
-  add(new T.BoxGeometry(ROAD * 2 + 0.4, 0.6, len), M.road, 0, -0.3, mid);
-  add(new T.PlaneGeometry(600, len + 200).rotateX(-Math.PI / 2), M.water, 0, -22, mid);
+  buildScenery(len, mid);
+
+  G.events = [];
+  makeEvents(n, L);
+}
+
+// Static scenery in as few draw calls as possible. The skyline loop consumes R() in exactly the original order so a stage
+// keeps the same layout of hordes and gates.
+function buildScenery(len, mid) {
+  const parts = [[ROAD * 2 + 0.4, 0.6, len, 0, -0.3, mid, 0x8a837c]];
   for (const s of [-1, 1]) {
-    add(new T.BoxGeometry(0.35, 0.35, len), M.curb, s * (ROAD + 0.08), 0.17, mid);
-    add(new T.BoxGeometry(0.12, 0.12, len), M.rail, s * (ROAD + 0.15), 0.98, mid);
-    add(new T.BoxGeometry(0.12, 0.12, len), M.rail, s * (ROAD + 0.15), 0.6, mid);
-    add(new T.BoxGeometry(0.9, 2.4, len), M.beam, s * (ROAD - 0.4), -1.8, mid);
+    parts.push([0.35, 0.35, len, s * (ROAD + 0.08), 0.17, mid, 0xbab3a9],
+               [0.12, 0.12, len, s * (ROAD + 0.15), 0.98, mid, 0x3a3e44],
+               [0.12, 0.12, len, s * (ROAD + 0.15), 0.6, mid, 0x3a3e44],
+               [0.9, 2.4, len, s * (ROAD - 0.4), -1.8, mid, 0x5b6068]);
   }
+  levelGroup.add(new T.Mesh(boxes(parts), M.vc));
+  const water = new T.Mesh(new T.PlaneGeometry(600, len + 200).rotateX(-Math.PI / 2), M.water);
+  water.position.set(0, -22, mid);
+  levelGroup.add(water);
   // railing posts + lane dashes
   const postCount = Math.floor(len / 2.2) * 2;
   const posts = new T.InstancedMesh(new T.BoxGeometry(0.14, 1.05, 0.14), M.post, postCount);
@@ -499,6 +698,7 @@ function buildLevel(n) {
     dummy.rotation.set(0, 0, 0); dummy.scale.setScalar(1); dummy.updateMatrix();
     posts.setMatrixAt(i, dummy.matrix);
   }
+  posts.frustumCulled = false;
   levelGroup.add(posts);
   const dashCount = Math.floor(len / 5);
   const dashes = new T.InstancedMesh(new T.BoxGeometry(0.14, 0.02, 2.2), M.dash, dashCount);
@@ -506,26 +706,37 @@ function buildLevel(n) {
     dummy.position.set(0, 0.01, 30 - i * 5); dummy.updateMatrix();
     dashes.setMatrixAt(i, dummy.matrix);
   }
+  dashes.frustumCulled = false;
   levelGroup.add(dashes);
-  // suspension towers
+  // suspension towers: unit boxes scaled per instance
+  const tw = [];
   for (let z = -40; z > -len + 30; z -= 62) {
-    for (const s of [-1, 1]) add(new T.BoxGeometry(1, 46, 1), M.tower, s * (ROAD + 1.4), 0, z);
-    add(new T.BoxGeometry(ROAD * 2 + 3.8, 0.9, 1), M.tower, 0, 21, z);
-    add(new T.BoxGeometry(ROAD * 2 + 3.8, 0.9, 1), M.tower, 0, -1.2, z);
+    for (const s of [-1, 1]) tw.push([s * (ROAD + 1.4), 0, z, 1, 46, 1]);
+    tw.push([0, 21, z, ROAD * 2 + 3.8, 0.9, 1], [0, -1.2, z, ROAD * 2 + 3.8, 0.9, 1]);
   }
+  const towers = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), M.tower, tw.length);
+  tw.forEach((t, i) => { dummy.position.set(t[0], t[1], t[2]); dummy.scale.set(t[3], t[4], t[5]); dummy.updateMatrix(); towers.setMatrixAt(i, dummy.matrix); });
+  towers.frustumCulled = false;
+  levelGroup.add(towers);
   // hazy skyline on both banks
-  const cityGeo = new T.BoxGeometry(1, 1, 1);
+  const city = [];
   for (let z = 20; z > -len - 40; z -= rnd(6, 11)) {
     for (const s of [-1, 1]) {
       if (R() < 0.35) continue;
       const w = rnd(5, 12), h = rnd(10, 46);
-      const b = add(cityGeo, M.city, s * rnd(26, 70), -22 + h / 2, z);
-      b.scale.set(w, h, rnd(5, 12));
+      const x = s * rnd(26, 70);
+      city.push([x, -22 + h / 2, z, w, h, rnd(5, 12)]);
     }
   }
-
-  G.events = [];
-  makeEvents(n, L);
+  const sky = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), M.city, city.length);
+  city.forEach((c, i) => {
+    dummy.position.set(c[0], c[1], c[2]); dummy.scale.set(c[3], c[4], c[5]); dummy.updateMatrix();
+    sky.setMatrixAt(i, dummy.matrix);
+    sky.setColorAt(i, tmpC.setScalar(0.82 + Math.random() * 0.3));
+  });
+  sky.frustumCulled = false;
+  levelGroup.add(sky);
+  dummy.scale.setScalar(1);
 }
 
 // p = how far along the bridge the horde stands (0..1): later hordes are bigger and tougher because the squad is, too.
@@ -583,17 +794,15 @@ function makeEvents(n, L) {
 }
 
 function makeGate(z, side, val, kind, n) {
-  const p = canvasPlane(3.6, 2.25, 256, 160);
+  const p = canvasPlane(4.2, 2.625, 320, 200);   // panel body is 3.6 x 2.25; the rest of the canvas holds the glow
   const grp = new T.Group();
   grp.position.set(side * 1.95, 0, z);
   p.mesh.position.y = 1.55;
   p.mesh.rotation.x = -0.42;
   grp.add(p.mesh);
-  for (const s of [-1, 1]) {
-    const post = new T.Mesh(new T.BoxGeometry(0.12, 1.5, 0.12), M.post);
-    post.position.set(s * 1.7, 0.75, 0.15);
-    grp.add(post);
-  }
+  p.baseMat = new T.MeshBasicMaterial({ vertexColors: true });
+  p.baseMat.userData.own = true;
+  grp.add(new T.Mesh(GATEBASE, p.baseMat));
   levelGroup.add(grp);
   const e = { type: 'gate', z, x: side * 1.95, side, val, kind, per: TUNE.gatePer + TUNE.gatePerStage * n, pf: 1, hits: 0, used: false, bump: 0, fade: 0, grp, p };
   e.draw = () => drawGate(e);
@@ -602,19 +811,43 @@ function makeGate(z, side, val, kind, n) {
 }
 function drawGate(e) {
   const { ctx: c, cw: W, ch: H } = e.p;
-  c.clearRect(0, 0, W, H);
   const pos = e.kind === 'mul' || e.val > 0;
-  const g = c.createLinearGradient(0, 0, 0, H);
-  if (pos) { g.addColorStop(0, '#5aa0ff'); g.addColorStop(1, '#1f55d6'); }
-  else { g.addColorStop(0, '#ff5a5f'); g.addColorStop(1, '#b3151d'); }
-  rrect(c, 6, 6, W - 12, H - 12, 18);
-  c.globalAlpha = 0.9; c.fillStyle = g; c.fill();
-  c.globalAlpha = 1; c.lineWidth = 6; c.strokeStyle = 'rgba(255,255,255,.85)'; c.stroke();
+  const m = 24, x0 = m, y0 = m, w = W - 2 * m, h = H - 2 * m;
+  c.clearRect(0, 0, W, H);
+  // outer glow (the blur is what makes the number readable from the far end of the bridge)
+  c.save();
+  c.shadowColor = pos ? '#4d95ff' : '#ff4048'; c.shadowBlur = 22;
+  rrect(c, x0, y0, w, h, 20); c.fillStyle = pos ? '#1f55d6' : '#b3151d'; c.fill();
+  c.restore();
+  const g = c.createLinearGradient(0, y0, 0, y0 + h);
+  if (pos) { g.addColorStop(0, '#6aa9ff'); g.addColorStop(1, '#1f55d6'); }
+  else { g.addColorStop(0, '#ff6a6e'); g.addColorStop(1, '#b3151d'); }
+  rrect(c, x0, y0, w, h, 20); c.globalAlpha = 0.94; c.fillStyle = g; c.fill();
+  c.globalAlpha = 1;
+  c.save(); rrect(c, x0, y0, w, h, 20); c.clip();
+  c.fillStyle = 'rgba(255,255,255,.16)'; c.fillRect(x0, y0, w, h * 0.42);
+  c.restore();
+  rrect(c, x0, y0, w, h, 20); c.lineWidth = 7; c.strokeStyle = 'rgba(255,255,255,.95)'; c.stroke();
   const txt = e.kind === 'mul' ? '×' + e.val : (e.val > 0 ? '+' : '') + e.val;
-  c.font = '96px Bungee, "Noto Sans TC", sans-serif';
-  c.textAlign = 'center'; c.textBaseline = 'middle';
-  c.fillStyle = 'rgba(0,0,0,.35)'; c.fillText(txt, W / 2 + 4, H / 2 + 10);
-  c.fillStyle = '#fff'; c.fillText(txt, W / 2, H / 2 + 6);
+  const prog = e.kind !== 'mul';
+  c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineJoin = 'round';
+  let fs = 120;
+  c.font = fs + 'px Bungee, "Noto Sans TC", sans-serif';
+  const tw = c.measureText(txt).width;
+  if (tw > w - 40) { fs = Math.floor(fs * (w - 40) / tw); c.font = fs + 'px Bungee, "Noto Sans TC", sans-serif'; }
+  const ty = y0 + h / 2 + (prog ? -6 : 4);
+  c.lineWidth = 14; c.strokeStyle = 'rgba(10,14,22,.85)'; c.strokeText(txt, W / 2, ty);
+  c.fillStyle = '#fff'; c.fillText(txt, W / 2, ty);
+  if (prog) {
+    // shots-to-next-point meter: every bullet that lands visibly moves it
+    const bw = w - 70, bx0 = (W - bw) / 2, by = y0 + h - 22, f = clamp(e.hits / e.per, 0, 1);
+    rrect(c, bx0, by, bw, 9, 4.5); c.fillStyle = 'rgba(10,14,22,.55)'; c.fill();
+    if (f > 0.02) { rrect(c, bx0, by, Math.max(9, bw * f), 9, 4.5); c.fillStyle = '#fff'; c.fill(); }
+  }
+  if (e.fxFlash > 0) {
+    rrect(c, x0, y0, w, h, 20); c.fillStyle = 'rgba(255,255,255,' + Math.min(0.6, e.fxFlash * 3) + ')'; c.fill();
+  }
+  if (e.p.baseMat) e.p.baseMat.color.setHex(pos ? 0x6aa0ff : 0xff5a5a);
   e.p.tex.needsUpdate = true;
 }
 
@@ -706,7 +939,7 @@ function spawnHorde(spec, z0) {
 function syncSoldiers() {
   const want = Math.min(G.squad, MAXVIS);
   while (G.soldiers.length < want) {
-    const m = new T.Mesh(SGEO, M.vc);
+    const m = new T.Object3D();   // transform carrier only; drawSoldiers() renders every soldier in one instanced draw call
     const s = { mesh: m, x: G.x + rr(-0.3, 0.3), z: G.z + 1.2, cd: Math.random() * 0.3 };
     m.position.set(s.x, 0, s.z);
     scene.add(m);
@@ -739,25 +972,31 @@ function killSoldier(i, src) {
 // ---------------------------------------------------------------- popups
 const popLayer = $('#pops');
 const pops = [];
+const popPool = [];     // recycled DOM nodes, so a fight never allocates elements per hit
+const POP_MAX = 14;
 const pv = new T.Vector3();
+let lastPlus = 0;
 function pop(text, x, y, z, cls) {
-  const el = document.createElement('div');
+  if (text === '+1') { const t = performance.now(); if (t - lastPlus < 160) return; lastPlus = t; }   // a volley can raise a gate many times a second
+  if (pops.length >= POP_MAX) { const old = pops.shift(); old.el.remove(); popPool.push(old.el); }
+  const el = popPool.pop() || document.createElement('div');
   el.className = 'pop ' + (cls || '');
   el.textContent = text;
+  el.style.opacity = '0';
   popLayer.appendChild(el);
   pops.push({ el, x, y, z, t: 0 });
 }
+// Writes only transform/opacity (compositor properties) and reads cached viewport size: no layout reads per frame.
 function updatePops(dt) {
-  const w = window.innerWidth, h = window.innerHeight;
   for (let i = pops.length - 1; i >= 0; i--) {
     const p = pops[i];
     p.t += dt; p.y += dt * 1.4;
-    if (p.t > 1.1) { p.el.remove(); pops.splice(i, 1); continue; }
+    if (p.t > 1.1) { p.el.remove(); popPool.push(p.el); pops.splice(i, 1); continue; }
     pv.set(p.x, p.y, p.z).project(camera);
-    const sx = (pv.x * 0.5 + 0.5) * w, sy = (-pv.y * 0.5 + 0.5) * h;
+    const sx = (pv.x * 0.5 + 0.5) * vw, sy = (-pv.y * 0.5 + 0.5) * vh;
     const sc = p.t < 0.15 ? 0.6 + p.t / 0.15 * 0.6 : 1.2 - Math.min(0.2, (p.t - 0.15));
-    p.el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -50%) scale(${sc})`;
-    p.el.style.opacity = String(Math.min(1, (1.1 - p.t) * 3));
+    p.el.style.transform = `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px) translate(-50%, -50%) scale(${sc.toFixed(2)})`;
+    p.el.style.opacity = Math.min(1, (1.1 - p.t) * 3).toFixed(2);
   }
 }
 
@@ -1297,25 +1536,94 @@ function updateBoss(dt) {
 }
 
 // ---------------------------------------------------------------- rendering
+const zWalkArr = zWalk.array;
 function drawZombies(t) {
+  const moving = G.phase === 'run' || G.phase === 'boss';
   for (let i = 0; i < Z.length; i++) {
     const zb = Z[i];
-    let y = 0, rx = 0;
-    if (zb.dying > 0) { const k = 1 - zb.dying / 0.35; rx = -k * 1.35; y = -k * 0.45; }
-    else y = Math.abs(Math.sin(t * 5 + zb.ph)) * 0.07;
+    // gait phase: legs are tagged in the vertex shader; body bob/roll below use the same angle so steps and bounce line up
+    const spd = clamp(zb.sp / 1.35, 0.55, 1.3), th0 = zb.ph * 0.5 - 0.785;
+    const th = t * 4 * spd + th0;
+    let y = 0, rx = 0, sq = 1;
+    if (zb.dying > 0) { const k = 1 - zb.dying / 0.35; rx = -k * 1.35; y = -k * 0.45; sq = 1 - k * 0.2; }
+    else y = Math.abs(Math.cos(th)) * 0.07;
     dummy.position.set(zb.x, y, zb.z);
-    dummy.rotation.set(rx, Math.atan2(zb.vx, zb.sp) * 0.8, Math.sin(t * 5 + zb.ph) * 0.07);
-    dummy.scale.setScalar(zb.s);
+    dummy.rotation.set(rx, Math.atan2(zb.vx, zb.sp) * 0.8, Math.sin(th) * 0.07);
+    dummy.scale.set(zb.s, zb.s * sq, zb.s);
     dummy.updateMatrix();
     zMesh.setMatrixAt(i, dummy.matrix);
     if (zb.flash > 0) tmpC.setRGB(0.6, 2.6, 0.4);
     else tmpC.setRGB(zb.tint[0], zb.tint[1], zb.tint[2]);
     zMesh.setColorAt(i, tmpC);
+    zWalkArr[i * 3] = th0; zWalkArr[i * 3 + 1] = moving && zb.dying <= 0 ? 1 : 0; zWalkArr[i * 3 + 2] = spd;
   }
+  dummy.scale.setScalar(1);
   zMesh.count = Z.length;
   zMesh.instanceMatrix.needsUpdate = true;
   zMesh.instanceColor.needsUpdate = true;
+  zWalk.needsUpdate = true;
 }
+
+// Soldiers: logic keeps a transform carrier (Object3D) per soldier; this renders them all in one instanced draw call.
+const SOLDIER_CAP = MAXVIS + 24;
+const sWalk = new T.InstancedBufferAttribute(new Float32Array(SOLDIER_CAP * 3), 3).setUsage(T.DynamicDrawUsage);
+const sGeoI = SGEO.clone();
+sGeoI.setAttribute('aWalk', sWalk);
+const sMesh = new T.InstancedMesh(sGeoI, walkify(new T.MeshLambertMaterial({ vertexColors: true }), 0.75, 5.5), SOLDIER_CAP);
+sMesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
+sMesh.frustumCulled = false;
+sMesh.count = 0;
+scene.add(sMesh);
+function drawSoldiers() {
+  const n = Math.min(G.soldiers.length, SOLDIER_CAP), stepping = G.phase === 'run' ? 1 : 0;
+  for (let i = 0; i < n; i++) {
+    const m = G.soldiers[i].mesh;
+    dummy.position.copy(m.position);
+    dummy.rotation.set(0, m.rotation.y, 0);
+    dummy.updateMatrix();
+    sMesh.setMatrixAt(i, dummy.matrix);
+    sWalk.array[i * 3] = i * 0.5 - 0.785; sWalk.array[i * 3 + 1] = stepping; sWalk.array[i * 3 + 2] = 1;
+  }
+  sMesh.count = n;
+  sMesh.instanceMatrix.needsUpdate = true;
+  sWalk.needsUpdate = true;
+}
+
+// Blob shadows: one instanced draw call for every soldier, zombie, mech and the boss.
+const SHMAX = MAXZ + SOLDIER_CAP + 4;
+const shMesh = new T.InstancedMesh(
+  new T.CircleGeometry(0.5, 8).rotateX(-Math.PI / 2),
+  new T.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
+  SHMAX);
+shMesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
+shMesh.frustumCulled = false;
+shMesh.count = 0;
+scene.add(shMesh);
+let shN = 0;
+function shadowAt(x, z, r) {
+  if (shN >= SHMAX) return;
+  const a = shMesh.instanceMatrix.array, o = shN++ * 16;
+  a[o] = r; a[o + 1] = 0; a[o + 2] = 0; a[o + 3] = 0;
+  a[o + 4] = 0; a[o + 5] = 1; a[o + 6] = 0; a[o + 7] = 0;
+  a[o + 8] = 0; a[o + 9] = 0; a[o + 10] = r; a[o + 11] = 0;
+  a[o + 12] = x; a[o + 13] = 0.045; a[o + 14] = z; a[o + 15] = 1;
+}
+function drawShadows() {
+  shN = 0;
+  const zmin = G.z - 62;
+  for (let i = 0; i < Z.length; i++) {
+    const zb = Z[i];
+    if (zb.z < zmin) continue;
+    shadowAt(zb.x, zb.z, zb.s * 0.85 * (zb.dying > 0 ? zb.dying / 0.35 : 1));
+  }
+  for (let i = 0; i < G.soldiers.length; i++) shadowAt(G.soldiers[i].x, G.soldiers[i].z, 0.78);
+  if (G.mech) shadowAt(G.mech.x, G.mech.z, 2.1);
+  const b = G.boss;
+  if (b && bossMesh.visible && (b.alive || b.deadT < 1.2)) shadowAt(b.x, b.z, 4.6);
+  shMesh.count = shN;
+  shMesh.instanceMatrix.needsUpdate = true;
+}
+
 function drawBullets() {
   for (let i = 0; i < nb; i++) {
     dummy.position.set(bx[i], bk[i] ? 2.0 : 1.25, bz[i]);
@@ -1348,15 +1656,372 @@ function drawParticles(dt) {
   pGeo.attributes.color.needsUpdate = true;
 }
 
+
 const hud = { lvl: $('#hudLevel'), prog: $('#hudProg'), kills: $('#hudKills'), squad: $('#hudSquad'), weapon: $('#hudWeapon') };
 const hudCache = {};
 function setText(key, el, v) { if (hudCache[key] !== v) { hudCache[key] = v; el.textContent = v; } }
+let sqPrev = null, progQ = -1;
 function updateHud() {
   setText('lvl', hud.lvl, String(G.level));
   setText('kills', hud.kills, String(G.kills));
   setText('squad', hud.squad, '×' + G.squad);
   setText('weapon', hud.weapon, WEAPONS[G.weapon].name + (G.mech ? ' + 機甲' : ''));
-  hud.prog.style.width = clamp(-G.z / G.L * 100, 0, 100) + '%';
+  if (G.squad !== sqPrev) { if (sqPrev !== null) bumpSquad(G.squad > sqPrev); sqPrev = G.squad; }
+  const pq = Math.round(clamp(-G.z / G.L, 0, 1) * 500);   // transform only: no layout per frame
+  if (pq !== progQ) { progQ = pq; hud.prog.style.transform = 'scaleX(' + pq / 500 + ')'; }
+}
+
+// ================================================================ FX: presentation only, driven by the event bus
+const mqReduce = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+let reduced = !!(mqReduce && mqReduce.matches);
+if (mqReduce) {
+  const onChange = e => { reduced = e.matches; };
+  if (mqReduce.addEventListener) mqReduce.addEventListener('change', onChange); else if (mqReduce.addListener) mqReduce.addListener(onChange);
+}
+const FX = { shake: 0 };
+const flashEl = $('#flash'), vigEl = $('#vignette');
+const nowMs = () => performance.now();
+
+function vibrate(pattern) {
+  if (reduced || !navigator.vibrate) return;
+  const t = nowMs(); if (t - FX.lastVib < 90) return; FX.lastVib = t;
+  try { navigator.vibrate(pattern); } catch (e) {}
+}
+FX.lastVib = 0;
+function flashScreen(color, peak, ms) {
+  if (reduced || !flashEl.animate) return;
+  flashEl.style.background = color;
+  flashEl.animate([{ opacity: peak }, { opacity: 0 }], { duration: ms, easing: 'ease-out' });
+}
+let lastVig = 0;
+function vignette(peak, ms) {
+  if (reduced || !vigEl.animate) return;
+  const t = nowMs(); if (t - lastVig < 80) return; lastVig = t;
+  vigEl.animate([{ opacity: peak }, { opacity: 0 }], { duration: ms, easing: 'ease-out' });
+}
+function bumpSquad(up) {
+  if (reduced || !hud.squad.animate) return;
+  hud.squad.animate(up
+    ? [{ transform: 'scale(1.6)', color: '#9fd0ff' }, { transform: 'scale(1)', color: '#f3f1ec' }]
+    : [{ transform: 'translateX(-7px) scale(1.3)', color: '#ff8a8a' }, { transform: 'translateX(6px) scale(1.2)', color: '#ff8a8a' }, { transform: 'translateX(0) scale(1)', color: '#f3f1ec' }],
+    { duration: up ? 340 : 300, easing: 'cubic-bezier(.2,1.3,.4,1)' });
+}
+
+// ---- muzzle flashes: one Points draw call, fixed ring of FLASH_MAX sprites (older ones are overwritten, so the count is capped)
+function flashTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.2, 'rgba(255,240,200,.95)');
+  g.addColorStop(0.5, 'rgba(255,170,60,.3)'); g.addColorStop(1, 'rgba(255,120,20,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+  x.globalCompositeOperation = 'lighter';
+  x.fillStyle = 'rgba(255,230,170,.55)'; x.fillRect(30, 6, 4, 52); x.fillRect(6, 30, 52, 4);
+  return new T.CanvasTexture(c);
+}
+const FLASH_MAX = 48;
+const fPos = new Float32Array(FLASH_MAX * 3), fCol = new Float32Array(FLASH_MAX * 3);
+const fLife = new Float32Array(FLASH_MAX), fMax = new Float32Array(FLASH_MAX), fRgb = new Float32Array(FLASH_MAX * 3);
+for (let i = 0; i < FLASH_MAX; i++) fPos[i * 3 + 1] = -50;
+const fGeo = new T.BufferGeometry();
+fGeo.setAttribute('position', new T.BufferAttribute(fPos, 3).setUsage(T.DynamicDrawUsage));
+fGeo.setAttribute('color', new T.BufferAttribute(fCol, 3).setUsage(T.DynamicDrawUsage));
+const flashPts = new T.Points(fGeo, new T.PointsMaterial({ size: 1.15, vertexColors: true, transparent: true, blending: T.AdditiveBlending, depthWrite: false, map: flashTexture(), fog: false }));
+flashPts.frustumCulled = false;
+scene.add(flashPts);
+let fHead = 0, fLive = 0;
+function flashAt(x, y, z, life, r, g, b) {
+  const i = fHead; fHead = (fHead + 1) % FLASH_MAX;
+  fPos[i * 3] = x; fPos[i * 3 + 1] = y; fPos[i * 3 + 2] = z;
+  fLife[i] = fMax[i] = life; fRgb[i * 3] = r; fRgb[i * 3 + 1] = g; fRgb[i * 3 + 2] = b;
+  fLive = FLASH_MAX;
+}
+function updateFlashes(dt) {
+  if (!fLive) return;
+  let any = false;
+  for (let i = 0; i < FLASH_MAX; i++) {
+    if (fLife[i] <= 0) continue;
+    fLife[i] -= dt;
+    if (fLife[i] <= 0) { fCol[i * 3] = fCol[i * 3 + 1] = fCol[i * 3 + 2] = 0; fPos[i * 3 + 1] = -50; continue; }
+    const f = fLife[i] / fMax[i];
+    fCol[i * 3] = fRgb[i * 3] * f; fCol[i * 3 + 1] = fRgb[i * 3 + 1] * f; fCol[i * 3 + 2] = fRgb[i * 3 + 2] * f;
+    any = true;
+  }
+  fGeo.attributes.position.needsUpdate = true;
+  fGeo.attributes.color.needsUpdate = true;
+  if (!any) fLive = 0;
+}
+
+// ---- ground splats where zombies die (instanced ring buffer; they dry from toxic green to dark stains)
+const SPLAT_MAX = 120;
+const splatMesh = new T.InstancedMesh(
+  new T.CircleGeometry(0.5, 10).rotateX(-Math.PI / 2),
+  new T.MeshBasicMaterial({ transparent: true, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
+  SPLAT_MAX);
+splatMesh.frustumCulled = false;
+for (let i = 0; i < SPLAT_MAX; i++) splatMesh.setColorAt(i, tmpC.setRGB(0, 0, 0));
+splatMesh.count = 0;
+scene.add(splatMesh);
+const splatAge = new Float32Array(SPLAT_MAX).fill(99);
+let splatHead = 0, splatN = 0, splatLive = 0;
+function splat(x, z, big) {
+  const i = splatHead; splatHead = (splatHead + 1) % SPLAT_MAX; splatN = Math.min(SPLAT_MAX, splatN + 1);
+  const r = (big ? 2.1 : 1) * rr(0.55, 1);
+  dummy.position.set(x + rr(-0.15, 0.15), 0.03, z + rr(-0.15, 0.15));
+  dummy.rotation.set(0, rr(0, 6.28), 0);
+  dummy.scale.set(r, 1, r * rr(0.6, 1));
+  dummy.updateMatrix();
+  dummy.scale.setScalar(1);
+  splatMesh.setMatrixAt(i, dummy.matrix);
+  splatMesh.count = splatN;
+  splatMesh.instanceMatrix.needsUpdate = true;
+  splatAge[i] = 0; splatLive = 1;
+}
+function updateSplats(dt) {
+  if (!splatLive) return;
+  let any = false;
+  for (let i = 0; i < splatN; i++) {
+    if (splatAge[i] >= 6) continue;
+    splatAge[i] = Math.min(6, splatAge[i] + dt);
+    const f = splatAge[i] / 6;
+    splatMesh.setColorAt(i, tmpC.setRGB(0.5 - 0.36 * f, 0.9 - 0.7 * f, 0.2 - 0.1 * f));
+    any = true;
+  }
+  splatMesh.instanceColor.needsUpdate = true;
+  if (!any) splatLive = 0;
+}
+
+// ---- shockwave rings (pool of 6; hidden meshes cost no draw call)
+const RING_GEO = new T.RingGeometry(0.86, 1, 44).rotateX(-Math.PI / 2);
+const rings = [];
+for (let i = 0; i < 6; i++) {
+  const mat = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, fog: false });
+  const mesh = new T.Mesh(RING_GEO, mat);
+  mesh.visible = false; mesh.frustumCulled = false;
+  scene.add(mesh);
+  rings.push({ mesh, mat, t: 0, dur: 1, r: 1, on: false });
+}
+function shock(x, z, color, r, dur) {
+  let k = rings.find(q => !q.on) || rings.reduce((a, q) => (q.t / q.dur > a.t / a.dur ? q : a), rings[0]);
+  k.on = true; k.t = 0; k.dur = dur; k.r = r;
+  k.mat.color.setHex(color); k.mesh.position.set(x, 0.09, z); k.mesh.visible = true;
+}
+function updateRings(dt) {
+  for (const k of rings) {
+    if (!k.on) continue;
+    k.t += dt;
+    const f = k.t / k.dur;
+    if (f >= 1) { k.on = false; k.mesh.visible = false; continue; }
+    k.mesh.scale.setScalar(k.r * (0.2 + 0.8 * (1 - (1 - f) * (1 - f))));
+    k.mat.opacity = 0.7 * (1 - f);
+  }
+}
+
+// ---- boss bar: white "damage trail" that drains behind the red fill, plus a hit flash
+const bossFillEl = $('#bossFill'), bossGhost = $('#bossGhost');
+let ghostW = 1, ghostQ = -1, lastBossFlash = 0;
+function updateBossBar(dt) {
+  const b = G.boss;
+  if (!b) { ghostW = 1; ghostQ = -1; return; }
+  const t = clamp(b.hp / b.max, 0, 1);
+  ghostW = ghostW > t ? Math.max(t, ghostW - dt * 0.4) : t;
+  const q = Math.round(ghostW * 400);
+  if (q !== ghostQ) { ghostQ = q; bossGhost.style.transform = 'scaleX(' + q / 400 + ')'; }
+}
+
+// ---- gates: redraw (throttled) so the shots-to-next-point meter and hit flash show, and keep a per-level list
+let fxEvents = null, fxGates = [], gateAcc = 0, fxLastTime = 0;
+function updateGateFx(dt) {
+  if (fxEvents !== G.events) { fxEvents = G.events; fxGates = G.events.filter(e => e.type === 'gate'); }
+  gateAcc += dt;
+  const draw = gateAcc >= 0.045;
+  if (draw) gateAcc = 0;
+  for (const e of fxGates) {
+    if (e.fxFlash > 0) { e.fxFlash = Math.max(0, e.fxFlash - dt); e.fxDirty = true; }
+    if (e.fxDirty && draw && e.grp.visible) { e.fxDirty = false; drawGate(e); }
+  }
+}
+
+// ---- hologram flicker (static when reduced motion is requested)
+function updateHolo(t) {
+  if (reduced) { M.holo.opacity = 0.26; M.holoWire.opacity = 0.5; return; }
+  const fl = 0.82 + 0.18 * Math.sin(t * 53) * Math.sin(t * 17);
+  const drop = Math.sin(t * 7.3) * Math.sin(t * 2.9) > 0.9 ? 0.3 : 1;
+  M.holo.opacity = (0.26 + 0.05 * Math.sin(t * 6)) * fl * drop;
+  M.holoWire.opacity = 0.55 * (0.75 + 0.25 * fl) * drop;
+}
+
+// ---- first-run hints anchored to 3D objects (shown once, remembered in localStorage)
+const tipLayer = $('#tips');
+const TIP_KEY = 'zombie-bridge-tips';
+let tipSeen = {};
+try { tipSeen = JSON.parse(localStorage.getItem(TIP_KEY) || '{}') || {}; } catch (e) { tipSeen = {}; }
+function markTip(id) {
+  if (tipSeen[id]) return;
+  tipSeen[id] = 1;
+  try { localStorage.setItem(TIP_KEY, JSON.stringify(tipSeen)); } catch (e) {}
+}
+const TIPS = [
+  { id: 'weapon', text: '走過去撿槍', type: 'weapon', y: 2.5, ax: e => e.x, az: e => e.z, done: e => e.taken },
+  { id: 'gate', text: '射它！', type: 'gate', y: 3.4, ax: e => e.x, az: e => e.z, done: e => e.used || e.fxHit },
+  { id: 'hero', text: '射電池召喚機甲', type: 'hero', y: 0.45, below: true, ax: e => e.grp.position.x - e.side * 0.2, az: e => e.bz, done: e => e.done || e.missed || e.charge > 0 },
+];
+function showTip(t, show, e) {
+  if (show) {
+    pv.set(t.ax(e), t.y, t.az(e)).project(camera);
+    if (pv.z > 1) show = false;
+  }
+  if (!show) { if (t.on) { t.on = false; t.el.classList.remove('on'); } return; }
+  if (!t.el) {
+    t.el = document.createElement('div');
+    t.el.className = 'tip' + (t.below ? ' below' : '');
+    const sp = document.createElement('span'); sp.textContent = t.text;
+    t.el.appendChild(sp);
+    tipLayer.appendChild(t.el);
+  }
+  const sx = clamp((pv.x * 0.5 + 0.5) * vw, 64, vw - 64), sy = (-pv.y * 0.5 + 0.5) * vh;
+  t.el.style.transform = `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px) translate(-50%, ${t.below ? '0%' : '-100%'})`;
+  if (!t.on) { t.on = true; t.el.classList.add('on'); }
+}
+function updateTips() {
+  const playing = G.phase === 'run' && !G.paused;
+  let busy = false;   // the weapon hint yields to the gate/battery hints so bubbles never stack
+  for (let i = TIPS.length - 1; i >= 0; i--) {
+    const t = TIPS[i];
+    if (tipSeen[t.id]) { if (t.on) showTip(t, false); continue; }
+    if (t.evs !== G.events) { t.evs = G.events; t.ev = G.events.find(e => e.type === t.type); }
+    const e = t.ev;
+    let show = false;
+    if (e && playing) {
+      const d = G.z - e.z;                       // > 0 while the object is still ahead of the squad
+      if (t.done(e) || d < -1.5) markTip(t.id);
+      else if (d < 26) show = true;
+    }
+    if (t.id === 'weapon' && busy) show = false;
+    else if (show && t.id !== 'weapon') busy = true;
+    if (show || t.on) showTip(t, show, e);
+  }
+}
+
+// ---- event wiring
+bus.on('shot', d => flashAt(d.x + 0.14, 1.28, d.z - 0.55, 0.075, 1, 0.85, 0.5));
+bus.on('zombieDied', d => {
+  splat(d.x, d.z, d.big);
+  const n = d.big ? 26 : 6;
+  burst(d.x, d.big ? 1.8 : 1, d.z, n, [0.75, 1, 0.35], d.big ? 5.5 : 3.4, d.big ? 0.7 : 0.5);
+  burst(d.x, d.big ? 1.8 : 1, d.z, d.big ? 10 : 2, [1, 1, 0.85], d.big ? 4 : 2, 0.22);
+  flashAt(d.x, d.big ? 1.9 : 1, d.z, 0.12, 0.7, 1, 0.4);
+  if (d.big) { shock(d.x, d.z, 0x9dff5a, 2.4, 0.45); FX.shake = Math.max(FX.shake, 0.2); }
+});
+bus.on('soldierDied', d => {
+  vignette(0.9, 520);
+  vibrate(30);
+  shock(d.x, d.z, 0xff4048, 1.6, 0.4);
+  flashAt(d.x, 1.1, d.z, 0.14, 1, 0.3, 0.3);
+});
+bus.on('gateHit', d => { d.e.fxFlash = 0.16; d.e.fxDirty = true; d.e.fxHit = true; });
+bus.on('gatePass', d => {
+  const up = d.diff > 0;
+  if (d.diff === 0) return;
+  flashScreen(up ? 'rgb(70,140,255)' : 'rgb(255,50,60)', up ? 0.3 : 0.38, up ? 380 : 480);
+  vibrate(up ? 18 : [40, 30, 40]);
+  shock(G.x, G.z + 0.5, up ? 0x4d95ff : 0xff4048, 3.2, 0.5);
+  if (!up) FX.shake = Math.max(FX.shake, 0.25);
+});
+bus.on('weaponPickup', d => {
+  shock(d.e.x, d.e.z, 0xffb020, 2.6, 0.5);
+  flashScreen('rgb(255,176,32)', 0.22, 300);
+  vibrate(20);
+});
+bus.on('heroActivated', d => {
+  const p = d.e.grp.position;
+  shock(p.x, p.z, 0x54dcff, 4.2, 0.7);
+  flashScreen('rgb(84,220,255)', 0.4, 520);
+  FX.shake = Math.max(FX.shake, 0.3);
+  vibrate([20, 30, 50]);
+});
+bus.on('bossSpawn', () => { vignette(0.8, 900); FX.shake = Math.max(FX.shake, 0.5); vibrate([60, 40, 60]); });
+bus.on('bossHit', () => {
+  const t = nowMs();
+  if (t - lastBossFlash < 90) return;
+  lastBossFlash = t;
+  if (!reduced && bossFillEl.animate) bossFillEl.animate([{ filter: 'brightness(2.6) saturate(1.5)' }, { filter: 'none' }], { duration: 170 });
+});
+bus.on('bossDied', d => {
+  shock(d.x, d.z, 0xffffff, 7, 0.9);
+  shock(d.x, d.z, 0xffb020, 5, 0.7);
+  flashScreen('rgb(255,255,255)', 0.6, 650);
+  FX.shake = Math.max(FX.shake, 0.6);
+  vibrate([40, 30, 40, 30, 120]);
+});
+bus.on('gameOver', () => { vignette(1, 1100); vibrate(160); });
+bus.on('win', () => {
+  flashScreen('rgb(255,200,80)', 0.35, 800);
+  for (let i = 0; i < 4; i++) burst(G.x + rr(-2, 2), 2 + rr(0, 2), G.z - rr(0, 4), 40, i % 2 ? [1, 0.75, 0.2] : [0.3, 0.7, 1], 6, 1.1);
+  vibrate([30, 40, 30]);
+});
+
+// Clear all transient FX when a new run starts (detected as the game clock jumping back to zero).
+function fxReset() {
+  fHead = 0; fLive = 0; fLife.fill(0); fCol.fill(0);
+  for (let i = 0; i < FLASH_MAX; i++) fPos[i * 3 + 1] = -50;
+  fGeo.attributes.position.needsUpdate = true; fGeo.attributes.color.needsUpdate = true;
+  splatN = 0; splatHead = 0; splatLive = 0; splatMesh.count = 0; splatAge.fill(99);
+  for (const k of rings) { k.on = false; k.mesh.visible = false; }
+  FX.shake = 0; sqPrev = null; progQ = -1; ghostW = 1; ghostQ = -1;
+  for (const t of TIPS) if (t.on) showTip(t, false);
+}
+function fxUpdate(dt) {
+  if (G.time < fxLastTime - 0.01) fxReset();
+  fxLastTime = G.time;
+  CLOCK.uTime.value = G.time;
+  updateFlashes(dt);
+  updateSplats(dt);
+  updateRings(dt);
+  updateGateFx(dt);
+  updateHolo(G.time);
+  updateBossBar(dt);
+}
+
+// ---- adaptive resolution: start at min(dpr, 2); step 2 -> 1.5 -> 1 when frames stay slow, then trim particle counts
+const Perf = { acc: 0, n: 0, prev: 0, avg: 0 };
+function perfTick() {
+  const now = nowMs(), d = now - Perf.prev; Perf.prev = now;
+  if (G.paused || (G.phase !== 'run' && G.phase !== 'boss') || d > 250 || d <= 0) { Perf.acc = 0; Perf.n = 0; return; }
+  Perf.acc += d; Perf.n++;
+  if (Perf.acc < 2000) return;
+  Perf.avg = Perf.acc / Perf.n; Perf.acc = 0; Perf.n = 0;
+  if (Perf.avg > 20) {
+    if (prIdx < PR_STEPS.length - 1) { prIdx++; resize(); }
+    else fxScale = Math.max(0.4, fxScale * 0.7);
+  }
+}
+
+const pauseBtn = $('#pause');
+let pauseShown = true;
+function render(dt) {
+  const rdt = G.paused ? 0 : dt;
+  const playing = G.phase === 'run' || G.phase === 'boss';
+  if (playing) updateHud();
+  if (playing !== pauseShown) { pauseShown = playing; pauseBtn.hidden = !playing; }
+  fxUpdate(rdt);
+  drawZombies(G.time);
+  drawSoldiers();
+  drawBullets();
+  drawShadows();
+  drawParticles(rdt);
+  G.shake = Math.max(0, G.shake - rdt * 1.5);
+  FX.shake = Math.max(0, FX.shake - rdt * 1.5);
+  const sh = reduced || G.paused ? 0 : Math.max(G.shake, FX.shake);
+  const sway = G.phase === 'menu' ? Math.sin(G.time * 0.4) * 0.6 : 0;
+  const cx = G.x * 0.35 + sway;
+  camera.position.set(cx + (Math.random() - 0.5) * sh, 12 + (Math.random() - 0.5) * sh, G.z + 10);
+  camera.lookAt(cx * 0.6, 0, G.z - 4);
+  camera.updateMatrixWorld();   // so popups/hints project with this frame's camera, not last frame's
+  updatePops(rdt);
+  updateTips();
+  renderer.render(scene, camera);
+  perfTick();
 }
 
 // ---------------------------------------------------------------- flow
@@ -1420,20 +2085,75 @@ function win() {
   $('#win').hidden = false;
 }
 
+// ---------------------------------------------------------------- UI wiring (pause, stage select, mute)
+G.paused = false;
+const pauseOv = $('#pauseOv');
+function setPaused(p) {
+  p = !!p;
+  if (p === G.paused) return;
+  if (p && !(G.phase === 'run' || G.phase === 'boss')) return;
+  G.paused = p;
+  pauseOv.hidden = !p;
+  keys.l = keys.r = false; drag = null;
+  if (SFX.ctx) { try { if (p) SFX.ctx.suspend(); else SFX.ctx.resume(); } catch (e) {} }
+  if (p) { try { $('#btnResume').focus({ preventScroll: true }); } catch (e) {} }
+}
+function goMenu() {
+  setPaused(false);
+  pauseOv.hidden = true;
+  prepare(G.level);
+  $('#hud').hidden = true;
+  for (const id of ['over', 'win']) $('#' + id).hidden = true;
+  $('#menu').hidden = false;
+  syncMenu();
+}
+function syncMenu() {
+  const multi = best > 1;
+  const prev = $('#stagePrev'), next = $('#stageNext');
+  prev.hidden = next.hidden = !multi;
+  prev.style.visibility = G.level > 1 ? 'visible' : 'hidden';
+  next.style.visibility = G.level < best ? 'visible' : 'hidden';
+}
+function pickStage(n) {
+  if (G.phase !== 'menu') return;
+  n = clamp(n, 1, best);
+  if (n !== G.level) prepare(n);
+  syncMenu();
+}
+$('#stagePrev').addEventListener('click', () => pickStage(G.level - 1));
+$('#stageNext').addEventListener('click', () => pickStage(G.level + 1));
 $('#btnStart').addEventListener('click', startRun);
 $('#btnRetry').addEventListener('click', () => { prepare(G.level); startRun(); });
 $('#btnNext').addEventListener('click', () => { prepare(G.level + 1); startRun(); });
-$('#mute').addEventListener('click', () => {
-  SFX.on = !SFX.on;
+$('#btnMenu1').addEventListener('click', goMenu);
+$('#btnMenu2').addEventListener('click', () => { goMenu(); });
+$('#btnMenu3').addEventListener('click', goMenu);
+$('#pause').addEventListener('click', () => setPaused(true));
+$('#btnResume').addEventListener('click', () => setPaused(false));
+$('#btnRestart').addEventListener('click', () => { setPaused(false); pauseOv.hidden = true; prepare(G.level); startRun(); });
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') setPaused(!G.paused);
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden) setPaused(true); });
+
+const MUTE_KEY = 'zombie-bridge-mute';
+function syncMute() {
   $('#mute').textContent = SFX.on ? '音' : '靜';
   $('#mute').setAttribute('aria-pressed', String(!SFX.on));
+}
+try { if (localStorage.getItem(MUTE_KEY) === '1') SFX.on = false; } catch (e) {}
+syncMute();
+$('#mute').addEventListener('click', () => {
+  SFX.on = !SFX.on;
+  syncMute();
+  try { localStorage.setItem(MUTE_KEY, SFX.on ? '0' : '1'); } catch (e) {}
 });
 
 // ---------------------------------------------------------------- input
 let drag = null;
 const keys = { l: false, r: false };
 window.addEventListener('pointerdown', e => {
-  if (e.target.closest && e.target.closest('button')) return;
+  if (G.paused || (e.target.closest && e.target.closest('button'))) return;
   drag = { x: e.clientX, tx: G.tx };
 });
 window.addEventListener('pointermove', e => {
@@ -1482,21 +2202,6 @@ function step(dt) {
   }
 }
 
-// Presentation only: instance buffers, particles, popups, HUD, camera, draw call.
-function render(dt) {
-  if (G.phase === 'run' || G.phase === 'boss') updateHud();
-  drawZombies(G.time);
-  drawBullets();
-  drawParticles(dt);
-  updatePops(dt);
-  G.shake = Math.max(0, G.shake - dt * 1.5);
-  const sway = G.phase === 'menu' ? Math.sin(G.time * 0.4) * 0.6 : 0;
-  const cx = G.x * 0.35 + sway;
-  camera.position.set(cx + (Math.random() - 0.5) * G.shake, 12 + (Math.random() - 0.5) * G.shake, G.z + 10);
-  camera.lookAt(cx * 0.6, 0, G.z - 4);
-  renderer.render(scene, camera);
-}
-
 // Fixed-timestep loop: the simulation always advances in STEP (1/60 s) slices, so game speed does not depend on the display
 // refresh rate or on how fast the device renders. At most MAX_STEPS slices are run per frame; if a frame takes longer than that
 // the surplus is dropped (the game slows down rather than freezing in a catch-up spiral).
@@ -1510,6 +2215,7 @@ function frame(now) {
   if (dt > 0.25) dt = 0.25;                                    // tab was throttled / debugger pause: treat as one long frame
   acc += dt;
   let n = 0;
+  if (G.paused) acc = 0;                                       // pause menu: render only, simulation frozen
   while (acc >= STEP && n < MAX_STEPS) { step(STEP); acc -= STEP; n++; }
   if (acc > STEP) acc = STEP;                                  // could not keep up: drop the backlog
   render(Math.min(dt, 0.05));
@@ -1517,6 +2223,7 @@ function frame(now) {
 document.addEventListener('visibilitychange', () => { last = performance.now(); acc = 0; });
 
 prepare(G.level);
+syncMenu();
 if (document.fonts && document.fonts.load) {
   Promise.all([document.fonts.load('96px Bungee'), document.fonts.load('900 40px "Noto Sans TC"')])
     .then(() => { for (const e of G.events) if (e.draw) e.draw(); })
@@ -1525,7 +2232,9 @@ if (document.fonts && document.fonts.load) {
 requestAnimationFrame(frame);
 
 // handle for automated play-tests
-window.__zb = { G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0) }), bus };
+window.__zb = { renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
+  stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0) }),
+  perf: () => ({ pr: PR_STEPS[prIdx], steps: PR_STEPS, avg: Perf.avg, fxScale }) };
 })();
 </script>
 </body>
