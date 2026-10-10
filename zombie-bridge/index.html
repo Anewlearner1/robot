@@ -483,8 +483,9 @@ const G = {
   // round 3 (logic writes, presentation reads): combo chain, coins earned this run, timed buffs { id: secondsLeft },
   // the squad this stage started with, and the last stage result (set right before `win` / `gameOver`).
   combo: 0, comboT: 0, comboBest: 0, coins: 0, buffs: {}, entrySquad: 1, result: null,
-  // added by logic in round 3: permanent fire-rate bonus from '射速+' gates (this stage), power-up drops on the ground
-  // [{ x, z, id: 'frenzy'|'split', t }] (presentation draws them; logic moves and collects them), next squad milestone index.
+  // added by logic in round 3: permanent fire-rate bonus from '射速+' gates (this stage), power-up orbs on the ground (the same
+  // objects that sit in G.events as { type: 'powerup', id: 'frenzy'|'split', x, z, t, taken, gone }; no mesh, the front end draws
+  // them lazily and hides them on taken / gone; logic moves and collects them), next squad milestone index.
   rateBonus: 0, drops: [], msIdx: 0,
 };
 
