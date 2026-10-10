@@ -178,7 +178,7 @@ const results = await page.evaluate(() => {
     G.squad = 40; G.weapon = 0; zb.syncSoldiers(); G.shield = 0;
     let bad = null, steps = 0;
     for (let wave = 0; wave < 12 && G.phase === 'run'; wave++) {
-      zb.spawnHorde({ kind: 'test', cx: G.x, w: 6, d: 2, count: 150, hp: 1 }, G.z - 3);
+      zb.spawnHorde({ kind: 'test', cx: G.x, w: 6, d: 2, count: 150, hp: 6 }, G.z - 3);
       for (let i = 0; i < 40 && G.phase === 'run'; i++) {
         zb.step(1 / 60); steps++;
         if (G.soldiers.length !== Math.min(G.squad, 40) && G.phase === 'run') bad = `soldiers ${G.soldiers.length} vs squad ${G.squad} (step ${steps})`;
@@ -202,6 +202,134 @@ const results = await page.evaluate(() => {
     const st = zb.stats();
     check('particle pool capped at 1400, still running', st.particles <= 1400 && st.bullets <= 700 && Z.length <= 900, JSON.stringify(st));
     check('pools degrade without breaking the run', G.phase === 'run' && G.soldiers.length === 40);
+  }
+  // ---------------------------------------------------------------- 8. guns: pickups, levels, swap, pairs
+  {
+    const W = zb.WEAPONS;
+    const pick = (e, w, lv) => {                       // stand on pickup e holding gun w at level lv, step once
+      G.weapon = w; G.weaponLv = lv;
+      G.z = e.z + 0.3; G.x = G.tx = e.x;
+      const got = [];
+      const h = d => got.push(d);
+      zb.bus.on('weaponPickup', h);
+      zb.step(1 / 60);
+      zb.bus.map.weaponPickup.splice(zb.bus.map.weaponPickup.indexOf(h), 1);
+      return got;
+    };
+    const fresh = stage => { zb.prepare(stage); zb.start(); G.squad = 1; zb.syncSoldiers(); G.shield = 1e9; for (const e of G.events) if (e.type === 'gate') e.used = true; };
+    check('roster has 7 guns with the contract fields', W.length === 7 && W.every(g => ['id', 'name', 'fx', 'rate', 'pellets', 'spread', 'dmg', 'speed', 'range', 'pierce', 'splash', 'knock', 'bossEff', 'lvMul', 'maxLv', 'ui'].every(k => k in g)));
+    fresh(1);
+    const rifle = G.events.find(e => e.type === 'weapon' && e.w === 1);
+    const sqL = G.squad;
+    let got = pick(rifle, 1, 1);
+    check('level up: picking up the gun you hold raises its level, flags upgrade and brings recruits', G.squad === sqL + zb.TUNE.crateRecruits && G.weaponLv === 2 && got.length === 1 && got[0].upgrade === true && got[0].lv === 2 && got[0].w === 1, JSON.stringify(got.map(g => [g.w, g.lv, g.upgrade])));
+    fresh(1);
+    const rifle2 = G.events.find(e => e.type === 'weapon' && e.w === 1);
+    const sq0 = G.squad;
+    got = pick(rifle2, 1, W[1].maxLv);
+    check('max level: no further level, no upgrade flag, the crate still brings its recruits', G.weaponLv === W[1].maxLv && got[0].upgrade === false && G.squad === sq0 + zb.TUNE.crateRecruits && got[0].recruits === zb.TUNE.crateRecruits, `${G.weaponLv} ${G.squad}`);
+    fresh(1);
+    const rifle3 = G.events.find(e => e.type === 'weapon' && e.w === 1);
+    got = pick(rifle3, 0, 3);
+    check('swap: a different gun replaces yours at Lv1, no upgrade flag', G.weapon === 1 && G.weaponLv === 1 && got[0].upgrade === false && got[0].lv === 1, `${G.weapon} ${G.weaponLv}`);
+    // level damage: a Lv2 gun fires lvMul times the damage
+    fresh(1);
+    G.weapon = 1; G.weaponLv = 1; G.soldiers[0].cd = 0;
+    const before = zb.stats().bullets;
+    zb.step(1 / 60);
+    check('a soldier fires the held gun (bullet tagged with its weapon index)', zb.stats().bullets > before && zb.stats().bw.every(w => w === 1), JSON.stringify(zb.stats().bw));
+    // pairs: take one, the other disappears
+    fresh(1);
+    const pairA = G.events.find(e => e.type === 'weapon' && e.mate);
+    got = pick(pairA, 1, 1);
+    check('pair: taking one gun removes its mate', pairA.taken && pairA.mate.taken && !pairA.mate.grp.visible && G.weapon === pairA.w, `${G.weapon} ${pairA.w}`);
+    check('pair: the two guns are side by side (<= 2 in a row) and different', pairA.mate.mate === pairA && pairA.w !== pairA.mate.w && Math.abs(pairA.x - pairA.mate.x) >= 3 && G.events.filter(e => e.type === 'weapon' && e.z === pairA.z).length === 2);
+    // coverage: every gun is offered somewhere in stages 1-3
+    const seen = new Set();
+    for (const st of [1, 2, 3]) { zb.prepare(st); for (const e of G.events) if (e.type === 'weapon') seen.add(e.w); }
+    check('every gun appears as a pickup across stages 1-3', seen.size === 7, [...seen].sort().join(','));
+  }
+  // ---------------------------------------------------------------- 9. bullets: pierce, splash, knock, bw bookkeeping
+  {
+    const W = zb.WEAPONS;
+    const lab = () => {                                 // a quiet stage: nothing spawns, the lone soldier never fires, the squad stands still
+      const keep = zb.TUNE.count.open; zb.TUNE.count.open = 0;
+      zb.prepare(1); zb.start();
+      zb.TUNE.count.open = keep;
+      for (const e of G.events) { if (e.type === 'horde') e.spawned = true; else if (e.type === 'gate') e.used = true; else if (e.type === 'weapon') e.taken = true; else if (e.type === 'hero') e.missed = true; }
+      G.phase = 'boss'; G.squad = 1; zb.syncSoldiers(); G.shield = 1e9;
+      for (const s of G.soldiers) s.cd = 1e9;
+    };
+    const mk = (x, z, hp) => { zb.spawnHorde({ kind: 'lab', cx: x, w: 0, d: 0, count: 1, hp }, z); const zb_ = Z[Z.length - 1]; zb_.x = x; zb_.sp = 0; zb_.hp = hp; return zb_; };
+    const line = n => { const a = []; for (let i = 0; i < n; i++) a.push(mk(0, -4 - i * 1.0, 100)); return a; };
+    const hitCount = (a, dmg) => a.filter(q => q.hp < 100).length;
+    const doubles = (a, dmg) => a.filter(q => 100 - q.hp > dmg + 1e-6).length;
+
+    lab(); let zs = line(12);
+    zb.spawnBullet(0, -1, 0, -1, 7, 0, 4);              // sniper: pierce 5 -> 6 zombies
+    for (let i = 0; i < 40; i++) zb.step(1 / 60);
+    check(`pierce: a sniper shot (pierce ${W[4].pierce}) hits exactly pierce+1 zombies, none twice`, hitCount(zs) === W[4].pierce + 1 && doubles(zs, 7) === 0, `hit ${hitCount(zs)}, doubled ${doubles(zs, 7)}`);
+    check('pierce: it hits the first ones in line, the rest stay untouched', zs.slice(0, 6).every(q => q.hp < 100) && zs.slice(6).every(q => q.hp === 100));
+    lab(); zs = line(12);
+    zb.spawnBullet(0, -1, 0, -1, 7, 0, 0);              // pistol: no pierce
+    for (let i = 0; i < 40; i++) zb.step(1 / 60);
+    check('no pierce: a pistol bullet stops at the first zombie', hitCount(zs) === 1 && zs[0].hp === 93, `hit ${hitCount(zs)}`);
+    lab(); zs = line(12);
+    zb.spawnBullet(0, -1, 0, -1, 7, 0, 5);              // flamer: pierce 3, short reach
+    for (let i = 0; i < 60; i++) zb.step(1 / 60);
+    check(`flame: pierce ${W[5].pierce} -> ${W[5].pierce + 1} zombies, never beyond its reach`, hitCount(zs) === W[5].pierce + 1 && doubles(zs, 7) === 0, `hit ${hitCount(zs)}`);
+    lab(); zs = line(4);
+    for (let k = 0; k < 20; k++) zb.spawnBullet(0, -1, 0, -1, 1, 0, 4);   // many piercing bullets at once: still no double hit per bullet
+    for (let i = 0; i < 40; i++) zb.step(1 / 60);
+    check('pierce: 20 sniper bullets through 4 zombies = exactly 20 hits each (no double counting)', zs.every(q => Math.abs(q.hp - 80) < 1e-6), zs.map(q => q.hp).join(','));
+
+    lab();
+    const tgt = mk(0, -6, 100), near = mk(1.0, -6.2, 100), far = mk(3.2, -6, 100);
+    let exploded = [];
+    const eh = d => exploded.push(d);
+    zb.bus.on('explode', eh);
+    zb.spawnBullet(0, -1, 0, -1, 4, 0, 6);              // rocket: splash 1.6
+    for (let i = 0; i < 60; i++) zb.step(1 / 60);
+    zb.bus.map.explode.splice(zb.bus.map.explode.indexOf(eh), 1);
+    const sp = zb.TUNE.splashDmg;
+    check('splash: the target takes full + blast damage, a neighbour inside the radius takes the blast, one outside takes nothing', tgt.hp <= 100 - 4 && near.hp < 100 && near.hp >= 100 - 4 * sp - 1e-6 && far.hp === 100, `${tgt.hp} ${near.hp} ${far.hp}`);
+    check('splash: exactly one explode event, with the weapon blast radius', exploded.length === 1 && Math.abs(exploded[0].r - W[6].splash) < 1e-6, JSON.stringify(exploded));
+    lab(); const t2 = mk(0, -6, 100), n2 = mk(1.0, -6.2, 100);
+    exploded = []; zb.bus.on('explode', eh);
+    zb.spawnBullet(0, -1, 0, -1, 4, 0, 1);              // rifle: no splash
+    for (let i = 0; i < 60; i++) zb.step(1 / 60);
+    zb.bus.map.explode.splice(zb.bus.map.explode.indexOf(eh), 1);
+    check('no splash for a plain bullet: neighbour untouched, no explode event', n2.hp === 100 && t2.hp < 100 && exploded.length === 0);
+
+    lab(); const kA = mk(-2, -6, 100), kB = mk(2, -6, 100);
+    kA.sp = kB.sp = 1; kA.z = kB.z = -6;
+    for (let k = 0; k < 4; k++) zb.spawnBullet(-2, -1, 0, -1, 1, 0, 2);   // shotgun pellets: knock
+    zb.spawnBullet(2, -1, 0, -1, 1, 0, 1);              // rifle bullet: none
+    for (let i = 0; i < 12; i++) zb.step(1 / 60);
+    check('knock: a shotgun pellet sets a back-push on the zombie, a rifle bullet does not', kA.kv > 0 && kB.kv === 0 && kA.kv <= zb.TUNE.knockMax + 1e-9, `${kA.kv} ${kB.kv}`);
+    const zA = kA.z, zB = kB.z;
+    for (let i = 0; i < 90; i++) zb.step(1 / 60);
+    check('knock: the pushed zombie ends up further down the bridge than the unpushed one, and the push dies out', (kB.z - zB) > (kA.z - zA) + 0.05 && kA.kv === 0, `${(kA.z - zA).toFixed(2)} vs ${(kB.z - zB).toFixed(2)}`);
+
+    // bw stays right while removeBullet swaps the last bullet into the freed slot
+    lab();
+    const order = [4, 2, 6, 1, 5, 3, 0];
+    for (const w of order) zb.spawnBullet(3.9, -1, 0, -1, 1, 0, w);   // along the rail: no targets, they just expire
+    check('bw: spawn order recorded', JSON.stringify(zb.stats().bw) === JSON.stringify(order), JSON.stringify(zb.stats().bw));
+    let ok = true, why = '';
+    for (let i = 0; i < 90; i++) {
+      zb.step(1 / 60);
+      const st = zb.stats();
+      for (let k = 0; k < st.bw.length; k++) if (st.bl[k] > W[st.bw[k]].range + 1e-6) { ok = false; why = `slot ${k} gun ${st.bw[k]} life ${st.bl[k]} > range ${W[st.bw[k]].range}`; }
+    }
+    check('bw: every surviving bullet keeps its own gun index (life never exceeds that gun\'s range)', ok, why);
+    check('bullets expire by their gun\'s range', zb.stats().bullets === 0, JSON.stringify(zb.stats().bw));
+    lab();
+    for (const w of [4, 2, 6, 1]) zb.spawnBullet(0, -1, 0, -1, 1, 0, w);
+    for (let i = 0; i < 22; i++) zb.step(1 / 60);       // 0.37 s: sniper (0.32 s) and shotgun (0.32 s) are gone, rocket (0.9 s) and rifle (0.56 s) are not
+    const st2 = zb.stats();
+    check('bw: after swap-removals exactly the long-lived guns remain', st2.bw.length === 2 && st2.bw.slice().sort().join() === '1,6', JSON.stringify(st2.bw));
+    check('bullet life starts at the gun\'s range', (() => { lab(); zb.spawnBullet(3.9, -1, 0, -1, 1, 0, 5); return Math.abs(zb.stats().bl[0] - W[5].range) < 1e-6; })());
   }
   return out;
 });
