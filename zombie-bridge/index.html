@@ -238,17 +238,17 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 .buff .fg { stroke: var(--bc); stroke-linecap: round; }
 .buff b { font-variant-numeric: tabular-nums; color: var(--bc); min-width: 1.2em; text-align: right; }
 #combo {
-  position: absolute; left: 16px; top: calc(env(safe-area-inset-top, 0px) + 112px); display: flex; align-items: baseline; gap: 8px;
-  pointer-events: none; opacity: 0; transition: opacity .12s; transform-origin: 0 60%; --cc: #fff; --cs: 40px;
+  display: grid; justify-items: start; gap: 0; pointer-events: none; opacity: 0; transition: opacity .12s; transform-origin: 0 0;
+  --cc: #fff; --cs: 34px; margin-top: 2px;
 }
 #combo.on { opacity: 1; }
-#combo b { font: 400 var(--cs)/1 var(--display); color: var(--cc); font-variant-numeric: tabular-nums; text-shadow: 0 3px 0 var(--ink), 0 0 18px var(--cc); }
-#combo span { font: 900 14px var(--body); color: var(--paper); text-shadow: 0 1px 3px #000; letter-spacing: .1em; }
-#combo.t1 { --cc: #ffe14d; --cs: 50px; } #combo.t2 { --cc: #ff9a2a; --cs: 60px; } #combo.t3 { --cc: #ff4048; --cs: 70px; } #combo.t4 { --cc: #c06bff; --cs: 80px; }
+#combo b { font: 400 var(--cs)/1 var(--display); color: var(--cc); font-variant-numeric: tabular-nums; text-shadow: 0 2px 0 var(--ink), 0 0 12px var(--cc); }
+#combo span { font: 900 12px var(--body); color: var(--paper); text-shadow: 0 1px 3px #000; letter-spacing: .1em; }
+#combo.t1 { --cc: #ffe14d; } #combo.t2 { --cc: #ff9a2a; } #combo.t3 { --cc: #ff4048; } #combo.t4 { --cc: #c06bff; }
 .pop.crit { color: #ffe14d; font-size: 34px; text-shadow: 0 3px 0 #7a3b00, 0 0 14px rgba(255,200,40,.75); }
-.pop.chain { color: #ff9a2a; font-family: var(--body); font-weight: 900; font-size: 30px; text-shadow: 0 3px 0 #5a1a00, 0 0 14px rgba(255,120,30,.8); }
-#banner2 { position: fixed; left: 0; right: 0; top: 33%; display: grid; place-items: center; gap: 2px; pointer-events: none; opacity: 0; }
-#banner2 b { font: 900 clamp(30px, 10vw, 46px)/1.1 var(--body); letter-spacing: .06em; color: var(--wc, #fff); text-align: center; padding: 0 12px; text-shadow: 0 3px 0 var(--ink), 0 0 20px var(--wc, #fff), 0 0 3px #000; }
+.pop.chain { color: #ff9a2a; font-family: var(--body); font-weight: 900; font-size: 22px; text-shadow: 0 3px 0 #5a1a00, 0 0 14px rgba(255,120,30,.8); }
+#banner2 { position: fixed; left: 0; right: 0; top: 27%; display: grid; place-items: center; gap: 2px; pointer-events: none; opacity: 0; }
+#banner2 b { font: 900 clamp(28px, 9vw, 40px)/1.1 var(--body); letter-spacing: .06em; color: var(--wc, #fff); text-align: center; padding: 0 12px; text-shadow: 0 3px 0 var(--ink), 0 0 20px var(--wc, #fff), 0 0 3px #000; }
 #banner2 small { font: 900 16px var(--body); color: #ffe08a; text-shadow: 0 2px 0 var(--ink); letter-spacing: .08em; }
 #flies { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 4; }
 .cfly { position: absolute; left: 0; top: 0; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%; will-change: transform;
@@ -318,7 +318,6 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
   .stars { min-height: 44px; } .star { width: 44px; height: 44px; }
   .resc { gap: 6px; } .trow { min-height: 22px; font-size: 13px; } .trow b { font-size: 18px; } .tally { padding: 7px 12px; gap: 3px; }
   .upi { padding: 6px 10px; } .shopc { gap: 8px; } .upl { gap: 6px; } .upi .ds { font-size: 11px; }
-  #combo { top: calc(env(safe-area-inset-top, 0px) + 104px); }
 }
 @media (prefers-reduced-motion: reduce) { .star.on, .newbest, .carry, .resc.go h2, .upi .pp i.fresh, .cico.bump, .chest.shake { animation: none; } .resc h2 { opacity: 1; } .chest .lid { transition: none; } .trow.bonus { transition: none; } #combo { transition: none; } }
 
@@ -344,8 +343,8 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
       <span class="label">巨屍 BOSS</span>
       <div class="track"><div class="ghost" id="bossGhost"></div><div class="fill" id="bossFill"></div></div>
     </div>
+    <div id="combo" aria-live="off"><b id="comboN">0</b><span id="comboLbl">連殺</span></div>
   </div>
-  <div id="combo" aria-live="off"><b id="comboN">0</b><span id="comboLbl">連殺</span></div>
   <div id="hint">按住左右拖曳移動 · 小隊自動開火</div>
   <div class="hud-bottom">
     <div class="squad"><span class="k">小隊</span><span class="v" id="hudSquad">×1</span></div>
@@ -1433,27 +1432,46 @@ function killSoldier(i, src) {
 const popLayer = $('#pops');
 const pops = [];
 const popPool = [];     // recycled DOM nodes, so a fight never allocates elements per hit
-const POP_MAX = 14;
+const POP_MAX = 6;       // concurrent world pops: more than this is noise
 const pv = new T.Vector3();
 let lastPlus = 0;
+const NUM_RE = /^[+\-]?\d+$/;
+function popText(cls, n) { return cls === 'crit' ? String(n) : (n > 0 ? '+' + n : String(n)); }
 function pop(text, x, y, z, cls) {
+  cls = cls || '';
+  const numeric = NUM_RE.test(text);
+  if (!numeric && cls === 'gold' && BQ.cur) return;               // names / announcements: the banner channel already says it
   if (text === '+1') { const t = performance.now(); if (t - lastPlus < 160) return; lastPlus = t; }   // a volley can raise a gate many times a second
+  const now = performance.now();
+  for (let i = pops.length - 1; i >= 0; i--) {                    // merge with a pop of the same kind that is still fresh
+    const p = pops[i];
+    if (p.cls !== cls || now - p.born > 150) continue;
+    if (numeric && p.num != null) {
+      p.num = cls === 'crit' ? Math.max(p.num, parseInt(text, 10)) : p.num + parseInt(text, 10);
+      p.el.textContent = popText(cls, p.num);
+      return;
+    }
+    if (!numeric && p.text === text) return;
+  }
   if (pops.length >= POP_MAX) { const old = pops.shift(); old.el.remove(); popPool.push(old.el); }
   const el = popPool.pop() || document.createElement('div');
-  el.className = 'pop ' + (cls || '');
+  el.className = 'pop ' + cls;
   el.textContent = text;
   el.style.opacity = '0';
   popLayer.appendChild(el);
-  pops.push({ el, x, y, z, t: 0 });
+  pops.push({ el, x, y, z, t: 0, cls, text, num: numeric ? parseInt(text, 10) : null, born: now });
 }
 // Writes only transform/opacity (compositor properties) and reads cached viewport size: no layout reads per frame.
 function updatePops(dt) {
+  const bandTop = vh * 0.24, bandBot = vh * 0.42, band = !!BQ.cur;       // keep clear of the banner while one is showing
   for (let i = pops.length - 1; i >= 0; i--) {
     const p = pops[i];
     p.t += dt; p.y += dt * 1.4;
     if (p.t > 1.1) { p.el.remove(); popPool.push(p.el); pops.splice(i, 1); continue; }
     pv.set(p.x, p.y, p.z).project(camera);
-    const sx = (pv.x * 0.5 + 0.5) * vw, sy = (-pv.y * 0.5 + 0.5) * vh;
+    const sx = (pv.x * 0.5 + 0.5) * vw;
+    let sy = (-pv.y * 0.5 + 0.5) * vh;
+    if (band && sy > bandTop && sy < bandBot) sy = sy - bandTop < bandBot - sy ? bandTop : bandBot;
     const sc = p.t < 0.15 ? 0.6 + p.t / 0.15 * 0.6 : 1.2 - Math.min(0.2, (p.t - 0.15));
     p.el.style.transform = `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px) translate(-50%, -50%) scale(${sc.toFixed(2)})`;
     p.el.style.opacity = Math.min(1, (1.1 - p.t) * 3).toFixed(2);
@@ -3054,18 +3072,47 @@ function updateCards() {
     e.fxEl.style.opacity = e.fxHide ? '0' : Math.min(clamp((CHIP_RANGE - d) / 2.5, 0, 1), full ? clamp((d - 1) / 3, 0.15, 1) : 1).toFixed(2);
   }
 }
-// ---- pickup banner
-const bannerEl = $('#banner'), bannerTxt = bannerEl.firstElementChild;
-function showBanner(text, hex) {
-  bannerTxt.textContent = text;
-  bannerEl.style.setProperty('--wc', hex);
-  if (!bannerEl.animate) return;
-  bannerEl.getAnimations().forEach(a => a.cancel());
-  bannerEl.animate(reduced
-    ? [{ opacity: 0 }, { opacity: 1, offset: 0.2 }, { opacity: 1, offset: 0.75 }, { opacity: 0 }]
-    : [{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'scale(1.14)', offset: 0.16 }, { opacity: 1, transform: 'scale(1)', offset: 0.7 }, { opacity: 0, transform: 'translateY(-14px)' }],
-    { duration: 1400, easing: 'ease-out' });
+// ---- banner channel: every centre banner goes through here. One on screen at a time; a higher priority preempts the one
+// showing (it is dropped, not replayed); equal or lower priority waits in a short queue (max 2) and stale items are dropped.
+// Priorities: squad milestone 5 > combo milestone 4 > weapon pickup / level-up 3 > buff 2.
+const banner2 = $('#banner2'), b2t = banner2.children[0], b2s = banner2.children[1];
+const BQ = { cur: null, queue: [], timer: 0 };
+const BANNER_MS = 1150, BANNER_STALE = 1500;
+function bannerPush(text, hex, sub, prio) {
+  const it = { text, hex, sub: sub || '', prio, at: performance.now() };
+  if (BQ.cur) {
+    if (BQ.cur.text === text) return;
+    if (prio > BQ.cur.prio) { bannerShow(it); return; }
+    BQ.queue = BQ.queue.filter(q => q.text !== text);
+    BQ.queue.push(it);
+    BQ.queue.sort((a, b) => b.prio - a.prio || a.at - b.at);
+    if (BQ.queue.length > 2) BQ.queue.length = 2;
+    return;
+  }
+  bannerShow(it);
 }
+function bannerShow(it) {
+  BQ.cur = it;
+  b2t.textContent = it.text; b2s.textContent = it.sub;
+  banner2.style.setProperty('--wc', it.hex);
+  clearTimeout(BQ.timer);
+  if (banner2.animate) {
+    banner2.getAnimations().forEach(a => a.cancel());
+    const a = banner2.animate(reduced
+      ? [{ opacity: 0 }, { opacity: 1, offset: 0.2 }, { opacity: 1, offset: 0.8 }, { opacity: 0 }]
+      : [{ opacity: 0, transform: 'scale(.55)' }, { opacity: 1, transform: 'scale(1.14)', offset: 0.15 }, { opacity: 1, transform: 'scale(1)', offset: 0.75 }, { opacity: 0, transform: 'translateY(-10px)' }],
+      { duration: BANNER_MS, easing: 'ease-out' });
+    a.onfinish = () => bannerNext(it);
+  } else BQ.timer = setTimeout(() => bannerNext(it), BANNER_MS);
+}
+function bannerNext(done) {
+  if (BQ.cur !== done) return;
+  BQ.cur = null;
+  const now = performance.now();
+  while (BQ.queue.length) { const q = BQ.queue.shift(); if (now - q.at < BANNER_STALE) { bannerShow(q); return; } }
+}
+function bannerClear() { BQ.cur = null; BQ.queue.length = 0; clearTimeout(BQ.timer); if (banner2.getAnimations) banner2.getAnimations().forEach(a => a.cancel()); }
+function showBanner(text, hex) { bannerPush(text, hex, '', 3); }          // weapon pickup / level-up
 // ================================================================ round 3 FX: combo, coins, crits, buffs, world objects, slow motion
 // ---- presentation-only time scaling. frame() multiplies the dt it feeds the accumulator by G.timeScale; here we set it.
 G.timeScale = 1;
@@ -3085,18 +3132,7 @@ function updateTimeScale(realDt) {
   G.timeScale = k;
 }
 
-// ---- banner (milestones, buffs, squad)
-const banner2 = $('#banner2'), b2t = banner2.children[0], b2s = banner2.children[1];
-function showBanner2(text, hex, sub) {
-  b2t.textContent = text; b2s.textContent = sub || '';
-  banner2.style.setProperty('--wc', hex);
-  if (!banner2.animate) return;
-  banner2.getAnimations().forEach(a => a.cancel());
-  banner2.animate(reduced
-    ? [{ opacity: 0 }, { opacity: 1, offset: 0.2 }, { opacity: 1, offset: 0.75 }, { opacity: 0 }]
-    : [{ opacity: 0, transform: 'scale(.55)' }, { opacity: 1, transform: 'scale(1.16)', offset: 0.15 }, { opacity: 1, transform: 'scale(1)', offset: 0.7 }, { opacity: 0, transform: 'translateY(-12px)' }],
-    { duration: 1300, easing: 'ease-out' });
-}
+function showBanner2(text, hex, sub, prio) { bannerPush(text, hex, sub, prio || 2); }
 const hexCss = n => '#' + n.toString(16).padStart(6, '0');
 const rgbCss = (c, a) => 'rgba(' + Math.round(c[0] * 255) + ',' + Math.round(c[1] * 255) + ',' + Math.round(c[2] * 255) + ',' + a + ')';
 
@@ -3118,7 +3154,8 @@ function updateComboHud(dt) {
   const show = CB.n >= 3;
   if (CB.n !== CB.shown) {
     CB.shown = CB.n; comboNEl.textContent = String(CB.n);
-    const t = tierOf(CB.n);
+    const t = tierOf(CB.n), digits = String(CB.n).length;
+    comboEl.style.setProperty('--cs', Math.min([34, 40, 46, 52, 56][t], Math.floor(104 / (0.92 * digits))) + 'px');
     if (t !== CB.tier) { CB.tier = t; comboEl.classList.remove('t1', 't2', 't3', 't4'); if (t) comboEl.classList.add('t' + t); }
   }
   if (show !== CB.on) { CB.on = show; comboEl.classList.toggle('on', show); }
@@ -3132,7 +3169,7 @@ function updateComboHud(dt) {
 const MILESTONE_COL = n => n >= 200 ? 0xffffff : n >= 100 ? 0xc06bff : n >= 50 ? 0xff4048 : n >= 25 ? 0xff9a2a : 0xffe14d;
 bus.on('comboMilestone', d => {
   const n = d.n | 0, col = MILESTONE_COL(n), rw = d.reward || {};
-  showBanner2(n + ' 連殺！', hexCss(col), rw.coins ? '+' + rw.coins + ' 金幣' : '');
+  showBanner2(n + ' 連殺！', hexCss(col), rw.coins ? '+' + rw.coins + ' 金幣' : '', 4);
   shock(G.x, G.z + 0.5, col, 4.6, 0.6); shock(G.x, G.z + 0.5, 0xffffff, 2.4, 0.35);
   flashScreen(rgbCss([(col >> 16 & 255) / 255, (col >> 8 & 255) / 255, (col & 255) / 255], 1), 0.22, 360);
   FX.shake = Math.max(FX.shake, 0.18);
@@ -3141,7 +3178,7 @@ bus.on('comboMilestone', d => {
 });
 bus.on('squadMilestone', d => {
   const n = d.n | 0;
-  showBanner2('大軍 ×' + n + '！', '#9fd0ff', '');
+  showBanner2('大軍 ×' + n + '！', '#9fd0ff', '', 5);
   shock(G.x, G.z + 0.5, 0x4d95ff, 5, 0.6); shock(G.x, G.z + 0.5, 0xffffff, 2.6, 0.35);
   for (let i = 0; i < 3; i++) burst(G.x + rr(-1.6, 1.6), 1.8 + rr(0, 1.6), G.z + rr(0, 2), 26, i % 2 ? [0.4, 0.7, 1] : [1, 0.85, 0.35], 6, 1);
   flashScreen('rgb(90,150,255)', 0.25, 420);
@@ -3184,7 +3221,7 @@ bus.on('coin', d => {
   burst(d.x, 1.1, d.z, 8, [1, 0.85, 0.3], 3, 0.5);
   flashAt(d.x, 1.2, d.z, 0.12, 1, 0.85, 0.3);
   const t = nowMs();
-  if (t - lastCoinPop > 120) { lastCoinPop = t; pop('+' + amt, d.x, 1.7, d.z, 'gold'); }
+  if (t - lastCoinPop > 250) { lastCoinPop = t; pop('+' + amt, d.x, 1.7, d.z, 'gold'); }
   if (reduced || !flyLayer.animate || G.phase === 'menu') return;
   if (t - coinMeasured > 1500) measureCoin();
   pv.set(d.x, 1.2, d.z).project(camera);
@@ -3230,7 +3267,7 @@ bus.on('buffStart', d => {
     b = buffState[id] = { el, fg: el.querySelector('.fg'), num: el.children[2], t0: 0, secs, off: -1, n: -1 };
   }
   b.t0 = G.time; b.secs = secs; b.off = -1;
-  showBanner2(info.name + '！', hexCss(info.color), secs + ' 秒');
+  showBanner2(info.name + '！', hexCss(info.color), secs + ' 秒', 2);
   shock(G.x, G.z + 0.5, info.color, 4, 0.55);
   flashScreen(rgbCss(info.rgb, 1), 0.26, 400);
   vibrate([20, 20, 30]);
@@ -3280,7 +3317,6 @@ bus.on('powerup', d => {
   burst(d.x, 1.2, d.z, 34, info.rgb, 5, 0.8);
   shock(d.x, d.z, info.color, 3, 0.5);
   flashAt(d.x, 1.3, d.z, 0.16, info.rgb[0] * 1.3, info.rgb[1] * 1.3, info.rgb[2] * 1.3);
-  pop(info.name + '！', d.x, 2.4, d.z, 'gold');
   for (const e of worldList) if (e.fxWorld === 'powerup' && e.grp.visible && Math.hypot(e.x - d.x, e.z - d.z) < 1.5) e.grp.visible = false;
   SFX.powerup();
 });
@@ -3380,11 +3416,19 @@ bus.on('barrel', d => {            // explode{} fires too: this adds what only a
   SFX.boom();
   timeScaleFx(0.05, 0.05);
 });
+const CH = { n: 0, first: 0, last: 0, x: 0, z: 0 };
 bus.on('chain', d => {
-  pop('連鎖 ×' + (d.n | 0), d.x, 2.5, d.z, 'chain');
-  shock(d.x, d.z, 0xff9a2a, 3, 0.45);
-  SFX.crit();
+  const t = nowMs();
+  if (!CH.n) CH.first = t;
+  CH.n += d.n | 0; CH.last = t; CH.x = d.x; CH.z = d.z;       // one number for a burst of chains; shown in updateChain
 });
+function updateChain() {
+  if (!CH.n) return;
+  const t = nowMs();
+  if (t - CH.last < 350 && t - CH.first < 700) return;
+  if (CH.n >= 4) { pop('連鎖 ×' + CH.n, CH.x, 2.4, CH.z, 'chain'); shock(CH.x, CH.z, 0xff9a2a, 3, 0.45); SFX.crit(); }
+  CH.n = 0;
+}
 let lastShBlock = 0;
 bus.on('shieldBlock', d => {       // assumed event: plain bullets bounced off a shield zombie
   const t = nowMs();
@@ -3527,7 +3571,7 @@ function fxReset() {
   CB.n = 0; CB.shown = -1; CB.ending = false; CB.pulse = false;
   coinPending = 0; coinShown = G.coins | 0; hudCoins._v = null; flyLayer.textContent = ''; flyActive = 0;
   for (const id in buffState) { buffState[id].el.remove(); delete buffState[id]; }
-  TSL.length = 0; G.timeScale = 1; auraMesh.visible = false;
+  TSL.length = 0; G.timeScale = 1; auraMesh.visible = false; bannerClear(); CH.n = 0;
   if (RS.on && G.phase !== 'win' && G.phase !== 'over') hideResult();
 }
 function fxUpdate(dt) {
@@ -3564,7 +3608,7 @@ function render(dt) {
   if (!G.paused) updateTimeScale(dt);
   const rdt = G.paused ? 0 : dt * G.timeScale;      // particles and effects slow down with the simulation (slow-mo / hit-stop)
   renderDt = rdt;
-  updateComboHud(dt); updateCoinCounter(dt); updateResult(dt);
+  updateComboHud(dt); updateChain(); updateCoinCounter(dt); updateResult(dt);
   const playing = G.phase === 'run' || G.phase === 'boss';
   if (playing) updateHud();
   if (playing !== pauseShown) { pauseShown = playing; pauseBtn.hidden = !playing; }
