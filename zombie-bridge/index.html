@@ -342,27 +342,36 @@ const TUNE = {
   bossFocus: 0.5,                 // share of the squad that shoots the boss while minions are around
   bossMinions: 6, bossMinionsPerStage: 2, bossMinionEvery: 3.4,
 };
+// Weapon roster. Contract shared by logic and presentation:
+// - logic owns the numbers and behaviour fields (rate … bossEff, lvMul, maxLv) and keeps `ui` (1–5 bars shown on pickups) honest;
+// - presentation owns `color` and draws per `fx`: 'bullet' | 'pellet' | 'rail' | 'flame' | 'rocket';
+// - G.weapon is an index into this array, G.weaponLv is 1..maxLv. Picking up the gun you already hold raises its level
+//   (damage x lvMul per level); picking up a different gun swaps to it at Lv1.
+// speed: units/s; range: bullet lifetime in s; pierce: extra zombies a shot passes through; splash: blast radius (0 = none);
+// knock: push-back on hit; bossEff: share of nominal damage that lands on the boss (sizes its hp).
 const WEAPONS = [
-  // bossEff: how much of the nominal damage actually lands on the boss (pellets spread out); it sizes the boss's hp
-  { name: '手槍',   rate: 4,   pellets: 1, spread: 0.04, dmg: 1, bossEff: 1 },
-  { name: '步槍',   rate: 10,  pellets: 1, spread: 0.05, dmg: 1, bossEff: 1 },
-  { name: '散彈槍', rate: 3.2, pellets: 4, spread: 0.16, dmg: 1, bossEff: 0.68 },
-  { name: '加特林', rate: 17,  pellets: 1, spread: 0.08, dmg: 1, bossEff: 1 },
+  { id: 'pistol',  name: '手槍',   desc: '基本配槍',         fx: 'bullet', color: 0xffe08a, rate: 4,   pellets: 1, spread: 0.04, dmg: 1,   speed: 42, range: 0.56, pierce: 0, splash: 0,   knock: 0,   bossEff: 1,    lvMul: 1.35, maxLv: 3, ui: { power: 1, rate: 2, range: 3 } },
+  { id: 'rifle',   name: '步槍',   desc: '射速快、射程長',   fx: 'bullet', color: 0xffd060, rate: 10,  pellets: 1, spread: 0.05, dmg: 1,   speed: 46, range: 0.56, pierce: 0, splash: 0,   knock: 0,   bossEff: 1,    lvMul: 1.35, maxLv: 3, ui: { power: 2, rate: 4, range: 4 } },
+  { id: 'shotgun', name: '散彈槍', desc: '近距離一次轟一片', fx: 'pellet', color: 0xffb070, rate: 3.2, pellets: 5, spread: 0.18, dmg: 1,   speed: 40, range: 0.32, pierce: 0, splash: 0,   knock: 0.6, bossEff: 0.68, lvMul: 1.35, maxLv: 3, ui: { power: 4, rate: 2, range: 2 } },
+  { id: 'gatling', name: '加特林', desc: '火力全開的彈幕',   fx: 'bullet', color: 0xfff0a0, rate: 17,  pellets: 1, spread: 0.08, dmg: 1,   speed: 44, range: 0.5,  pierce: 0, splash: 0,   knock: 0,   bossEff: 1,    lvMul: 1.35, maxLv: 3, ui: { power: 2, rate: 5, range: 3 } },
+  { id: 'sniper',  name: '狙擊槍', desc: '一發貫穿整排',     fx: 'rail',   color: 0x9fe8ff, rate: 1.4, pellets: 1, spread: 0.01, dmg: 6,   speed: 90, range: 0.32, pierce: 6, splash: 0,   knock: 0.3, bossEff: 1,    lvMul: 1.35, maxLv: 3, ui: { power: 5, rate: 1, range: 5 } },
+  { id: 'flamer',  name: '火焰槍', desc: '燒穿整群，射程短', fx: 'flame',  color: 0xff7a2a, rate: 14,  pellets: 2, spread: 0.3,  dmg: 0.5, speed: 16, range: 0.42, pierce: 3, splash: 0,   knock: 0,   bossEff: 0.5,  lvMul: 1.35, maxLv: 3, ui: { power: 3, rate: 5, range: 1 } },
+  { id: 'rocket',  name: '火箭筒', desc: '爆炸範圍傷害',     fx: 'rocket', color: 0xff9a40, rate: 1.1, pellets: 1, spread: 0.03, dmg: 4,   speed: 26, range: 0.9,  pierce: 0, splash: 1.8, knock: 1,   bossEff: 0.8,  lvMul: 1.35, maxLv: 3, ui: { power: 5, rate: 1, range: 4 } },
 ];
 
 let best = 1;
 try { best = Math.max(1, parseInt(localStorage.getItem('zombie-bridge-best'), 10) || 1); } catch (e) {}
 
 const G = {
-  level: best, phase: 'menu', x: 0, tx: 0, z: 0, L: 200, squad: 1, weapon: 0, kills: 0, time: 0,
+  level: best, phase: 'menu', x: 0, tx: 0, z: 0, L: 200, squad: 1, weapon: 0, weaponLv: 1, kills: 0, time: 0,
   events: [], soldiers: [], shield: 0, mech: null, boss: null, shake: 0, dmgMul: 1, safe: false,
 };
 
 // ---------------------------------------------------------------- event bus
 // Contract between game logic (emits) and presentation (listens). Logic never reaches into FX/HUD directly
 // for new effects; it emits one of these and presentation code subscribes with bus.on(name, fn).
-// Events: shot{x,z} soldierDied{x,z} zombieDied{x,z,big} gateHit{e} gatePass{e,diff}
-//         weaponPickup{e,tier} heroActivated{e} bossSpawn{} bossHit{} bossDied{x,z} soldierContact{} gameOver{reason,cause,kind,phase} win{}
+// Events: shot{x,z,w,lv} soldierDied{x,z} zombieDied{x,z,big} gateHit{e} gatePass{e,diff}
+//         weaponPickup{e,w,lv,upgrade} heroActivated{e} bossSpawn{} bossHit{} bossDied{x,z} soldierContact{} gameOver{reason,cause,kind,phase} win{}
 // gameOver.cause is 'horde' | 'boss' | 'gate'; kind is the horde kind of the zombie that landed the last blow (or '').
 // Payloads are fresh objects; handlers may keep them.
 const bus = {
