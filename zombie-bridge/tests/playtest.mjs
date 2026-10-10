@@ -164,7 +164,7 @@ function botRun(cfg) {
           const inLane = Math.max(0, 1 - Math.abs(x - e.x) / (1.85 + h));
           const noShoot = mode !== 'auto' && opening.has(e) && mode !== 'gate';
           const t = Math.min(5, Math.max(0, (dz - 1)) / RUN);
-          const perEff = (e.per + zb.TUNE.gatePerSquad * Math.min(G.squad, 40)) * e.pf;
+          const perEff = (e.per + (zb.TUNE ? zb.TUNE.gatePerSquad : 0) * Math.min(G.squad, 40)) * (e.pf || 1);
           const extra = noShoot ? 0 : hps * t * 0.55 * inLane / perEff;
           v = e.val + Math.floor((e.hits / perEff) + extra);
         }

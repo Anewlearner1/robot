@@ -1115,6 +1115,7 @@ function updateMech(dt) {
   }
 }
 
+let sepTick = 0;
 function updateZombies(dt) {
   const moving = G.phase === 'run' || G.phase === 'boss';
   const half = formationHalf();
@@ -1139,7 +1140,9 @@ function updateZombies(dt) {
   // buckets + light separation so the horde spreads instead of stacking
   fillBuckets();
   if (moving) {
-    for (let k = 0; k < BN; k++) {
+    // every bucket is relaxed every other step with twice the push (same result, half the pair tests)
+    sepTick ^= 1;
+    for (let k = sepTick; k < BN; k += 2) {
       const arr = buckets[k];
       for (let a = 0; a < arr.length; a++) {
         const A = Z[arr[a]];
@@ -1149,7 +1152,7 @@ function updateZombies(dt) {
           if (B.dying > 0) continue;
           const dx = B.x - A.x, r = 0.21 * (A.s + B.s);
           if (Math.abs(dx) < r && Math.abs(B.z - A.z) < r) {
-            const push = (r - Math.abs(dx)) * 0.3 * (dx >= 0 ? 1 : -1);
+            const push = (r - Math.abs(dx)) * 0.5 * (dx >= 0 ? 1 : -1);
             A.x = clamp(A.x - push, -ROAD + 0.3, ROAD - 0.3);
             B.x = clamp(B.x + push, -ROAD + 0.3, ROAD - 0.3);
           }

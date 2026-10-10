@@ -47,18 +47,23 @@ const res = await page.evaluate(({ STEPS, ZOMBIES, BATCH, SPREAD }) => {
   const times = [];
   for (let i = 0; i < 200; i++) { topUp(); zb.step(1 / 60); }            // warm-up (JIT)
   const allocs = [];
+  const mem = () => performance.memory.usedJSHeapSize;
+  let noop = 0, nn = 0;
+  for (let i = 0; i < 200; i++) { const a = mem(); const b = mem(); if (b >= a) { noop += b - a; nn++; } }
+  noop = nn ? noop / nn : 0;                             // cost of the measurement itself
   for (let b = 0; b < STEPS / BATCH; b++) {
-    let tt = 0;
-    const h0 = performance.memory.usedJSHeapSize;
+    let tt = 0, al = 0, an = 0;
     for (let i = 0; i < BATCH; i++) {
-      topUp();
+      topUp();                                           // allocates too, but is excluded from both measurements
+      const h0 = mem();
       const t0 = performance.now();
       zb.step(1 / 60);
       tt += performance.now() - t0;
+      const h1 = mem();
+      if (h1 >= h0) { al += h1 - h0 - noop; an++; }     // a step that triggered a GC shows a negative delta and is skipped
     }
     times.push(tt / BATCH);
-    const h1 = performance.memory.usedJSHeapSize;
-    if (h1 >= h0) allocs.push((h1 - h0) / BATCH);       // topUp allocates too (the spawned zombies), so this over-counts a little
+    if (an) allocs.push(al / an);
     zb.pops.length = 0; document.getElementById('pops').textContent = '';
   }
   times.sort((a, b) => a - b);
@@ -72,7 +77,7 @@ const res = await page.evaluate(({ STEPS, ZOMBIES, BATCH, SPREAD }) => {
 }, { STEPS, ZOMBIES, BATCH, SPREAD });
 
 console.log(JSON.stringify(res, (k, v) => typeof v === 'number' ? Math.round(v * 1000) / 1000 : v));
-console.log(`step ms (per-step mean of 20-step batches; throttle x${THROTTLE}): mean ${res.meanMs.toFixed(3)}  p50 ${res.p50.toFixed(3)}  p95 ${res.p95.toFixed(3)}  p99 ${res.p99.toFixed(3)}  max ${res.max.toFixed(3)}   heap alloc/step ~${res.allocMeanKB.toFixed(1)} KB`);
+console.log(`step ms (per-step mean of 20-step batches; throttle x${THROTTLE}): mean ${res.meanMs.toFixed(3)}  p50 ${res.p50.toFixed(3)}  p95 ${res.p95.toFixed(3)}  p99 ${res.p99.toFixed(3)}  max ${res.max.toFixed(3)}   step() heap alloc/step ~${res.allocMeanKB.toFixed(1)} KB`);
 console.log('page errors: ' + errors.length);
 if (errors.length) console.log(errors.slice(0, 5).join('\n'));
 await browser.close();
