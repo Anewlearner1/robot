@@ -406,12 +406,32 @@ const WEAPONS = [
   { id: 'rocket',  name: '火箭筒', desc: '爆炸範圍傷害',     fx: 'rocket', color: 0xff9a40, rate: 1.22, pellets: 1, spread: 0.03, dmg: 5,   speed: 26, range: 0.9,  pierce: 0, splash: 1.6, knock: 1,   bossEff: 0.83,  lvMul: 1.3, maxLv: 3, ui: { power: 5, rate: 1, range: 4 } },
 ];
 
+// ---------------------------------------------------------------- round 3 contract: campaign, wallet, upgrades
+// Logic owns the numbers and the rules; presentation reads these to draw the shop, the menu and the result screen.
+// UPGRADES: permanent upgrades bought with coins between stages. cost(lv) = Math.round(base * grow^lv); lv 0..max.
+//   Each `per` is applied per level by logic (e.g. dmg 0.08 = +8 % damage per level). Presentation shows name/desc/lv/cost.
+const UPGRADES = [
+  { id: 'dmg',     name: '火力',   desc: '全隊傷害 +8%',        per: 0.08, max: 10, base: 60,  grow: 1.45 },
+  { id: 'rate',    name: '射速',   desc: '全隊射速 +6%',        per: 0.06, max: 10, base: 60,  grow: 1.45 },
+  { id: 'recruit', name: '援軍',   desc: '每個槍箱多 +1 名隊員', per: 1,    max: 5,  base: 120, grow: 1.7  },
+  { id: 'shield',  name: '護盾',   desc: '機甲護盾 +1 秒',      per: 1,    max: 5,  base: 90,  grow: 1.6  },
+  { id: 'luck',    name: '幸運',   desc: '金幣掉落 +10%、爆擊率 +2%', per: 0.1, max: 8, base: 80, grow: 1.5 },
+];
+// SAVE: persisted progress (localStorage key 'zombie-bridge-save', version 1; every access in try/catch).
+//   coins: wallet; upgrades: { id: lv }; best: highest stage unlocked;
+//   stages: { [n]: { entry: squad you start stage n with (carry-over from clearing n-1), stars: best 0..3 } }.
+// Clearing stage n stores the surviving squad as stages[n+1].entry (logic decides the exact rule, e.g. keep the larger).
+// Retrying a stage, or starting it from the menu, starts with stages[n].entry (stage 1 = TUNE.startSquad).
+const SAVE = { v: 1, coins: 0, upgrades: {}, best: 1, stages: {} };
 let best = 1;
 try { best = Math.max(1, parseInt(localStorage.getItem('zombie-bridge-best'), 10) || 1); } catch (e) {}
 
 const G = {
   level: best, phase: 'menu', x: 0, tx: 0, z: 0, L: 200, squad: 1, weapon: 0, weaponLv: 1, kills: 0, time: 0,
   events: [], soldiers: [], shield: 0, mech: null, boss: null, shake: 0, dmgMul: 1, safe: false,
+  // round 3 (logic writes, presentation reads): combo chain, coins earned this run, timed buffs { id: secondsLeft },
+  // the squad this stage started with, and the last stage result (set right before `win` / `gameOver`).
+  combo: 0, comboT: 0, comboBest: 0, coins: 0, buffs: {}, entrySquad: 1, result: null,
 };
 
 // ---------------------------------------------------------------- event bus
@@ -420,6 +440,20 @@ const G = {
 // Events: shot{x,z,w,lv} soldierDied{x,z} zombieDied{x,z,big} gateHit{e} gatePass{e,diff}
 //         explode{x,z,r} weaponPickup{e,w,lv,upgrade,recruits} heroActivated{e} bossSpawn{} bossHit{} bossDied{x,z} soldierContact{} gameOver{reason,cause,kind,phase} win{}
 // explode: one per blast (mech shell or rocket), r = its real radius. weaponPickup.upgrade is true when the gun you held levelled up (lv = new level).
+// Round 3 events (logic emits; presentation subscribes):
+//   combo{n}                      kill chain grew (throttle on the listening side; fires per kill)
+//   comboMilestone{n,reward}      chain reached a milestone; reward {coins?, buff?}
+//   comboEnd{n}                   chain broke
+//   coin{x,z,amount}              coins dropped/collected at a world spot (G.coins already updated)
+//   crit{x,z,dmg}                 a critical hit (logic throttles to a few per second)
+//   buffStart{id,secs} buffEnd{id}   timed power-up: 'frenzy' (fire rate) | 'split' (extra pellets) | others logic adds
+//   powerup{x,z,id}               a power-up was picked up / triggered at a world spot
+//   barrel{x,z,r}                 explosive barrel detonated (explode{} also fires for its blast)
+//   chain{x,z,n}                  an exploder zombie's death set off n further kills
+//   gateReveal{e,val,kind}        a mystery '?' gate revealed what it was
+//   squadMilestone{n}             squad size first reached a milestone this run (10, 25, 50 …)
+//   stageResult{stage,stars,survivors,entry,kills,coins,bonus,comboBest,newBest}   right before `win` (also before gameOver, stars 0)
+//   upgradeBought{id,lv,cost}     shop purchase succeeded (SAVE already updated)
 // gameOver.cause is 'horde' | 'boss' | 'gate'; kind is the horde kind of the zombie that landed the last blow (or '').
 // Payloads are fresh objects; handlers may keep them.
 const bus = {
