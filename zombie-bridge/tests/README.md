@@ -36,15 +36,24 @@ node zombie-bridge/tests/playtest.mjs --trace --n 3 --workers 1   # 印出前 3 
 | `--stages 1,2,3` | 要測的關卡 |
 | `--n 40` | 每列場數 |
 | `--seed 1` | 種子批次 |
-| `--opening auto\|rifle\|gate\|battery\|all` | 開場策略（見下） |
+| `--opening auto\|rifle\|gate\|battery\|weapons\|all\|allw` | 開場策略（見下） |
+| `--hold <gun>\|all` | 強制使用某把槍（見下） |
+| `--hold-take` | 搭配 `--hold`：仍領別把槍箱的新兵 |
 | `--noise 1` | 機器人手殘程度 |
 | `--tune '{"ramp":5,"WEAPONS.1.rate":9}'` | 在跑之前覆蓋 `__zb.TUNE` 的數字（點號可進到巢狀物件；`WEAPONS.<i>.<key>` 改武器表）。調平衡時不用改 HTML |
 | `--workers 4` | 同時開幾個頁面平行跑 |
 | `--json out.json` / `--dump all.jsonl` | 輸出彙總 / 每一場的原始結果 |
 | `--line` | 每個關卡只印一行摘要（掃參數用） |
 
-開場策略：`rifle` 只撿槍、不碰紅門也不打電池；`gate` 不撿槍、把紅色數字門打成正的再穿過去；`battery` 不撿槍、把電池打滿；
-`auto` 讓機器人自己權衡。「開場至少有兩種玩法打得贏」就看這幾列的勝率。
+開場策略：`rifle` 只撿開場那把步槍、不碰紅門也不打電池；`gate` 不撿槍、把紅色數字門打成正的再穿過去；`battery` 不撿槍、把電池打滿；
+`auto` 讓機器人自己權衡；`weapons`（槍械路線）只撿槍，不追數字門的正值、也不打電池，只避開紅門。
+「開場至少有兩種玩法打得贏」就看這幾列的勝率。`--opening allw` 一次跑 auto / rifle / gate / battery / weapons。
+
+槍械：機器人依接下來會遇到的屍群（牆、團、線、巨怪、巨屍）和各槍的特性評估要不要換槍、升級還是不換、一對槍選哪把
+（`gunValue`，每場會有個人偏好與偶爾看錯）。
+`--hold pistol|rifle|shotgun|gatling|sniper|flamer|rocket|all` 強制整場只用某一把槍（撿到別的槍會被換回來，同一把槍還是會升級），
+每把槍一列；用來檢查有沒有哪把槍太強或沒用。預設完全不碰別把槍的槍箱（連隨槍箱來的新兵也放棄），
+`--hold-take` 則仍會踩過別把槍的槍箱領新兵（槍會被換回來）。
 
 結束碼：有任何 `pageerror` / console error 時為 1。
 
@@ -56,7 +65,18 @@ node zombie-bridge/tests/checks.mjs
 
 用假的 `requestAnimationFrame` 餵時間戳，驗證：固定步長（30/60/120/144 fps 下遊戲時間都等於真實時間、單格最多 4 步）、
 分頁隱藏時暫停且回來不跳時間、`gameOver`/`win` 只觸發一次、勝利後不會翻盤、重來／下一關完整重置（子彈、粒子、飄字、護盾、機甲、巨屍、事件）、
-同一關版面完全相同、隊伍剛好站在中線時的數字門規則、殭屍大量接觸時 `killSoldier` 的迭代安全、殭屍／子彈／粒子池滿了不會壞。
+同一關版面完全相同、七把槍的升級／最高級／換槍／成對撿取、貫穿（不重複命中、最多穿 N 隻）、範圍爆炸（只發一次 `explode`）、擊退、`removeBullet` 換位後子彈的槍械編號與壽命仍正確、隊伍剛好站在中線時的數字門規則、殭屍大量接觸時 `killSoldier` 的迭代安全、殭屍／子彈／粒子池滿了不會壞。
+
+## arena.mjs — 武器競技場
+
+```bash
+node zombie-bridge/tests/arena.mjs --cap 1            # 每把槍 × 每種屍群的「承受倍率」：小隊停損 25% 以內能擋下幾倍的基準屍群（越高越好）
+node zombie-bridge/tests/arena.mjs --squad 8 --mult 2 # 固定屍群，看損失人數／清場秒數
+node zombie-bridge/tests/arena.mjs --still 1 --lv 3   # 小隊站著不動、槍升到 Lv3
+```
+
+固定小隊（預設 8 人）對 wall / blob / line / swarm / brutes / boss 六種遭遇戰，**和關卡、機器人無關**，專門看每把槍擅長與不擅長什麼。
+`--tune` 與 playtest 相同；`--only boss` 可只跑某幾欄。
 
 ## perf.mjs — `step()` 耗時
 

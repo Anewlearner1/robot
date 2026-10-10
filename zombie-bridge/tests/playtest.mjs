@@ -22,7 +22,7 @@ const opt = {
   stages: String(args.stages || '1,2,3').split(',').map(Number),
   n: Number(args.n || 40),
   seed: Number(args.seed || 1),
-  opening: String(args.opening || 'auto'),         // auto | rifle | gate | battery | all
+  opening: String(args.opening || 'auto'),         // auto | rifle | gate | battery | weapons | all | allw (all + weapons)
   workers: Number(args.workers || 4),
   three: String(args.three || process.env.THREE_JS || DEFAULT_THREE),
   html: String(args.html || process.env.ZB_HTML || path.resolve(here, '../index.html')),
@@ -31,6 +31,8 @@ const opt = {
   maxSeconds: Number(args.max || 240),             // game seconds before an attempt is declared a timeout
   dodge: args.dodge !== undefined ? Number(args.dodge) : 1,   // bot dodge strength (0 = never dodge)
   tune: args.tune ? JSON.parse(String(args.tune)) : {},   // e.g. --tune '{"gatePerSquad":1.5,"count.open":8}' overrides __zb.TUNE (dotted keys reach nested objects)
+  holdTake: !!args['hold-take'],                       // with --hold: still pick up other guns' crates for the recruits (the held gun is handed back)
+  hold: args.hold !== undefined ? String(args.hold) : null,   // force one gun for the whole run: index, id, or 'all' (one row per gun)
   noise: args.noise !== undefined ? Number(args.noise) : 1,   // human imperfection: 0 = perfect bot, 1 = decent human, 2 = sloppy
   line: !!args.line,                                 // one-line summary per row instead of the table (for sweeps)
   quiet: !!args.quiet,
@@ -43,7 +45,7 @@ if (!fs.existsSync(opt.three)) { console.error('three.min.js not found: ' + opt.
 function botRun(cfg) {
   const zb = window.__zb, G = zb.G, Z = zb.Z;
   const ROAD = 4, RUN = 4.6, SP = 0.62;
-  const WEAP = [{ rate: 4, pel: 1 }, { rate: 6.5, pel: 1 }, { rate: 2.4, pel: 4 }, { rate: 12, pel: 1 }];
+  const WP = zb.WEAPONS;
 
   // deterministic Math.random for this attempt
   let s = cfg.seed | 0;
@@ -58,12 +60,19 @@ function botRun(cfg) {
   if (!window.__botHooks) {
     window.__botHooks = true;
     window.__log = {};
-    zb.bus.on('bossSpawn', () => { const L = window.__log; L.bossT = G.time; L.bossSquad = G.squad; L.bossWeapon = G.weapon; L.bossMech = !!G.mech; L.bossProg = true; });
+    zb.bus.on('bossSpawn', () => { const L = window.__log; L.bossT = G.time; L.bossSquad = G.squad; L.bossWeapon = G.weapon; L.bossLv = G.weaponLv; L.bossMech = !!G.mech; L.bossProg = true; });
     zb.bus.on('bossDied', () => { window.__log.bossDeadT = G.time; });
     zb.bus.on('gameOver', d => { const L = window.__log; L.reason = d.reason; L.cause = d.cause; L.kind = d.kind; L.overT = G.time; L.overPhase = d.phase; });
     zb.bus.on('win', () => { window.__log.won = true; });
     zb.bus.on('heroActivated', () => { window.__log.hero = true; });
-    zb.bus.on('weaponPickup', d => { const L = window.__log; L.pickups = (L.pickups || 0) + 1; L.tier = Math.max(L.tier || 0, d.tier); });
+    // --hold: a forced gun stays no matter which pickup the squad walks over (other guns are ignored, the same gun still levels up)
+    window.__hold = null;
+    zb.bus.on('weaponPickup', d => {
+      const h = window.__hold;
+      if (!h) return;
+      if (d.w !== h.w) { G.weapon = h.w; G.weaponLv = h.lv; } else h.lv = G.weaponLv;
+    });
+    zb.bus.on('weaponPickup', d => { const L = window.__log; L.pickups = (L.pickups || 0) + 1; L.tier = Math.max(L.tier || 0, d.w); });
     zb.bus.on('gatePass', d => { const L = window.__log; L.gates = (L.gates || 0) + 1; if (d.diff < 0) L.badGates = (L.badGates || 0) + 1; (L.gateDiffs = L.gateDiffs || []).push(d.diff); });
   }
   const LOG = window.__log;
@@ -98,6 +107,9 @@ function botRun(cfg) {
   const popLayer = document.getElementById('pops');
   zb.prepare(cfg.stage);
   zb.start();
+  window.__hold = null;
+  if (cfg.hold !== undefined && cfg.hold !== null) { G.weapon = cfg.hold; G.weaponLv = 1; window.__hold = { w: cfg.hold, lv: 1 }; }
+  const weaponsRoute = cfg.opening === 'weapons';
 
   const half = () => (zb.formationHalf ? zb.formationHalf() : 0);
   const dtStep = 1 / 60;
@@ -116,9 +128,59 @@ function botRun(cfg) {
   }
   const mode = cfg.opening;
 
+  const lvm = (w, lv) => Math.pow(WP[w].lvMul, lv - 1);
+  // shots that land on a gate / battery per second (they stop at both, so pierce does not matter)
   function hitsPerSec() {
-    const W = WEAP[G.weapon];
-    return Math.min(G.squad, 40) * W.rate * W.pel * (G.squad > 40 ? G.squad / 40 : 1);
+    const W = WP[G.weapon];
+    return Math.min(G.squad, 40) * W.rate * W.pellets * W.dmg * lvm(G.weapon, G.weaponLv) * (G.squad > 40 ? G.squad / 40 : 1);
+  }
+
+  // ---- guns. The roster is balanced so that no gun is simply better; what a player learns is which gun suits which horde.
+  // NICHE[gun][kind] = how well that gun handles that kind of horde relative to its own average (from `arena.mjs --cap 1`).
+  const KINDS = ['wall', 'blob', 'line', 'swarm', 'runners', 'brutes'];
+
+  const NICHE = [
+    [0.95, 0.91, 0.82, 1.11, 1.11, 1.14],   // pistol
+    [1.05, 1.00, 0.91, 0.95, 0.96, 1.14],   // rifle
+    [1.00, 0.92, 0.80, 1.09, 1.10, 1.13],   // shotgun
+    [0.98, 0.90, 0.82, 1.19, 1.13, 1.03],   // gatling
+    [1.19, 1.16, 1.11, 0.71, 0.72, 1.29],   // sniper
+    [1.26, 1.11, 0.96, 0.95, 0.95, 0.83],   // flamer
+    [0.86, 1.03, 1.60, 1.10, 1.11, 0.70],   // rocket
+  ];
+  const BOSS_NICHE = [1, 1, 0.95, 1.2, 1, 0.9, 0.9];
+  let ctx = { w: [0, 0, 0, 0, 0, 0], boss: 0 };
+  function readAhead() {
+    const w = [0, 0, 0, 0, 0, 0];
+    for (const e of G.events) {
+      if (e.type !== 'horde') continue;
+      const dz = G.z - e.z;
+      if (dz < -10 || dz > 80) continue;
+      const k = KINDS.indexOf(e.spec.kind === 'open' ? 'blob' : e.spec.kind);
+      if (k >= 0) w[k] += Math.sqrt(e.spec.count * e.spec.hp);     // damped: ten big hordes are not ten times one
+    }
+    ctx = { w, boss: G.L + G.z < 90 ? 1 : 0 };
+  }
+  function gunScore(w, lv) {
+    let num = 0, den = 0;
+    for (let k = 0; k < 6; k++) { num += ctx.w[k] * NICHE[w][k]; den += ctx.w[k]; }
+    const tot = den + ctx.boss * 8;
+    num += ctx.boss * 8 * BOSS_NICHE[w];
+    return lvm(w, lv) * (tot > 0 ? num / tot : 1);
+  }
+  // value (in the same units as gate values) of walking over weapon pickup e
+  function gunValue(e) {
+    const w = e.w;
+    const crate = 1.2 * (zb.TUNE.crateRecruits || 0);                   // every crate brings recruits
+    // forced to keep one gun: by default never walk over another gun's crate; with --hold-take the squad still collects the recruits (the harness hands the held gun back)
+    if (cfg.hold !== undefined && cfg.hold !== null && w !== cfg.hold) return cfg.holdTake ? crate : -60;
+    const cur = gunScore(G.weapon, G.weaponLv);
+    if (w === G.weapon) {
+      if (G.weaponLv >= WP[w].maxLv) return crate;                     // spare crate: just the recruits
+      return crate + Math.max(0.5, Math.min(14, (gunScore(w, G.weaponLv + 1) / cur - 1) * 14));
+    }
+    // swapping throws away the levels you have: only worth it for a clearly better gun (a human does not trade for a 10 % edge)
+    return Math.min(14, crate + Math.max(-3.5, (gunScore(w, 1) / cur - 1.25) * 14));
   }
 
   function decide() {
@@ -149,6 +211,9 @@ function botRun(cfg) {
       else if (e.type === 'hero' && !e.done && !e.missed) others.push(e);
     }
     const hps = hitsPerSec();
+    readAhead();
+    const gv = new Map();
+    for (const e of others) if (e.type === 'weapon') gv.set(e, gunValue(e));
     let bestX = tx, bestC = Infinity;
     for (let x = -lim; x <= lim + 1e-6; x += GRID) {
       let c = 0;
@@ -162,13 +227,14 @@ function botRun(cfg) {
         if (e.kind === 'mul') v = Math.max(0, G.squad * (e.val - 1));
         else {
           const inLane = Math.max(0, 1 - Math.abs(x - e.x) / (1.85 + h));
-          const noShoot = mode !== 'auto' && opening.has(e) && mode !== 'gate';
+          const noShoot = (mode !== 'auto' && opening.has(e) && mode !== 'gate') || weaponsRoute;
           const t = Math.min(5, Math.max(0, (dz - 1)) / RUN);
           const perEff = (e.per + (zb.TUNE ? zb.TUNE.gatePerSquad : 0) * Math.min(G.squad, 40)) * (e.pf || 1);
           const extra = noShoot ? 0 : hps * t * 0.55 * inLane / perEff;
           v = e.val + Math.floor((e.hits / perEff) + extra);
         }
         if (opening.has(e) && v > 0 && mode !== 'auto' && mode !== 'gate') v = 0;   // not our plan
+        if (weaponsRoute && v > 0) v *= 0.7;             // guns-only player: takes the blue side as it is, never shoots a gate up or waits for one
         c -= wt * v * 1.2 * opinion(e);
       }
       for (const e of others) {
@@ -177,9 +243,11 @@ function botRun(cfg) {
         let skip = mode !== 'auto' && opening.has(e);
         if (e.type === 'weapon') {
           if (skip && (mode === 'gate' || mode === 'battery')) continue;
-          const val = e.tier > G.weapon ? 14 : 1.5;
-          if (Math.abs(x - e.x) < 1.4 + h - 0.15) c -= wt * val * opinion(e);
+          const rad = e.mate ? 0.9 + h * 0.5 : 1.4 + h;
+          const val = gv.get(e);
+          if (Math.abs(x - e.x) < rad - 0.15) c -= wt * val * (val > 0 ? opinion(e) : 1);
         } else {
+          if (weaponsRoute) continue;
           if (skip && mode !== 'battery') continue;
           // battery: expected charge while the squad stays in front of it
           const bz = e.bz;
@@ -230,7 +298,7 @@ function botRun(cfg) {
   if (!won && !timeout && LOG.kind) cause += '/' + LOG.kind;
   const res = {
     won, prog, cause, time: G.time, squad: G.squad, kills: G.kills,
-    reachedBoss: !!LOG.bossProg, bossSquad: LOG.bossSquad, bossWeapon: LOG.bossWeapon, bossMech: LOG.bossMech,
+    reachedBoss: !!LOG.bossProg, bossSquad: LOG.bossSquad, bossWeapon: LOG.bossWeapon, bossLv: LOG.bossLv, bossMech: LOG.bossMech,
     bossSecs: LOG.bossT === undefined ? null : (LOG.bossDeadT !== undefined ? LOG.bossDeadT - LOG.bossT : (LOG.overT !== undefined ? LOG.overT - LOG.bossT : null)),
     bossKilled: LOG.bossDeadT !== undefined,
     bossHpLeft: G.boss ? Math.max(0, G.boss.hp / G.boss.max) : null,
@@ -285,13 +353,23 @@ const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN;
 const pct = (x, n) => n ? (100 * x / n).toFixed(0) + '%' : '-';
 const f1 = v => Number.isFinite(v) ? v.toFixed(1) : '-';
 
-const openings = opt.opening === 'all' ? ['auto', 'rifle', 'gate', 'battery'] : [opt.opening];
+const GUNS = ['pistol', 'rifle', 'shotgun', 'gatling', 'sniper', 'flamer', 'rocket'];
+const gunIndex = v => { const i = GUNS.indexOf(v); return i >= 0 ? i : Number(v); };
+// one row per strategy: { label, opening, hold }
+const openings = [];
+if (opt.hold !== null) {
+  for (const g of (opt.hold === 'all' ? GUNS : opt.hold.split(','))) openings.push({ label: 'hold-' + GUNS[gunIndex(g)], opening: opt.opening === 'all' ? 'auto' : opt.opening, hold: gunIndex(g) });
+} else {
+  const names = opt.opening === 'all' ? ['auto', 'rifle', 'gate', 'battery'] : opt.opening === 'allw' ? ['auto', 'rifle', 'gate', 'battery', 'weapons'] : [opt.opening];
+  for (const o of names) openings.push({ label: o, opening: o, hold: null });
+}
 const rows = [];
 const t0 = Date.now();
 for (const stage of opt.stages) {
-  for (const opening of openings) {
+  for (const row of openings) {
+    const opening = row.label;
     const jobs = [];
-    for (let i = 0; i < opt.n; i++) jobs.push({ noise: opt.noise, trace: opt.trace && i < 3, stage, opening, seed: opt.seed * 100003 + stage * 1009 + i * 7919 + 1, maxSeconds: opt.maxSeconds, dodge: opt.dodge });
+    for (let i = 0; i < opt.n; i++) jobs.push({ noise: opt.noise, trace: opt.trace && i < 3, stage, opening: row.opening, hold: row.hold, holdTake: opt.holdTake, seed: opt.seed * 100003 + stage * 1009 + i * 7919 + 1, maxSeconds: opt.maxSeconds, dodge: opt.dodge });
     const res = await runJobs(jobs);
     if (opt.trace) for (const r of res) if (r.trace) { console.log(`--- stage ${stage} ${opening} won=${r.won} cause=${r.cause} gates=${r.gateDiffs.join(',')}`); console.log(r.trace.join('\n')); }
     if (opt.dump) fs.appendFileSync(opt.dump, res.map((r, i) => JSON.stringify({ stage, opening, seed: jobs[i].seed, ...r })).join('\n') + '\n');
@@ -305,7 +383,7 @@ for (const stage of opt.stages) {
       stage, opening, n: res.length, win: wins.length / res.length,
       prog: mean(res.map(r => r.prog)) * 100,
       squadBoss: mean(atBoss.map(r => r.bossSquad)),
-      weaponBoss: mean(atBoss.map(r => r.bossWeapon)),
+      weaponBoss: (() => { const h = {}; for (const r of atBoss) { const k = GUNS[r.bossWeapon] + r.bossLv; h[k] = (h[k] || 0) + 1; } return Object.entries(h).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([k, v]) => k + ' ' + pct(v, atBoss.length)).join(' '); })(),
       mechBoss: atBoss.length ? atBoss.filter(r => r.bossMech).length / atBoss.length : NaN,
       reached: atBoss.length / res.length,
       bossSecsWin: mean(winFights.map(r => r.bossSecs)),
@@ -324,7 +402,7 @@ if (opt.line) {
 }
 const hdr = ['stage', 'open', 'n', 'win', 'prog%', 'atBoss', 'squad@boss', 'wpn@boss', 'mech@boss', 'boss s (win)', 'boss s (all)', 'cause of death'];
 const lines = rows.map(r => [
-  r.stage, r.opening, r.n, pct(r.win * r.n, r.n), f1(r.prog), pct(r.reached * r.n, r.n), f1(r.squadBoss), f1(r.weaponBoss),
+  r.stage, r.opening, r.n, pct(r.win * r.n, r.n), f1(r.prog), pct(r.reached * r.n, r.n), f1(r.squadBoss), r.weaponBoss || '-',
   Number.isFinite(r.mechBoss) ? pct(r.mechBoss * 10, 10) : '-', f1(r.bossSecsWin), f1(r.bossSecsAll),
   Object.entries(r.causes).map(([k, v]) => k + ' ' + pct(v, r.n)).join(', ') || '-',
 ]);
