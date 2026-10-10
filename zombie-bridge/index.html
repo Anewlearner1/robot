@@ -1,0 +1,1383 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>屍潮斷橋</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Noto+Sans+TC:wght@500;900&display=swap">
+<style>
+/* Layout: full-bleed WebGL stage; HUD pinned to the safe-area edges; overlays are one centered card.
+   One visual world (hazy steel-blue morning on a concrete bridge), so a single theme on purpose. */
+:root {
+  --fog: #8fa3b3;
+  --ink: #10151b;
+  --panel: rgba(16, 21, 27, .74);
+  --paper: #f3f1ec;
+  --muted: #b9c3cc;
+  --hazard: #ffb020;
+  --hazard-deep: #a86a00;
+  --blood: #e2363b;
+  --ally: #2f7bff;
+  --holo: #54dcff;
+  --display: 'Bungee', 'Noto Sans TC', system-ui, sans-serif;
+  --body: 'Noto Sans TC', system-ui, -apple-system, 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0; overflow: hidden; background: var(--fog); color: var(--paper);
+  font-family: var(--body); -webkit-user-select: none; user-select: none;
+  touch-action: none; -webkit-tap-highlight-color: transparent; overscroll-behavior: none;
+}
+#stage { position: fixed; inset: 0; }
+#stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+#hud { position: fixed; inset: 0; pointer-events: none; }
+.hud-top {
+  position: absolute; left: 0; right: 0; top: 0;
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 0;
+  display: grid; gap: 8px;
+}
+.row { display: flex; align-items: center; gap: 10px; }
+.chip {
+  background: var(--panel); border-radius: 999px; padding: 6px 12px;
+  font-family: var(--display); font-size: 14px; letter-spacing: .04em; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.chip b { color: var(--hazard); font-weight: 400; }
+.track { flex: 1; min-width: 0; height: 10px; background: var(--panel); border-radius: 6px; overflow: hidden; }
+.fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--hazard), #ffd76a); border-radius: 6px; }
+#mute {
+  pointer-events: auto; border: 0; width: 36px; height: 36px; border-radius: 50%;
+  background: var(--panel); color: var(--paper); font: 900 13px var(--body); cursor: pointer;
+}
+#mute:focus-visible, .btn:focus-visible { outline: 3px solid var(--holo); outline-offset: 3px; }
+#bossbar { display: grid; gap: 4px; }
+#bossbar .label { font-family: var(--display); font-size: 13px; letter-spacing: .08em; color: #ffd0d0; text-shadow: 0 1px 2px #000; }
+#bossbar .track { height: 12px; flex: none; }
+#bossbar .fill { background: linear-gradient(90deg, #8f1218, var(--blood)); width: 100%; }
+
+.hud-bottom {
+  position: absolute; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  display: flex; justify-content: space-between; align-items: flex-end; gap: 12px;
+}
+.squad { display: grid; gap: 2px; }
+.squad .k { font-size: 12px; letter-spacing: .12em; color: var(--muted); text-shadow: 0 1px 2px #000; }
+.squad .v { font-family: var(--display); font-size: 40px; line-height: 1; text-shadow: 0 2px 0 var(--ink), 0 0 12px rgba(47,123,255,.6); font-variant-numeric: tabular-nums; }
+.weapon { text-align: right; display: grid; gap: 2px; }
+.weapon .v { font-weight: 900; font-size: 20px; text-shadow: 0 2px 0 var(--ink); }
+.weapon .k { font-size: 12px; letter-spacing: .12em; color: var(--muted); text-shadow: 0 1px 2px #000; }
+#hint {
+  position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 84px); transform: translateX(-50%);
+  background: var(--panel); padding: 8px 14px; border-radius: 999px; font-size: 14px; white-space: nowrap;
+  transition: opacity .6s;
+}
+
+#pops { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.pop {
+  position: absolute; left: 0; top: 0; font-family: var(--display); font-size: 26px; white-space: nowrap;
+  color: #fff; text-shadow: 0 2px 0 var(--ink), 0 0 10px rgba(0,0,0,.4); will-change: transform, opacity;
+}
+.pop.good { color: #9fd0ff; }
+.pop.bad { color: #ff8a8a; }
+.pop.gold { color: var(--hazard); font-family: var(--body); font-weight: 900; font-size: 22px; }
+.pop.holo { color: var(--holo); font-family: var(--body); font-weight: 900; font-size: 24px; }
+
+.overlay {
+  position: fixed; inset: 0; display: grid; place-items: center;
+  padding: calc(env(safe-area-inset-top, 0px) + 24px) 16px calc(env(safe-area-inset-bottom, 0px) + 24px);
+  background: radial-gradient(120% 80% at 50% 40%, rgba(16,21,27,.25), rgba(16,21,27,.82));
+}
+.card { width: 100%; max-width: 360px; display: grid; gap: 18px; justify-items: center; text-align: center; }
+.eyebrow { font-family: var(--display); font-size: 14px; letter-spacing: .14em; color: var(--hazard); }
+h1 {
+  margin: 0; font-family: var(--body); font-weight: 900; font-size: clamp(48px, 15vw, 72px); line-height: 1;
+  letter-spacing: .04em; text-wrap: balance;
+  text-shadow: 0 4px 0 var(--ink), 0 0 30px rgba(226,54,59,.45);
+}
+h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-height: 1.05; text-shadow: 0 3px 0 var(--ink); text-wrap: balance; }
+.lede { margin: 0; font-size: 16px; line-height: 1.6; color: var(--paper); max-width: 30ch; text-wrap: pretty; }
+.rules { list-style: none; margin: 0; padding: 14px 16px; display: grid; gap: 10px; text-align: left; background: var(--panel); border-radius: 14px; width: 100%; box-sizing: border-box; }
+.rules li { display: grid; grid-template-columns: 10px 1fr; gap: 10px; align-items: baseline; font-size: 14px; line-height: 1.5; color: var(--muted); }
+.rules li::before { content: ''; width: 10px; height: 10px; border-radius: 2px; background: var(--c, var(--hazard)); transform: translateY(1px); }
+.rules strong { color: var(--paper); font-weight: 900; }
+.stats { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.stat { background: var(--panel); border-radius: 12px; padding: 10px 14px; min-width: 84px; display: grid; gap: 2px; }
+.stat .v { font-family: var(--display); font-size: 24px; font-variant-numeric: tabular-nums; }
+.stat .k { font-size: 12px; color: var(--muted); letter-spacing: .1em; }
+.btn {
+  pointer-events: auto; cursor: pointer; border: 0; border-radius: 14px; padding: 14px 40px;
+  background: var(--hazard); color: var(--ink); font: 900 20px var(--body); letter-spacing: .1em;
+  box-shadow: 0 6px 0 var(--hazard-deep), 0 12px 24px rgba(0,0,0,.35); transition: transform .08s, box-shadow .08s;
+}
+.btn:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--hazard-deep), 0 6px 12px rgba(0,0,0,.35); }
+.best { font-size: 13px; color: var(--muted); letter-spacing: .08em; }
+#loading { font-family: var(--display); letter-spacing: .1em; }
+@media (prefers-reduced-motion: reduce) { .btn, #hint { transition: none; } }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+
+<div id="hud" hidden>
+  <div class="hud-top">
+    <div class="row">
+      <span class="chip">LV <b id="hudLevel">1</b></span>
+      <div class="track" aria-label="前進進度"><div class="fill" id="hudProg"></div></div>
+      <span class="chip"><span id="hudKills">0</span> 殺</span>
+      <button id="mute" type="button" aria-label="切換音效">音</button>
+    </div>
+    <div id="bossbar" hidden>
+      <span class="label">巨屍 BOSS</span>
+      <div class="track"><div class="fill" id="bossFill"></div></div>
+    </div>
+  </div>
+  <div id="hint">按住左右拖曳移動 · 小隊自動開火</div>
+  <div class="hud-bottom">
+    <div class="squad"><span class="k">小隊</span><span class="v" id="hudSquad">×1</span></div>
+    <div class="weapon"><span class="k">武器</span><span class="v" id="hudWeapon">手槍</span></div>
+  </div>
+</div>
+<div id="pops"></div>
+
+<section class="overlay" id="menu">
+  <div class="card">
+    <span class="eyebrow" id="menuLevel">STAGE 1</span>
+    <h1>屍潮斷橋</h1>
+    <p class="lede">已經有很多人倒在這座橋上。你能帶著小隊衝到對岸嗎？</p>
+    <ul class="rules">
+      <li><span><strong>左右拖曳</strong>移動，小隊會自動朝前方開火。</span></li>
+      <li style="--c: var(--ally)"><span><strong>射擊數字門</strong>讓數字變大，穿過去就能補兵。紅色負數會扣人。</span></li>
+      <li style="--c: var(--holo)"><span><strong>打滿電池</strong>召喚機甲；<strong>撿起槍</strong>升級火力。</span></li>
+      <li style="--c: var(--blood)"><span>在橋尾<strong>擊倒巨屍</strong>才算過關。</span></li>
+    </ul>
+    <button class="btn" id="btnStart" type="button">出發</button>
+    <span class="best" id="bestLine"></span>
+  </div>
+</section>
+
+<section class="overlay" id="over" hidden>
+  <div class="card">
+    <span class="eyebrow" id="overLevel">STAGE 1</span>
+    <h2>全軍覆沒</h2>
+    <p class="lede" id="overReason">屍潮把你們淹沒了。</p>
+    <div class="stats">
+      <div class="stat"><span class="v" id="overKills">0</span><span class="k">擊殺</span></div>
+      <div class="stat"><span class="v" id="overDist">0%</span><span class="k">進度</span></div>
+    </div>
+    <button class="btn" id="btnRetry" type="button">再試一次</button>
+  </div>
+</section>
+
+<section class="overlay" id="win" hidden>
+  <div class="card">
+    <span class="eyebrow" id="winLevel">STAGE 1 CLEAR</span>
+    <h2>成功過橋</h2>
+    <p class="lede">巨屍倒下了。下一座橋的屍潮更多、更硬。</p>
+    <div class="stats">
+      <div class="stat"><span class="v" id="winKills">0</span><span class="k">擊殺</span></div>
+      <div class="stat"><span class="v" id="winSquad">0</span><span class="k">生還隊員</span></div>
+    </div>
+    <button class="btn" id="btnNext" type="button">下一關</button>
+  </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+'use strict';
+const T = window.THREE;
+const $ = s => document.querySelector(s);
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const rr = (a, b) => a + (b - a) * Math.random();
+
+if (!T) {
+  $('#menu .lede').textContent = '3D 引擎載入失敗，請檢查網路後重新整理。';
+  $('#btnStart').hidden = true;
+  return;
+}
+
+// Seeded RNG so every attempt at the same stage gets the same bridge.
+function mulberry(seed) {
+  return function () {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+let R = Math.random;
+const rnd = (a, b) => a + (b - a) * R();
+const rint = (a, b) => Math.floor(rnd(a, b + 1));
+
+// ---------------------------------------------------------------- constants
+const ROAD = 4;          // half width of the deck
+const RUN = 4.6;         // forward speed (units/s)
+const BULLET_SPEED = 42;
+const MAXZ = 900, MAXB = 700, MAXP = 1400, MAXVIS = 40, SP = 0.62;
+const WEAPONS = [
+  { name: '手槍',   rate: 4,   pellets: 1, spread: 0.04, dmg: 1 },
+  { name: '步槍',   rate: 6.5, pellets: 1, spread: 0.05, dmg: 1 },
+  { name: '散彈槍', rate: 2.4, pellets: 4, spread: 0.16, dmg: 1 },
+  { name: '加特林', rate: 12,  pellets: 1, spread: 0.08, dmg: 1 },
+];
+
+let best = 1;
+try { best = Math.max(1, parseInt(localStorage.getItem('zombie-bridge-best'), 10) || 1); } catch (e) {}
+
+const G = {
+  level: best, phase: 'menu', x: 0, tx: 0, z: 0, L: 200, squad: 1, weapon: 0, kills: 0, time: 0,
+  events: [], soldiers: [], shield: 0, mech: null, boss: null, shake: 0, dmgMul: 1,
+};
+
+// ---------------------------------------------------------------- renderer
+const stage = $('#stage');
+const renderer = new T.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+stage.appendChild(renderer.domElement);
+const scene = new T.Scene();
+const FOG = 0x8fa3b3;
+scene.background = new T.Color(FOG);
+scene.fog = new T.Fog(FOG, 24, 78);
+const camera = new T.PerspectiveCamera(60, 1, 0.1, 220);
+scene.add(new T.HemisphereLight(0xe2e9f1, 0x4a4038, 0.95));
+const sun = new T.DirectionalLight(0xfff2dc, 0.75);
+sun.position.set(6, 12, 5);
+scene.add(sun);
+
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.fov = w / h < 0.8 ? 62 : 50;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ---------------------------------------------------------------- geometry helpers
+// [w, h, d, x, y, z, color]
+function boxes(parts) {
+  const pos = [], nor = [], col = [];
+  const c = new T.Color();
+  for (const p of parts) {
+    const g = new T.BoxGeometry(p[0], p[1], p[2]).toNonIndexed();
+    g.translate(p[3], p[4], p[5]);
+    const a = g.attributes.position.array, n = g.attributes.normal.array;
+    c.set(p[6]);
+    for (let i = 0; i < a.length; i++) { pos.push(a[i]); nor.push(n[i]); }
+    for (let i = 0; i < a.length / 3; i++) col.push(c.r, c.g, c.b);
+    g.dispose();
+  }
+  const geo = new T.BufferGeometry();
+  geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new T.Float32BufferAttribute(nor, 3));
+  geo.setAttribute('color', new T.Float32BufferAttribute(col, 3));
+  geo.computeBoundingSphere();
+  return geo;
+}
+
+// Zombie faces +z (toward the squad), arms out.
+const ZGEO = boxes([
+  [0.2, 0.78, 0.24, -0.13, 0.39, 0, 0x3d3a40],
+  [0.2, 0.78, 0.24, 0.13, 0.39, 0, 0x3d3a40],
+  [0.56, 0.7, 0.32, 0, 1.13, 0, 0x6b5a4a],
+  [0.36, 0.36, 0.34, 0, 1.67, 0.04, 0x9aa58a],
+  [0.14, 0.14, 0.62, -0.34, 1.36, 0.28, 0x8f9a80],
+  [0.14, 0.14, 0.62, 0.34, 1.36, 0.28, 0x8f9a80],
+]);
+// Soldier faces -z.
+const SGEO = boxes([
+  [0.2, 0.75, 0.24, -0.12, 0.375, 0, 0x1f2f63],
+  [0.2, 0.75, 0.24, 0.12, 0.375, 0, 0x1f2f63],
+  [0.5, 0.64, 0.3, 0, 1.07, 0, 0x2f5fd0],
+  [0.56, 0.4, 0.36, 0, 1.18, 0, 0x22314d],
+  [0.3, 0.3, 0.3, 0, 1.56, 0, 0xd7a982],
+  [0.36, 0.14, 0.38, 0, 1.75, 0, 0x1d2733],
+  [0.1, 0.12, 0.78, 0.14, 1.25, -0.4, 0x15181c],
+  [0.12, 0.12, 0.42, -0.27, 1.2, -0.18, 0x2f5fd0],
+  [0.12, 0.12, 0.42, 0.29, 1.2, -0.18, 0x2f5fd0],
+]);
+// Mech faces -z.
+const MGEO = boxes([
+  [0.5, 1.3, 0.6, -0.45, 0.65, 0, 0x55606e],
+  [0.5, 1.3, 0.6, 0.45, 0.65, 0, 0x55606e],
+  [0.95, 0.32, 0.72, 0, 1.38, 0, 0x3b4552],
+  [1.5, 1.1, 1.0, 0, 2.05, 0, 0x7a8ba0],
+  [0.7, 0.5, 0.7, 0, 2.85, -0.05, 0x3b4552],
+  [0.5, 0.12, 0.06, 0, 2.88, -0.42, 0x54dcff],
+  [0.42, 0.42, 1.4, -1.0, 2.1, -0.35, 0x3b4552],
+  [0.42, 0.42, 1.4, 1.0, 2.1, -0.35, 0x3b4552],
+  [0.2, 0.2, 0.2, -1.0, 2.1, -1.1, 0xffb020],
+  [0.2, 0.2, 0.2, 1.0, 2.1, -1.1, 0xffb020],
+]);
+// Rifle pickup, barrel along +x.
+const GUNGEO = boxes([
+  [1.1, 0.18, 0.14, 0.1, 0, 0, 0x2a2622],
+  [0.55, 0.22, 0.15, -0.65, -0.03, 0, 0xb5652b],
+  [0.14, 0.38, 0.12, 0.2, -0.24, 0, 0x2a2622],
+  [0.5, 0.07, 0.07, 0.85, 0.03, 0, 0x2a2622],
+  [0.12, 0.26, 0.12, -0.15, -0.2, 0, 0xb5652b],
+]);
+
+const M = {
+  road: new T.MeshLambertMaterial({ color: 0x8a837c }),
+  curb: new T.MeshLambertMaterial({ color: 0xbab3a9 }),
+  rail: new T.MeshLambertMaterial({ color: 0x3a3e44 }),
+  beam: new T.MeshLambertMaterial({ color: 0x5b6068 }),
+  dash: new T.MeshLambertMaterial({ color: 0xe9e4d8 }),
+  tower: new T.MeshLambertMaterial({ color: 0x6c7480 }),
+  city: new T.MeshLambertMaterial({ color: 0x7f8f9d }),
+  water: new T.MeshLambertMaterial({ color: 0x55697a }),
+  vc: new T.MeshLambertMaterial({ vertexColors: true }),
+  holo: new T.MeshBasicMaterial({ color: 0x54dcff, transparent: true, opacity: 0.3, blending: T.AdditiveBlending, depthWrite: false }),
+  holoWire: new T.MeshBasicMaterial({ color: 0x9df0ff, wireframe: true, transparent: true, opacity: 0.55, blending: T.AdditiveBlending, depthWrite: false }),
+  pad: new T.MeshLambertMaterial({ color: 0xa1a9b2 }),
+  padTop: new T.MeshBasicMaterial({ color: 0x54dcff, transparent: true, opacity: 0.55 }),
+  ring: new T.MeshBasicMaterial({ color: 0xffb020, transparent: true, opacity: 0.8, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }),
+  batt: new T.MeshLambertMaterial({ color: 0xd8326e }),
+  battCap: new T.MeshLambertMaterial({ color: 0xc9ced6 }),
+  post: new T.MeshLambertMaterial({ color: 0x2c3036 }),
+  shield: new T.MeshBasicMaterial({ color: 0x3fb8ff, transparent: true, opacity: 0.16, blending: T.AdditiveBlending, depthWrite: false }),
+};
+
+function disposeTree(o) {
+  o.traverse(n => {
+    if (n.geometry && ![ZGEO, SGEO, MGEO, GUNGEO].includes(n.geometry)) n.geometry.dispose();
+    if (n.material && n.material.map) { n.material.map.dispose(); n.material.dispose(); }
+  });
+}
+
+// ---------------------------------------------------------------- instanced pools
+const dummy = new T.Object3D();
+const tmpC = new T.Color();
+
+const zMesh = new T.InstancedMesh(ZGEO, M.vc, MAXZ);
+zMesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
+zMesh.frustumCulled = false;
+for (let i = 0; i < MAXZ; i++) zMesh.setColorAt(i, tmpC.setRGB(1, 1, 1));
+zMesh.count = 0;
+scene.add(zMesh);
+const Z = [];
+
+const bMesh = new T.InstancedMesh(new T.BoxGeometry(0.09, 0.09, 0.8), new T.MeshBasicMaterial({ color: 0xffffff, fog: false }), MAXB);
+bMesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
+bMesh.frustumCulled = false;
+for (let i = 0; i < MAXB; i++) bMesh.setColorAt(i, tmpC.setRGB(1, 0.85, 0.45));
+bMesh.count = 0;
+scene.add(bMesh);
+const bx = new Float32Array(MAXB), bz = new Float32Array(MAXB), bdx = new Float32Array(MAXB), bdz = new Float32Array(MAXB);
+const bl = new Float32Array(MAXB), bd = new Float32Array(MAXB), bk = new Uint8Array(MAXB);
+let nb = 0;
+
+function dotTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.4, 'rgba(255,255,255,.7)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+  return new T.CanvasTexture(c);
+}
+const pPos = new Float32Array(MAXP * 3), pCol = new Float32Array(MAXP * 3);
+const pGeo = new T.BufferGeometry();
+pGeo.setAttribute('position', new T.BufferAttribute(pPos, 3).setUsage(T.DynamicDrawUsage));
+pGeo.setAttribute('color', new T.BufferAttribute(pCol, 3).setUsage(T.DynamicDrawUsage));
+const pts = new T.Points(pGeo, new T.PointsMaterial({ size: 0.32, vertexColors: true, transparent: true, blending: T.AdditiveBlending, depthWrite: false, map: dotTexture() }));
+pts.frustumCulled = false;
+scene.add(pts);
+const px = new Float32Array(MAXP), py = new Float32Array(MAXP), pz = new Float32Array(MAXP);
+const pvx = new Float32Array(MAXP), pvy = new Float32Array(MAXP), pvz = new Float32Array(MAXP);
+const pl = new Float32Array(MAXP), pm = new Float32Array(MAXP), pr = new Float32Array(MAXP), pg = new Float32Array(MAXP), pb = new Float32Array(MAXP);
+let np = 0;
+
+function burst(x, y, z, n, col, speed, life) {
+  for (let i = 0; i < n && np < MAXP; i++, np++) {
+    px[np] = x; py[np] = y; pz[np] = z;
+    const a = Math.random() * Math.PI * 2, u = Math.random();
+    pvx[np] = Math.cos(a) * speed * u; pvz[np] = Math.sin(a) * speed * u; pvy[np] = rr(0.3, 1) * speed;
+    pl[np] = pm[np] = life * rr(0.6, 1);
+    pr[np] = col[0]; pg[np] = col[1]; pb[np] = col[2];
+  }
+}
+
+// ---------------------------------------------------------------- canvas labels
+function canvasPlane(w, h, cw, ch) {
+  const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+  const tex = new T.CanvasTexture(c);
+  tex.anisotropy = 4;
+  const mat = new T.MeshBasicMaterial({ map: tex, transparent: true, side: T.DoubleSide, depthWrite: false });
+  const mesh = new T.Mesh(new T.PlaneGeometry(w, h), mat);
+  return { mesh, ctx: c.getContext('2d'), tex, cw, ch };
+}
+function canvasSprite(w, h, cw, ch) {
+  const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+  const tex = new T.CanvasTexture(c);
+  const sp = new T.Sprite(new T.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+  sp.scale.set(w, h, 1);
+  return { mesh: sp, ctx: c.getContext('2d'), tex, cw, ch };
+}
+function rrect(c, x, y, w, h, r) {
+  c.beginPath();
+  c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+}
+
+// ---------------------------------------------------------------- level construction
+let levelGroup = null;
+
+function buildLevel(n) {
+  if (levelGroup) { scene.remove(levelGroup); disposeTree(levelGroup); }
+  levelGroup = new T.Group();
+  scene.add(levelGroup);
+  R = mulberry(n * 7919 + 13);
+  const L = 170 + n * 25;
+  G.L = L;
+  const len = L + 130, mid = 30 - len / 2;
+
+  const add = (geo, mat, x, y, z) => { const m = new T.Mesh(geo, mat); m.position.set(x, y, z); levelGroup.add(m); return m; };
+  add(new T.BoxGeometry(ROAD * 2 + 0.4, 0.6, len), M.road, 0, -0.3, mid);
+  add(new T.PlaneGeometry(600, len + 200).rotateX(-Math.PI / 2), M.water, 0, -22, mid);
+  for (const s of [-1, 1]) {
+    add(new T.BoxGeometry(0.35, 0.35, len), M.curb, s * (ROAD + 0.08), 0.17, mid);
+    add(new T.BoxGeometry(0.12, 0.12, len), M.rail, s * (ROAD + 0.15), 0.98, mid);
+    add(new T.BoxGeometry(0.12, 0.12, len), M.rail, s * (ROAD + 0.15), 0.6, mid);
+    add(new T.BoxGeometry(0.9, 2.4, len), M.beam, s * (ROAD - 0.4), -1.8, mid);
+  }
+  // railing posts + lane dashes
+  const postCount = Math.floor(len / 2.2) * 2;
+  const posts = new T.InstancedMesh(new T.BoxGeometry(0.14, 1.05, 0.14), M.post, postCount);
+  for (let i = 0; i < postCount; i++) {
+    dummy.position.set((i % 2 ? 1 : -1) * (ROAD + 0.15), 0.5, 30 - Math.floor(i / 2) * 2.2);
+    dummy.rotation.set(0, 0, 0); dummy.scale.setScalar(1); dummy.updateMatrix();
+    posts.setMatrixAt(i, dummy.matrix);
+  }
+  levelGroup.add(posts);
+  const dashCount = Math.floor(len / 5);
+  const dashes = new T.InstancedMesh(new T.BoxGeometry(0.14, 0.02, 2.2), M.dash, dashCount);
+  for (let i = 0; i < dashCount; i++) {
+    dummy.position.set(0, 0.01, 30 - i * 5); dummy.updateMatrix();
+    dashes.setMatrixAt(i, dummy.matrix);
+  }
+  levelGroup.add(dashes);
+  // suspension towers
+  for (let z = -40; z > -len + 30; z -= 62) {
+    for (const s of [-1, 1]) add(new T.BoxGeometry(1, 46, 1), M.tower, s * (ROAD + 1.4), 0, z);
+    add(new T.BoxGeometry(ROAD * 2 + 3.8, 0.9, 1), M.tower, 0, 21, z);
+    add(new T.BoxGeometry(ROAD * 2 + 3.8, 0.9, 1), M.tower, 0, -1.2, z);
+  }
+  // hazy skyline on both banks
+  const cityGeo = new T.BoxGeometry(1, 1, 1);
+  for (let z = 20; z > -len - 40; z -= rnd(6, 11)) {
+    for (const s of [-1, 1]) {
+      if (R() < 0.35) continue;
+      const w = rnd(5, 12), h = rnd(10, 46);
+      const b = add(cityGeo, M.city, s * rnd(26, 70), -22 + h / 2, z);
+      b.scale.set(w, h, rnd(5, 12));
+    }
+  }
+
+  G.events = [];
+  makeEvents(n, L);
+}
+
+function hordeSpec(kind, n, side) {
+  const f = 1 + (n - 1) * 0.32;
+  const hp = 1 + Math.floor((n - 1) / 2);
+  switch (kind) {
+    case 'wall':   return { cx: side * 2.1, w: 3.4, d: 14, count: Math.round(50 * f), hp };
+    case 'blob':   return { cx: rnd(-1.6, 1.6), w: 3.6, d: 6, count: Math.round(30 * f), hp };
+    case 'line':   return { cx: 0, w: 7.4, d: 2.6, count: Math.round(20 * f), hp };
+    case 'brutes': return { cx: 0, w: 6.4, d: 4, count: 2 + n, hp: 10 + n * 4, big: true };
+    default:       return { cx: -1.8, w: 3.6, d: 6, count: Math.round(16 * f), hp };
+  }
+}
+
+function makeEvents(n, L) {
+  const E = G.events;
+  let z = -24;
+  // Opening that mirrors the ad: a horde, then a red gate beside a dormant mech with a rifle between them.
+  E.push({ type: 'horde', z, spec: hordeSpec('open', n, -1) });
+  z -= 18;
+  const heroSide = R() < 0.5 ? -1 : 1;
+  E.push(makeWeapon(z + 7, 0, 1));
+  E.push(makeGate(z, -heroSide, -rint(2, 3), 'add', n));
+  E.push(makeHero(z + 0.5, heroSide, n));
+  z -= 16;
+
+  const pattern = ['wall', 'gates', 'line', 'blob', 'weapon', 'gates', 'brutes', 'wall', 'gates', 'line', 'weapon', 'blob', 'gates', 'brutes'];
+  let i = 0, tier = 2;
+  while (z > -L + 12) {
+    const t = pattern[i % pattern.length]; i++;
+    if (t === 'gates') {
+      const pid = E.length;
+      const s = R() < 0.5 ? -1 : 1;
+      const good = R() < 0.3 && i > 3
+        ? makeGate(z, s, 2, 'mul', n)
+        : makeGate(z, s, rint(1, 3) + Math.floor(n / 2), 'add', n);
+      const bad = makeGate(z, -s, -rint(1, 3) - Math.floor(n / 3), 'add', n);
+      good.pair = bad.pair = pid;
+      E.push(good, bad);
+      z -= 14;
+    } else if (t === 'weapon') {
+      if (tier < WEAPONS.length) { E.push(makeWeapon(z, rnd(-2.2, 2.2), tier++)); z -= 10; }
+    } else {
+      const spec = hordeSpec(t, n, R() < 0.5 ? -1 : 1);
+      E.push({ type: 'horde', z, spec });
+      z -= spec.d + rnd(8, 12);
+    }
+  }
+}
+
+function makeGate(z, side, val, kind, n) {
+  const p = canvasPlane(3.6, 2.25, 256, 160);
+  const grp = new T.Group();
+  grp.position.set(side * 1.95, 0, z);
+  p.mesh.position.y = 1.55;
+  p.mesh.rotation.x = -0.42;
+  grp.add(p.mesh);
+  for (const s of [-1, 1]) {
+    const post = new T.Mesh(new T.BoxGeometry(0.12, 1.5, 0.12), M.post);
+    post.position.set(s * 1.7, 0.75, 0.15);
+    grp.add(post);
+  }
+  levelGroup.add(grp);
+  const e = { type: 'gate', z, x: side * 1.95, side, val, kind, per: 2 + n, hits: 0, used: false, bump: 0, fade: 0, grp, p };
+  e.draw = () => drawGate(e);
+  e.draw();
+  return e;
+}
+function drawGate(e) {
+  const { ctx: c, cw: W, ch: H } = e.p;
+  c.clearRect(0, 0, W, H);
+  const pos = e.kind === 'mul' || e.val > 0;
+  const g = c.createLinearGradient(0, 0, 0, H);
+  if (pos) { g.addColorStop(0, '#5aa0ff'); g.addColorStop(1, '#1f55d6'); }
+  else { g.addColorStop(0, '#ff5a5f'); g.addColorStop(1, '#b3151d'); }
+  rrect(c, 6, 6, W - 12, H - 12, 18);
+  c.globalAlpha = 0.9; c.fillStyle = g; c.fill();
+  c.globalAlpha = 1; c.lineWidth = 6; c.strokeStyle = 'rgba(255,255,255,.85)'; c.stroke();
+  const txt = e.kind === 'mul' ? '×' + e.val : (e.val > 0 ? '+' : '') + e.val;
+  c.font = '96px Bungee, "Noto Sans TC", sans-serif';
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillStyle = 'rgba(0,0,0,.35)'; c.fillText(txt, W / 2 + 4, H / 2 + 10);
+  c.fillStyle = '#fff'; c.fillText(txt, W / 2, H / 2 + 6);
+  e.p.tex.needsUpdate = true;
+}
+
+function makeWeapon(z, x, tier) {
+  const grp = new T.Group();
+  grp.position.set(x, 0, z);
+  const ring = new T.Mesh(new T.RingGeometry(0.55, 0.9, 32).rotateX(-Math.PI / 2), M.ring);
+  ring.position.y = 0.03;
+  grp.add(ring);
+  const gun = new T.Mesh(GUNGEO, M.vc);
+  gun.position.y = 0.75;
+  gun.scale.setScalar(tier >= 3 ? 1.35 : 1.15);
+  grp.add(gun);
+  const label = canvasSprite(1.8, 0.56, 256, 80);
+  label.mesh.position.y = 1.65;
+  grp.add(label.mesh);
+  levelGroup.add(grp);
+  const e = { type: 'weapon', z, x, tier, taken: false, grp, gun, ring, label };
+  e.draw = () => {
+    const c = label.ctx; c.clearRect(0, 0, 256, 80);
+    rrect(c, 4, 8, 248, 64, 32); c.fillStyle = 'rgba(16,21,27,.8)'; c.fill();
+    c.font = '900 40px "Noto Sans TC", sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillStyle = '#ffb020'; c.fillText(WEAPONS[tier].name, 128, 42);
+    label.tex.needsUpdate = true;
+  };
+  e.draw();
+  return e;
+}
+
+function makeHero(z, side, n) {
+  const x = side * 2.05;
+  const grp = new T.Group();
+  grp.position.set(x, 0, z);
+  const pad = new T.Mesh(new T.CylinderGeometry(1.05, 1.15, 0.5, 28), M.pad);
+  pad.position.y = 0.25;
+  grp.add(pad);
+  const top = new T.Mesh(new T.CircleGeometry(0.9, 28).rotateX(-Math.PI / 2), M.padTop);
+  top.position.y = 0.51;
+  grp.add(top);
+  const holo = new T.Group();
+  holo.add(new T.Mesh(MGEO, M.holo), new T.Mesh(MGEO, M.holoWire));
+  holo.position.y = 0.52;
+  holo.scale.setScalar(0.72);
+  grp.add(holo);
+  const batt = new T.Group();
+  const body = new T.Mesh(new T.CylinderGeometry(0.36, 0.36, 0.9, 20).rotateZ(Math.PI / 2), M.batt);
+  const cap = new T.Mesh(new T.CylinderGeometry(0.2, 0.2, 0.16, 16).rotateZ(Math.PI / 2), M.battCap);
+  cap.position.x = 0.52;
+  batt.add(body, cap);
+  batt.position.set(-side * 0.2, 0.38, 1.35);
+  grp.add(batt);
+  const label = canvasSprite(2.8, 0.88, 256, 80);
+  label.mesh.position.set(0, 3.1, 0.4);
+  grp.add(label.mesh);
+  levelGroup.add(grp);
+  const e = { type: 'hero', z, x, side, bz: z + 1.35, charge: 0, need: 14 + n * 8, done: false, missed: false, grp, holo, batt, label, lastPct: -1 };
+  e.draw = () => {
+    const pct = Math.min(100, Math.floor(e.charge / e.need * 100));
+    const c = label.ctx; c.clearRect(0, 0, 256, 80);
+    rrect(c, 4, 6, 248, 68, 16); c.fillStyle = 'rgba(16,21,27,.82)'; c.fill();
+    rrect(c, 16, 50, 224, 12, 6); c.fillStyle = 'rgba(255,255,255,.18)'; c.fill();
+    if (pct > 0) { rrect(c, 16, 50, Math.max(12, 224 * pct / 100), 12, 6); c.fillStyle = '#54dcff'; c.fill(); }
+    c.font = '900 30px "Noto Sans TC", sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillStyle = '#fff'; c.fillText('射電池 ' + pct + '%', 128, 28);
+    label.tex.needsUpdate = true;
+    e.lastPct = pct;
+  };
+  e.draw();
+  return e;
+}
+
+// ---------------------------------------------------------------- spawning
+const TINTS = [[1, 1, 1], [1.15, 0.95, 0.85], [0.85, 0.92, 1.06], [1.08, 1.06, 0.8], [0.82, 0.82, 0.84], [1.1, 0.85, 0.9]];
+function spawnHorde(spec, z0) {
+  for (let i = 0; i < spec.count && Z.length < MAXZ; i++) {
+    const big = !!spec.big;
+    Z.push({
+      x: clamp(spec.cx + (Math.random() - 0.5) * spec.w, -ROAD + 0.35, ROAD - 0.35),
+      z: z0 - Math.random() * spec.d,
+      sp: big ? rr(0.7, 0.85) : rr(1, 1.7),
+      hp: spec.hp, s: big ? 1.65 : rr(0.92, 1.08), flash: 0, dying: 0, ph: Math.random() * 6.28, vx: 0,
+      tint: big ? [1.25, 0.6, 0.55] : TINTS[(Math.random() * TINTS.length) | 0], big,
+    });
+  }
+}
+
+function syncSoldiers() {
+  const want = Math.min(G.squad, MAXVIS);
+  while (G.soldiers.length < want) {
+    const m = new T.Mesh(SGEO, M.vc);
+    const s = { mesh: m, x: G.x + rr(-0.3, 0.3), z: G.z + 1.2, cd: Math.random() * 0.3 };
+    m.position.set(s.x, 0, s.z);
+    scene.add(m);
+    G.soldiers.push(s);
+    if (G.phase !== 'menu') burst(s.x, 1, s.z, 8, [0.3, 0.75, 1], 3, 0.5);
+  }
+  while (G.soldiers.length > want) scene.remove(G.soldiers.pop().mesh);
+  G.dmgMul = G.squad > MAXVIS ? G.squad / MAXVIS : 1;
+}
+function perRow(n) { return n <= 2 ? Math.max(1, n) : Math.min(5, Math.ceil(Math.sqrt(n * 1.5))); }
+function formationHalf() { return (perRow(G.soldiers.length) - 1) / 2 * SP; }
+
+function killSoldier(i) {
+  const s = G.soldiers[i];
+  if (!s) return;
+  burst(s.x, 1, s.z, 14, [0.9, 0.2, 0.2], 3.5, 0.6);
+  scene.remove(s.mesh);
+  G.soldiers.splice(i, 1);
+  G.squad = Math.max(0, G.squad - 1);
+  G.shake = Math.max(G.shake, 0.25);
+  SFX.thud();
+  syncSoldiers();
+  if (G.squad <= 0) gameOver('屍潮把最後一名隊員也拖下去了。');
+}
+
+// ---------------------------------------------------------------- popups
+const popLayer = $('#pops');
+const pops = [];
+const pv = new T.Vector3();
+function pop(text, x, y, z, cls) {
+  const el = document.createElement('div');
+  el.className = 'pop ' + (cls || '');
+  el.textContent = text;
+  popLayer.appendChild(el);
+  pops.push({ el, x, y, z, t: 0 });
+}
+function updatePops(dt) {
+  const w = window.innerWidth, h = window.innerHeight;
+  for (let i = pops.length - 1; i >= 0; i--) {
+    const p = pops[i];
+    p.t += dt; p.y += dt * 1.4;
+    if (p.t > 1.1) { p.el.remove(); pops.splice(i, 1); continue; }
+    pv.set(p.x, p.y, p.z).project(camera);
+    const sx = (pv.x * 0.5 + 0.5) * w, sy = (-pv.y * 0.5 + 0.5) * h;
+    const sc = p.t < 0.15 ? 0.6 + p.t / 0.15 * 0.6 : 1.2 - Math.min(0.2, (p.t - 0.15));
+    p.el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -50%) scale(${sc})`;
+    p.el.style.opacity = String(Math.min(1, (1.1 - p.t) * 3));
+  }
+}
+
+// ---------------------------------------------------------------- sound
+const SFX = {
+  ctx: null, on: true, last: 0, noise: null, master: null,
+  init() {
+    if (this.ctx) { if (this.ctx.resume) this.ctx.resume(); return; }
+    try {
+      const C = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new C();
+      const sr = this.ctx.sampleRate, buf = this.ctx.createBuffer(1, Math.floor(sr * 0.15), sr), d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      this.noise = buf;
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0.55;
+      this.master.connect(this.ctx.destination);
+    } catch (e) { this.ctx = null; }
+  },
+  shot() {
+    const c = this.ctx; if (!c || !this.on) return;
+    const now = c.currentTime; if (now - this.last < 0.055) return; this.last = now;
+    const s = c.createBufferSource(); s.buffer = this.noise;
+    const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = rr(1200, 2000); f.Q.value = 0.9;
+    const g = c.createGain(); g.gain.setValueAtTime(0.13, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+    s.connect(f); f.connect(g); g.connect(this.master); s.start(now); s.stop(now + 0.08);
+  },
+  tone(freq, dur, type, vol, slide, delay) {
+    const c = this.ctx; if (!c || !this.on) return;
+    const t0 = c.currentTime + (delay || 0);
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = type || 'square'; o.frequency.setValueAtTime(freq, t0);
+    if (slide) o.frequency.linearRampToValueAtTime(Math.max(30, freq + slide), t0 + dur);
+    g.gain.setValueAtTime(vol || 0.07, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    o.connect(g); g.connect(this.master); o.start(t0); o.stop(t0 + dur + 0.02);
+  },
+  gate(v) { this.tone(420 + clamp(v, -4, 12) * 45, 0.08, 'square', 0.05); },
+  good() { [523, 659, 784].forEach((f, i) => this.tone(f, 0.14, 'triangle', 0.09, 0, i * 0.07)); },
+  bad() { this.tone(220, 0.3, 'sawtooth', 0.08, -140); },
+  hero() { [392, 523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.18, 'triangle', 0.09, 0, i * 0.06)); },
+  thud() { this.tone(110, 0.18, 'sine', 0.16, -60); },
+  boom() { this.tone(70, 0.5, 'sawtooth', 0.12, -40); },
+};
+
+// ---------------------------------------------------------------- combat
+const BN = 56;
+const buckets = Array.from({ length: BN }, () => []);
+const bIdx = z => Math.floor(G.z + 10 - z);
+
+function spawnBullet(x, z, dx, dz, dmg, kind) {
+  if (nb >= MAXB) return;
+  bx[nb] = x; bz[nb] = z; bdx[nb] = dx; bdz[nb] = dz; bl[nb] = kind ? 0.75 : 0.56; bd[nb] = dmg; bk[nb] = kind;
+  bMesh.setColorAt(nb, kind ? tmpC.setRGB(1, 0.5, 0.15) : tmpC.setRGB(1, 0.88, 0.45));
+  nb++;
+}
+function removeBullet(i) {
+  const j = --nb;
+  if (i === j) return;
+  bx[i] = bx[j]; bz[i] = bz[j]; bdx[i] = bdx[j]; bdz[i] = bdz[j]; bl[i] = bl[j]; bd[i] = bd[j]; bk[i] = bk[j];
+  bMesh.setColorAt(i, bk[i] ? tmpC.setRGB(1, 0.5, 0.15) : tmpC.setRGB(1, 0.88, 0.45));
+}
+
+function hitZombie(zb, dmg) {
+  if (zb.dying > 0) return;
+  zb.hp -= dmg;
+  zb.flash = 0.1;
+  if (zb.hp <= 0) {
+    zb.dying = 0.35;
+    G.kills++;
+    burst(zb.x, 1.1 * zb.s, zb.z, zb.big ? 22 : 7, [0.45, 1, 0.3], zb.big ? 4 : 2.6, 0.45);
+  }
+}
+function splash(x, z, dmg) {
+  burst(x, 1, z, 16, [1, 0.55, 0.15], 4.5, 0.4);
+  const k0 = bIdx(z);
+  for (let k = k0 - 2; k <= k0 + 2; k++) {
+    if (k < 0 || k >= BN) continue;
+    for (const zi of buckets[k]) {
+      const zb = Z[zi];
+      if ((zb.x - x) ** 2 + (zb.z - z) ** 2 < 3.4) hitZombie(zb, dmg * 0.6);
+    }
+  }
+}
+function hitBoss(dmg) {
+  const b = G.boss;
+  b.hp -= dmg; b.flash = 0.08;
+  if (b.hp <= 0 && b.alive) {
+    b.alive = false; b.deadT = 0;
+    G.kills++;
+    burst(b.x, 3, b.z, 120, [0.45, 1, 0.3], 7, 0.9);
+    burst(b.x, 3, b.z, 60, [1, 0.6, 0.2], 6, 0.7);
+    G.shake = 0.8;
+    SFX.boom();
+  }
+}
+function gateHit(e, dmg) {
+  burst(bxHit, 1.3, e.z + 0.1, 2, e.val > 0 || e.kind === 'mul' ? [0.4, 0.6, 1] : [1, 0.4, 0.4], 2, 0.25);
+  if (e.kind === 'mul') return;
+  e.hits += dmg;
+  let changed = false;
+  while (e.hits >= e.per) { e.hits -= e.per; e.val++; changed = true; }
+  if (changed) {
+    e.draw(); e.bump = 1;
+    SFX.gate(e.val);
+    pop('+1', e.x + rr(-0.6, 0.6), 2.6, e.z, 'good');
+  }
+}
+function heroHit(e, dmg) {
+  burst(bxHit, 0.5, e.bz, 3, [0.4, 0.9, 1], 2.2, 0.3);
+  e.charge += dmg;
+  e.batt.position.y = 0.38 + 0.05;
+  if (e.charge >= e.need) activateHero(e);
+  else if (Math.floor(e.charge / e.need * 100) !== e.lastPct) e.draw();
+}
+let bxHit = 0;
+
+function activateHero(e) {
+  e.done = true;
+  e.charge = e.need; e.draw();
+  e.holo.visible = false;
+  e.label.mesh.visible = false;
+  const wp = e.grp.position;
+  burst(wp.x, 1.8, wp.z, 70, [0.33, 0.86, 1], 5, 0.8);
+  const mesh = new T.Mesh(MGEO, M.vc);
+  mesh.scale.setScalar(0.72);
+  mesh.position.set(wp.x, 0.52, wp.z);
+  scene.add(mesh);
+  if (G.mech) scene.remove(G.mech.mesh);
+  G.mech = { mesh, x: wp.x, z: wp.z, cd: 0.4, side: e.side };
+  G.shield = 4;
+  SFX.hero();
+  pop('機甲加入！', wp.x, 3.4, wp.z, 'holo');
+}
+
+const tgX = new Float32Array(6), tgZ = new Float32Array(6), tgS = new Float32Array(6);
+let nT = 0;
+function findTargets() {
+  nT = 0;
+  const b = G.boss;
+  if (b && b.alive && G.z - b.z < 24) { tgX[0] = b.x; tgZ[0] = b.z; tgS[0] = 0; nT = 1; }
+  for (let i = 0; i < Z.length; i++) {
+    const zb = Z[i];
+    if (zb.dying > 0) continue;
+    const d = G.z - zb.z;
+    if (d < 0.3 || d > 16) continue;
+    const ax = Math.abs(zb.x - G.x);
+    if (ax > d * 0.9 + 1.5) continue;
+    const sc = d + ax * 0.6;
+    if (nT < 6) { tgX[nT] = zb.x; tgZ[nT] = zb.z; tgS[nT] = sc; nT++; continue; }
+    let worst = 0;
+    for (let k = 1; k < 6; k++) if (tgS[k] > tgS[worst]) worst = k;
+    if (sc < tgS[worst]) { tgX[worst] = zb.x; tgZ[worst] = zb.z; tgS[worst] = sc; }
+  }
+}
+
+// ---------------------------------------------------------------- per-frame updates
+function updateEvents(dt) {
+  for (const e of G.events) {
+    if (e.type === 'horde') {
+      if (!e.spawned && e.z > G.z - 58) { e.spawned = true; spawnHorde(e.spec, e.z); }
+      continue;
+    }
+    if (e.type === 'gate') {
+      if (e.bump > 0) { e.bump = Math.max(0, e.bump - dt * 5); }
+      if (!e.used && G.z <= e.z) {
+        e.used = true;
+        if (e.pair !== undefined) for (const o of G.events) if (o !== e && o.pair === e.pair) { o.used = true; o.fade = o.fade || 0.001; }
+        e.fade = 0.001;
+        if (G.x * e.side > 0.05) passGate(e);
+      }
+      const sc = 1 + e.bump * 0.12 + e.fade * 0.5;
+      e.grp.scale.set(sc, sc, sc);
+      if (e.fade > 0) {
+        e.fade += dt * 2.5;
+        e.p.mesh.material.opacity = Math.max(0, 1 - e.fade);
+        if (e.fade >= 1) e.grp.visible = false;
+      }
+      continue;
+    }
+    if (e.type === 'weapon') {
+      if (e.taken) continue;
+      e.gun.rotation.y += dt * 2;
+      e.gun.position.y = 0.75 + Math.sin(G.time * 3 + e.z) * 0.1;
+      e.ring.material.opacity = 0.55 + Math.sin(G.time * 5) * 0.25;
+      if (Math.abs(G.z - e.z) < 0.9 && Math.abs(G.x - e.x) < 1.4 + formationHalf()) {
+        e.taken = true; e.grp.visible = false;
+        burst(e.x, 1, e.z, 30, [1, 0.7, 0.2], 3.5, 0.6);
+        if (e.tier > G.weapon) {
+          G.weapon = e.tier;
+          pop(WEAPONS[e.tier].name + '！', e.x, 2.4, e.z, 'gold');
+        } else {
+          G.squad += 2; syncSoldiers();
+          pop('+2', e.x, 2.4, e.z, 'good');
+        }
+        SFX.good();
+      } else if (G.z < e.z - 3) {
+        e.taken = true; e.grp.visible = false;
+      }
+      continue;
+    }
+    if (e.type === 'hero') {
+      if (!e.done && !e.missed) {
+        e.holo.rotation.y = Math.sin(G.time * 0.8) * 0.5;
+        M.holo.opacity = 0.24 + Math.sin(G.time * 6) * 0.06;
+        e.batt.position.y += (0.38 - e.batt.position.y) * Math.min(1, dt * 12);
+        if (G.z < e.z - 1.5) { e.missed = true; e.holo.visible = false; e.label.mesh.visible = false; }
+      }
+    }
+  }
+}
+
+function passGate(e) {
+  const before = G.squad;
+  if (e.kind === 'mul') G.squad = Math.round(G.squad * e.val);
+  else G.squad += e.val;
+  const diff = G.squad - before;
+  const cz = G.z + 0.5;
+  if (diff > 0) { pop('+' + diff, G.x, 2.6, cz, 'good'); SFX.good(); }
+  else if (diff < 0) { pop(String(diff), G.x, 2.6, cz, 'bad'); SFX.bad(); G.shake = 0.3; }
+  if (G.squad <= 0) {
+    G.squad = 0; syncSoldiers();
+    gameOver('紅色數字門把整支小隊扣光了。下次先把它打成正數。');
+    return;
+  }
+  syncSoldiers();
+}
+
+function updateSquad(dt) {
+  const half = formationHalf();
+  G.tx = clamp(G.tx, -ROAD + 0.45 + half, ROAD - 0.45 - half);
+  G.x += (G.tx - G.x) * Math.min(1, dt * 14);
+  const n = G.soldiers.length, per = perRow(n);
+  const W = WEAPONS[G.weapon];
+  findTargets();
+  const running = G.phase === 'run';
+  for (let i = 0; i < n; i++) {
+    const s = G.soldiers[i];
+    const row = Math.floor(i / per), inRow = Math.min(per, n - row * per), col = i % per;
+    const tx = G.x + (col - (inRow - 1) / 2) * SP, tz = G.z + row * SP;
+    s.x += (tx - s.x) * Math.min(1, dt * 10);
+    s.z += (tz - s.z) * Math.min(1, dt * 10);
+    let dx = 0, dz = -1;
+    if (nT > 0) {
+      const k = i % nT;
+      dx = tgX[k] - s.x; dz = tgZ[k] - s.z;
+      const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+      if (dz > -0.2) { dx = 0; dz = -1; }
+    }
+    s.mesh.position.set(s.x, running ? Math.abs(Math.sin(G.time * 11 + i)) * 0.08 : 0, s.z);
+    s.mesh.rotation.y = Math.atan2(-dx, -dz);
+    s.cd -= dt;
+    if (s.cd <= 0) {
+      s.cd = Math.max(s.cd, -0.05) + 1 / W.rate * rr(0.85, 1.15);
+      for (let p = 0; p < W.pellets; p++) {
+        const a = (Math.random() - 0.5) * W.spread * 2 + (W.pellets > 1 ? (p - (W.pellets - 1) / 2) * W.spread * 0.7 : 0);
+        const ca = Math.cos(a), sa = Math.sin(a);
+        const rx = dx * ca - dz * sa, rz = dx * sa + dz * ca;
+        spawnBullet(s.x + rx * 0.5 + 0.14, s.z + rz * 0.5, rx, rz, W.dmg * G.dmgMul, 0);
+      }
+      SFX.shot();
+    }
+  }
+  // shield bubble
+  if (G.shield > 0) {
+    G.shield -= dt;
+    shieldMesh.visible = true;
+    const rows = Math.ceil(n / per);
+    shieldMesh.position.set(G.x, 0.9, G.z + (rows - 1) * SP / 2);
+    const r = Math.max(half, (rows - 1) * SP / 2) + 1.1;
+    shieldMesh.scale.setScalar(r * (1 + Math.sin(G.time * 10) * 0.02));
+    M.shield.opacity = G.shield < 1 ? 0.16 * (Math.sin(G.time * 30) > 0 ? 1 : 0.3) : 0.16;
+  } else shieldMesh.visible = false;
+}
+const shieldMesh = new T.Mesh(new T.SphereGeometry(1, 28, 18), M.shield);
+shieldMesh.visible = false;
+scene.add(shieldMesh);
+
+function updateMech(dt) {
+  const m = G.mech;
+  if (!m) return;
+  const half = formationHalf();
+  let side = m.side || 1;
+  let tx = G.x + side * (half + 1.3);
+  if (Math.abs(tx) > ROAD - 0.6) { side = -side; tx = G.x + side * (half + 1.3); }
+  tx = clamp(tx, -ROAD + 0.6, ROAD - 0.6);
+  m.side = side;
+  m.x += (tx - m.x) * Math.min(1, dt * 4);
+  m.z += (G.z + 0.6 - m.z) * Math.min(1, dt * 4);
+  const stomp = G.phase === 'run' ? Math.abs(Math.sin(G.time * 6)) * 0.12 : 0;
+  m.mesh.position.set(m.x, stomp, m.z);
+  m.cd -= dt;
+  let dx = 0, dz = -1;
+  if (nT > 0) { dx = tgX[0] - m.x; dz = tgZ[0] - m.z; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l; if (dz > -0.2) { dx = 0; dz = -1; } }
+  m.mesh.rotation.y = Math.atan2(-dx, -dz);
+  if (m.cd <= 0) {
+    m.cd = 0.62;
+    const dmg = 4 + G.level * 2;
+    spawnBullet(m.x - 0.7, m.z - 0.8, dx, dz, dmg, 1);
+    spawnBullet(m.x + 0.7, m.z - 0.8, dx, dz, dmg, 1);
+    burst(m.x, 1.6, m.z - 1, 6, [1, 0.6, 0.2], 2, 0.2);
+  }
+}
+
+function updateZombies(dt) {
+  const moving = G.phase === 'run' || G.phase === 'boss';
+  const half = formationHalf();
+  for (let i = Z.length - 1; i >= 0; i--) {
+    const zb = Z[i];
+    if (zb.dying > 0) {
+      zb.dying -= dt;
+      if (zb.dying <= 0) { Z[i] = Z[Z.length - 1]; Z.pop(); }
+      continue;
+    }
+    if (zb.flash > 0) zb.flash -= dt;
+    if (!moving) continue;
+    zb.z += zb.sp * dt;
+    const d = G.z - zb.z;
+    if (d < 8 && d > -1.5) {
+      const target = G.x + clamp(zb.x - G.x, -half, half);
+      zb.vx = clamp((target - zb.x) * 1.4, -1.6, 1.6);
+    } else zb.vx = Math.sin(G.time * 1.3 + zb.ph) * 0.2;
+    zb.x = clamp(zb.x + zb.vx * dt, -ROAD + 0.3, ROAD - 0.3);
+    if (zb.z > G.z + 7) { Z[i] = Z[Z.length - 1]; Z.pop(); }
+  }
+  // buckets + light separation so the horde spreads instead of stacking
+  for (let k = 0; k < BN; k++) buckets[k].length = 0;
+  for (let i = 0; i < Z.length; i++) {
+    const k = bIdx(Z[i].z);
+    if (k >= 0 && k < BN) buckets[k].push(i);
+  }
+  if (moving) {
+    for (let k = 0; k < BN; k++) {
+      const arr = buckets[k];
+      for (let a = 0; a < arr.length; a++) {
+        const A = Z[arr[a]];
+        if (A.dying > 0) continue;
+        for (let b = a + 1; b < arr.length; b++) {
+          const B = Z[arr[b]];
+          if (B.dying > 0) continue;
+          const dx = B.x - A.x, r = 0.21 * (A.s + B.s);
+          if (Math.abs(dx) < r && Math.abs(B.z - A.z) < r) {
+            const push = (r - Math.abs(dx)) * 0.3 * (dx >= 0 ? 1 : -1);
+            A.x = clamp(A.x - push, -ROAD + 0.3, ROAD - 0.3);
+            B.x = clamp(B.x + push, -ROAD + 0.3, ROAD - 0.3);
+          }
+        }
+      }
+    }
+    // contact with the squad
+    const rows = Math.ceil(G.soldiers.length / Math.max(1, perRow(G.soldiers.length)));
+    const zmin = G.z - 0.7, zmax = G.z + rows * SP + 0.5;
+    for (let i = 0; i < Z.length && G.phase !== 'over'; i++) {
+      const zb = Z[i];
+      if (zb.dying > 0) continue;
+      const m = G.mech;
+      if (m && Math.abs(zb.x - m.x) < 0.9 && Math.abs(zb.z - m.z) < 0.8) { hitZombie(zb, 999); continue; }
+      if (zb.z < zmin || zb.z > zmax) continue;
+      const r = 0.38 * zb.s + 0.12;
+      for (let s = 0; s < G.soldiers.length; s++) {
+        const so = G.soldiers[s];
+        if (Math.abs(so.x - zb.x) < r && Math.abs(so.z - zb.z) < r) {
+          hitZombie(zb, 999);
+          if (G.shield <= 0) killSoldier(s);
+          break;
+        }
+      }
+    }
+  }
+}
+
+function updateBullets(dt) {
+  const active = [];
+  for (const e of G.events) {
+    if ((e.type === 'gate' && !e.used) || (e.type === 'hero' && !e.done && !e.missed)) {
+      if (e.z < G.z + 2 && e.z > G.z - 30) active.push(e);
+    }
+  }
+  const b = G.boss;
+  for (let i = 0; i < nb; i++) {
+    let hit = false;
+    for (let step = 0; step < 2 && !hit; step++) {
+      const oz = bz[i];
+      bx[i] += bdx[i] * BULLET_SPEED * dt * 0.5;
+      bz[i] += bdz[i] * BULLET_SPEED * dt * 0.5;
+      const x = bx[i], z = bz[i], dmg = bd[i], kind = bk[i];
+      if (b && b.alive && Math.abs(x - b.x) < 1.25 && Math.abs(z - b.z) < 0.9) {
+        hitBoss(dmg); burst(x, 2.4, z, 2, [0.45, 1, 0.3], 2, 0.25);
+        if (kind) splash(x, z, dmg);
+        hit = true; break;
+      }
+      const k0 = bIdx(z);
+      for (let k = k0 - 1; k <= k0 + 1 && !hit; k++) {
+        if (k < 0 || k >= BN) continue;
+        const arr = buckets[k];
+        for (let a = 0; a < arr.length; a++) {
+          const zb = Z[arr[a]];
+          if (zb.dying > 0) continue;
+          const r = 0.32 * zb.s;
+          if (Math.abs(zb.x - x) < r + 0.06 && Math.abs(zb.z - z) < r + 0.25) {
+            hitZombie(zb, dmg);
+            if (kind) splash(x, z, dmg);
+            else burst(x, 1.2, z, 1, [0.6, 1, 0.35], 1.5, 0.2);
+            hit = true; break;
+          }
+        }
+      }
+      if (hit) break;
+      for (const e of active) {
+        if (e.type === 'gate') {
+          if (!e.used && oz > e.z && z <= e.z && Math.abs(x - e.x) < 1.85) { bxHit = x; gateHit(e, dmg); hit = true; break; }
+        } else if (!e.done && oz > e.bz && z <= e.bz && Math.abs(x - e.x) < 0.95) {
+          bxHit = x; heroHit(e, dmg); hit = true; break;
+        }
+      }
+    }
+    bl[i] -= dt;
+    if (hit || bl[i] <= 0 || Math.abs(bx[i]) > ROAD + 1) { removeBullet(i); i--; }
+  }
+}
+
+// ---------------------------------------------------------------- boss
+const bossMat = new T.MeshLambertMaterial({ vertexColors: true, emissive: 0x000000 });
+const bossMesh = new T.Mesh(ZGEO, bossMat);
+bossMesh.scale.setScalar(3.2);
+bossMesh.visible = false;
+scene.add(bossMesh);
+
+function startBoss() {
+  G.phase = 'boss';
+  const W = WEAPONS[G.weapon];
+  const dps = G.squad * W.rate * W.pellets * W.dmg + (G.mech ? 2 * (4 + G.level * 2) / 0.62 : 0);
+  const hp = Math.round(220 * G.level + dps * 6);
+  G.boss = { x: 0, z: G.z - 30, hp, max: hp, sp: 1.1 + G.level * 0.08, flash: 0, alive: true, deadT: 0, spawnT: 2.5, hitT: 0 };
+  bossMesh.visible = true;
+  bossMesh.rotation.set(0, 0, 0);
+  $('#bossbar').hidden = false;
+  pop('巨屍來了！', 0, 3, G.z - 8, 'bad');
+  SFX.boom();
+}
+function updateBoss(dt) {
+  const b = G.boss;
+  if (!b) return;
+  if (b.alive) {
+    b.z += b.sp * dt;
+    b.x += clamp(G.x - b.x, -1, 1) * dt * 0.7;
+    b.x = clamp(b.x, -ROAD + 1, ROAD - 1);
+    b.flash -= dt;
+    b.hitT -= dt;
+    bossMat.emissive.setRGB(b.flash > 0 ? 0.15 : 0, b.flash > 0 ? 0.6 : 0, b.flash > 0 ? 0.1 : 0);
+    bossMesh.position.set(b.x, Math.abs(Math.sin(G.time * 3)) * 0.15, b.z);
+    bossMesh.rotation.z = Math.sin(G.time * 3) * 0.06;
+    b.spawnT -= dt;
+    if (b.spawnT <= 0) {
+      b.spawnT = 3.4;
+      spawnHorde({ cx: 0, w: 7.4, d: 3, count: 6 + G.level * 2, hp: 1 + Math.floor((G.level - 1) / 2) }, b.z - 2);
+    }
+    if (b.z > G.z - 1.6 && b.hitT <= 0) {
+      b.hitT = 0.6;
+      if (G.shield <= 0) {
+        for (let k = 0; k < 2 && G.soldiers.length && G.phase === 'boss'; k++) killSoldier(0);
+      }
+      b.z -= 4.5;
+      G.shake = 0.6;
+      SFX.boom();
+    }
+  } else {
+    b.deadT += dt;
+    const k = Math.min(1, b.deadT / 0.8);
+    bossMesh.rotation.x = -k * 1.45;
+    bossMesh.position.y = -k * 1.2;
+    bossMat.emissive.setRGB(0, 0, 0);
+    if (b.deadT > 1.6 && G.phase === 'boss') win();
+  }
+  $('#bossFill').style.width = Math.max(0, b.hp / b.max * 100) + '%';
+}
+
+// ---------------------------------------------------------------- rendering
+function drawZombies(t) {
+  for (let i = 0; i < Z.length; i++) {
+    const zb = Z[i];
+    let y = 0, rx = 0;
+    if (zb.dying > 0) { const k = 1 - zb.dying / 0.35; rx = -k * 1.35; y = -k * 0.45; }
+    else y = Math.abs(Math.sin(t * 5 + zb.ph)) * 0.07;
+    dummy.position.set(zb.x, y, zb.z);
+    dummy.rotation.set(rx, Math.atan2(zb.vx, zb.sp) * 0.8, Math.sin(t * 5 + zb.ph) * 0.07);
+    dummy.scale.setScalar(zb.s);
+    dummy.updateMatrix();
+    zMesh.setMatrixAt(i, dummy.matrix);
+    if (zb.flash > 0) tmpC.setRGB(0.6, 2.6, 0.4);
+    else tmpC.setRGB(zb.tint[0], zb.tint[1], zb.tint[2]);
+    zMesh.setColorAt(i, tmpC);
+  }
+  zMesh.count = Z.length;
+  zMesh.instanceMatrix.needsUpdate = true;
+  zMesh.instanceColor.needsUpdate = true;
+}
+function drawBullets() {
+  for (let i = 0; i < nb; i++) {
+    dummy.position.set(bx[i], bk[i] ? 2.0 : 1.25, bz[i]);
+    dummy.rotation.set(0, Math.atan2(bdx[i], bdz[i]), 0);
+    dummy.scale.setScalar(bk[i] ? 2.6 : 1);
+    dummy.updateMatrix();
+    bMesh.setMatrixAt(i, dummy.matrix);
+  }
+  bMesh.count = nb;
+  bMesh.instanceMatrix.needsUpdate = true;
+  if (bMesh.instanceColor) bMesh.instanceColor.needsUpdate = true;
+}
+function drawParticles(dt) {
+  for (let i = 0; i < np; i++) {
+    pl[i] -= dt;
+    if (pl[i] <= 0) {
+      const j = --np;
+      px[i] = px[j]; py[i] = py[j]; pz[i] = pz[j]; pvx[i] = pvx[j]; pvy[i] = pvy[j]; pvz[i] = pvz[j];
+      pl[i] = pl[j]; pm[i] = pm[j]; pr[i] = pr[j]; pg[i] = pg[j]; pb[i] = pb[j];
+      i--; continue;
+    }
+    pvy[i] -= 9 * dt;
+    px[i] += pvx[i] * dt; py[i] = Math.max(0.05, py[i] + pvy[i] * dt); pz[i] += pvz[i] * dt;
+    const f = pl[i] / pm[i];
+    pPos[i * 3] = px[i]; pPos[i * 3 + 1] = py[i]; pPos[i * 3 + 2] = pz[i];
+    pCol[i * 3] = pr[i] * f; pCol[i * 3 + 1] = pg[i] * f; pCol[i * 3 + 2] = pb[i] * f;
+  }
+  pGeo.setDrawRange(0, np);
+  pGeo.attributes.position.needsUpdate = true;
+  pGeo.attributes.color.needsUpdate = true;
+}
+
+const hud = { lvl: $('#hudLevel'), prog: $('#hudProg'), kills: $('#hudKills'), squad: $('#hudSquad'), weapon: $('#hudWeapon') };
+const hudCache = {};
+function setText(key, el, v) { if (hudCache[key] !== v) { hudCache[key] = v; el.textContent = v; } }
+function updateHud() {
+  setText('lvl', hud.lvl, String(G.level));
+  setText('kills', hud.kills, String(G.kills));
+  setText('squad', hud.squad, '×' + G.squad);
+  setText('weapon', hud.weapon, WEAPONS[G.weapon].name + (G.mech ? ' + 機甲' : ''));
+  hud.prog.style.width = clamp(-G.z / G.L * 100, 0, 100) + '%';
+}
+
+// ---------------------------------------------------------------- flow
+const hintEl = $('#hint');
+function resetWorld() {
+  Z.length = 0; nb = 0; np = 0;
+  for (const s of G.soldiers) scene.remove(s.mesh);
+  G.soldiers = [];
+  if (G.mech) { scene.remove(G.mech.mesh); G.mech = null; }
+  G.boss = null; bossMesh.visible = false; $('#bossbar').hidden = true;
+  for (const p of pops) p.el.remove();
+  pops.length = 0;
+  Object.assign(G, { x: 0, tx: 0, z: 0, squad: 1, weapon: 0, kills: 0, shield: 0, shake: 0, time: 0 });
+}
+function prepare(level) {
+  G.level = level;
+  G.phase = 'menu';
+  resetWorld();
+  buildLevel(level);
+  syncSoldiers();
+  updateEvents(0);
+  for (const id of ['menuLevel', 'overLevel']) $('#' + id).textContent = 'STAGE ' + level;
+  $('#bestLine').textContent = best > 1 ? '最佳紀錄：第 ' + best + ' 關' : '';
+}
+function startRun() {
+  SFX.init();
+  if (G.phase !== 'menu') prepare(G.level);
+  for (const id of ['menu', 'over', 'win']) $('#' + id).hidden = true;
+  $('#hud').hidden = false;
+  hintEl.style.opacity = '1';
+  setTimeout(() => { hintEl.style.opacity = '0'; }, 3500);
+  G.phase = 'run';
+}
+function gameOver(reason) {
+  if (G.phase === 'over' || G.phase === 'win') return;
+  G.phase = 'over';
+  SFX.bad();
+  $('#overReason').textContent = reason;
+  $('#overKills').textContent = String(G.kills);
+  $('#overDist').textContent = Math.round(clamp(-G.z / G.L, 0, 1) * 100) + '%';
+  setTimeout(() => { if (G.phase === 'over') $('#over').hidden = false; }, 700);
+}
+function win() {
+  G.phase = 'win';
+  nb = 0;
+  SFX.hero();
+  best = Math.max(best, G.level + 1);
+  try { localStorage.setItem('zombie-bridge-best', String(best)); } catch (e) {}
+  $('#winLevel').textContent = 'STAGE ' + G.level + ' CLEAR';
+  $('#winKills').textContent = String(G.kills);
+  $('#winSquad').textContent = String(G.squad);
+  $('#win').hidden = false;
+}
+
+$('#btnStart').addEventListener('click', startRun);
+$('#btnRetry').addEventListener('click', () => { prepare(G.level); startRun(); });
+$('#btnNext').addEventListener('click', () => { prepare(G.level + 1); startRun(); });
+$('#mute').addEventListener('click', () => {
+  SFX.on = !SFX.on;
+  $('#mute').textContent = SFX.on ? '音' : '靜';
+  $('#mute').setAttribute('aria-pressed', String(!SFX.on));
+});
+
+// ---------------------------------------------------------------- input
+let drag = null;
+const keys = { l: false, r: false };
+window.addEventListener('pointerdown', e => {
+  if (e.target.closest && e.target.closest('button')) return;
+  drag = { x: e.clientX, tx: G.tx };
+});
+window.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const k = (ROAD * 2.2) / Math.min(window.innerWidth, 640);
+  const raw = drag.tx + (e.clientX - drag.x) * k;
+  const half = formationHalf();
+  const lim = ROAD - 0.45 - half;
+  G.tx = clamp(raw, -lim, lim);
+  if (G.tx !== raw) { drag.tx = G.tx; drag.x = e.clientX; }
+});
+for (const ev of ['pointerup', 'pointercancel']) window.addEventListener(ev, () => { drag = null; });
+window.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.l = true;
+  if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.r = true;
+});
+window.addEventListener('keyup', e => {
+  if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.l = false;
+  if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.r = false;
+});
+
+// ---------------------------------------------------------------- loop
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.033, (now - last) / 1000);
+  last = now;
+  const playing = G.phase === 'run' || G.phase === 'boss';
+  G.time += dt;
+  if (playing) {
+    if (keys.l) G.tx -= dt * 9;
+    if (keys.r) G.tx += dt * 9;
+    if (G.phase === 'run') {
+      G.z -= RUN * dt;
+      if (G.z <= -G.L) { G.z = -G.L; startBoss(); }
+    }
+    updateEvents(dt);
+    updateSquad(dt);
+    updateMech(dt);
+    updateZombies(dt);
+    updateBullets(dt);
+    updateBoss(dt);
+    updateHud();
+  } else {
+    updateEvents(0);
+    updateZombies(dt);
+    if (G.boss && !G.boss.alive) updateBoss(dt);
+  }
+  drawZombies(G.time);
+  drawBullets();
+  drawParticles(dt);
+  updatePops(dt);
+
+  G.shake = Math.max(0, G.shake - dt * 1.5);
+  const sway = G.phase === 'menu' ? Math.sin(G.time * 0.4) * 0.6 : 0;
+  const cx = G.x * 0.35 + sway;
+  camera.position.set(cx + (Math.random() - 0.5) * G.shake, 12 + (Math.random() - 0.5) * G.shake, G.z + 10);
+  camera.lookAt(cx * 0.6, 0, G.z - 4);
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+prepare(G.level);
+if (document.fonts && document.fonts.load) {
+  Promise.all([document.fonts.load('96px Bungee'), document.fonts.load('900 40px "Noto Sans TC"')])
+    .then(() => { for (const e of G.events) if (e.draw) e.draw(); })
+    .catch(() => {});
+}
+requestAnimationFrame(frame);
+
+// handle for automated play-tests
+window.__zb = { G, Z, start: startRun, prepare };
+})();
+</script>
+</body>
+</html>
