@@ -27,9 +27,11 @@ const opt = {
   three: String(args.three || process.env.THREE_JS || DEFAULT_THREE),
   html: String(args.html || process.env.ZB_HTML || path.resolve(here, '../index.html')),
   json: args.json ? String(args.json) : null,
+  dump: args.dump ? String(args.dump) : null,        // write every attempt's raw result here
   maxSeconds: Number(args.max || 240),             // game seconds before an attempt is declared a timeout
   dodge: args.dodge !== undefined ? Number(args.dodge) : 1,   // bot dodge strength (0 = never dodge)
   quiet: !!args.quiet,
+  trace: !!args.trace,                               // print a coarse timeline for the first attempts of each row
 };
 if (!fs.existsSync(opt.three)) { console.error('three.min.js not found: ' + opt.three + ' (use --three or THREE_JS)'); process.exit(2); }
 
@@ -59,7 +61,7 @@ function botRun(cfg) {
     zb.bus.on('win', () => { window.__log.won = true; });
     zb.bus.on('heroActivated', () => { window.__log.hero = true; });
     zb.bus.on('weaponPickup', d => { const L = window.__log; L.pickups = (L.pickups || 0) + 1; L.tier = Math.max(L.tier || 0, d.tier); });
-    zb.bus.on('gatePass', d => { const L = window.__log; L.gates = (L.gates || 0) + 1; if (d.diff < 0) L.badGates = (L.badGates || 0) + 1; });
+    zb.bus.on('gatePass', d => { const L = window.__log; L.gates = (L.gates || 0) + 1; if (d.diff < 0) L.badGates = (L.badGates || 0) + 1; (L.gateDiffs = L.gateDiffs || []).push(d.diff); });
   }
   const LOG = window.__log;
   for (const k of Object.keys(LOG)) delete LOG[k];
@@ -75,6 +77,7 @@ function botRun(cfg) {
   const BINS = 40;                      // 0.2-wide lanes across the 8-wide deck
   const dang = new Float32Array(BINS);
   let tx = 0, nextDecide = 0;
+  const trace = [];
 
   // opening group: the single (unpaired) gate, the hero and the first two weapons of the level
   const opening = new Set();
@@ -183,7 +186,8 @@ function botRun(cfg) {
     G.tx = cur + Math.max(-mx, Math.min(mx, want - cur));
     zb.step(dtStep);
     steps++;
-    if ((steps & 127) === 0) { popLayer.textContent = ''; zb.pops && (zb.pops.length = 0); }
+    if (cfg.trace && steps % 60 === 0) trace.push(`${(steps / 60) | 0}s z=${G.z.toFixed(0)} sq=${G.squad} w=${G.weapon} x=${G.x.toFixed(1)} Z=${Z.length}${G.mech ? ' mech' : ''}${G.shield > 0 ? ' shld' : ''}`);
+    if ((steps & 127) === 0) { popLayer.textContent = ''; zb.pops.length = 0; }
   }
   function decideBoss() { return decide(); }
 
@@ -198,7 +202,7 @@ function botRun(cfg) {
     bossSecs: LOG.bossT === undefined ? null : (LOG.bossDeadT !== undefined ? LOG.bossDeadT - LOG.bossT : (LOG.overT !== undefined ? LOG.overT - LOG.bossT : null)),
     bossKilled: LOG.bossDeadT !== undefined,
     bossHpLeft: G.boss ? Math.max(0, G.boss.hp / G.boss.max) : null,
-    hero: !!LOG.hero, tier: LOG.tier || 0, badGates: LOG.badGates || 0,
+    gateDiffs: LOG.gateDiffs || [], deathZ: G.z, trace: cfg.trace ? trace : undefined, hero: !!LOG.hero, heroCharge: (() => { const h = G.events.find(e => e.type === 'hero'); return h ? Math.round(h.charge) + '/' + h.need : null; })(), tier: LOG.tier || 0, badGates: LOG.badGates || 0,
   };
   return res;
 }
@@ -217,7 +221,7 @@ async function newPage() {
   await page.route('https://fonts.**', r => r.abort());
   await page.goto('file://' + opt.html);
   await page.waitForFunction(() => window.__zb);
-  await page.click('#mute');   // SFX off: no WebAudio nodes while fast-forwarding
+  await page.evaluate(() => document.getElementById('mute').click());   // SFX off: no WebAudio nodes while fast-forwarding
   return page;
 }
 
@@ -247,8 +251,10 @@ const t0 = Date.now();
 for (const stage of opt.stages) {
   for (const opening of openings) {
     const jobs = [];
-    for (let i = 0; i < opt.n; i++) jobs.push({ stage, opening, seed: opt.seed * 100003 + stage * 1009 + i * 7919 + 1, maxSeconds: opt.maxSeconds, dodge: opt.dodge });
+    for (let i = 0; i < opt.n; i++) jobs.push({ trace: opt.trace && i < 3, stage, opening, seed: opt.seed * 100003 + stage * 1009 + i * 7919 + 1, maxSeconds: opt.maxSeconds, dodge: opt.dodge });
     const res = await runJobs(jobs);
+    if (opt.trace) for (const r of res) if (r.trace) { console.log(`--- stage ${stage} ${opening} won=${r.won} cause=${r.cause} gates=${r.gateDiffs.join(',')}`); console.log(r.trace.join('\n')); }
+    if (opt.dump) fs.appendFileSync(opt.dump, res.map((r, i) => JSON.stringify({ stage, opening, seed: jobs[i].seed, ...r })).join('\n') + '\n');
     const wins = res.filter(r => r.won);
     const atBoss = res.filter(r => r.reachedBoss);
     const fights = atBoss.filter(r => r.bossSecs !== null);
