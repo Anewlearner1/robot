@@ -355,12 +355,12 @@ const TUNE = {
 // speed: units/s; range: bullet lifetime in s; pierce: extra zombies a shot passes through; splash: blast radius (0 = none);
 // knock: push-back on hit; bossEff: share of nominal damage that lands on the boss (sizes its hp).
 const WEAPONS = [
-  { id: 'pistol',  name: '手槍',   desc: '基本配槍',         fx: 'bullet', color: 0xffe08a, rate: 20.5,   pellets: 1, spread: 0.04, dmg: 1,   speed: 42, range: 0.56, pierce: 0, splash: 0,   knock: 0,   bossEff: 0.93,    lvMul: 1.6, maxLv: 3, ui: { power: 1, rate: 2, range: 3 } },
-  { id: 'rifle',   name: '步槍',   desc: '射速快、射程長',   fx: 'bullet', color: 0xffd060, rate: 12.5,  pellets: 1, spread: 0.05, dmg: 1,   speed: 46, range: 0.56, pierce: 1, splash: 0,   knock: 0,   bossEff: 1,    lvMul: 1.3, maxLv: 3, ui: { power: 2, rate: 4, range: 4 } },
+  { id: 'pistol',  name: '手槍',   desc: '基本配槍',         fx: 'bullet', color: 0xffe08a, rate: 20.5,   pellets: 1, spread: 0.04, dmg: 1,   speed: 42, range: 0.56, pierce: 0, splash: 0,   knock: 0,   bossEff: 0.93,    lvMul: 1.6, maxLv: 3, ui: { power: 1, rate: 4, range: 3 } },
+  { id: 'rifle',   name: '步槍',   desc: '射速快、射程長',   fx: 'bullet', color: 0xffd060, rate: 12.5,  pellets: 1, spread: 0.05, dmg: 1,   speed: 46, range: 0.56, pierce: 1, splash: 0,   knock: 0,   bossEff: 1,    lvMul: 1.3, maxLv: 3, ui: { power: 2, rate: 3, range: 4 } },
   { id: 'shotgun', name: '散彈槍', desc: '近距離一次轟一片', fx: 'pellet', color: 0xffb070, rate: 6.4, pellets: 5, spread: 0.16, dmg: 1,   speed: 40, range: 0.32, pierce: 0, splash: 0,   knock: 0.6, bossEff: 0.3, lvMul: 1.3, maxLv: 3, ui: { power: 4, rate: 2, range: 2 } },
-  { id: 'gatling', name: '加特林', desc: '火力全開的彈幕',   fx: 'bullet', color: 0xfff0a0, rate: 21,  pellets: 1, spread: 0.08, dmg: 1,   speed: 44, range: 0.5,  pierce: 0, splash: 0,   knock: 0,   bossEff: 0.62,    lvMul: 1.3, maxLv: 3, ui: { power: 2, rate: 5, range: 3 } },
+  { id: 'gatling', name: '加特林', desc: '火力全開的彈幕',   fx: 'bullet', color: 0xfff0a0, rate: 21,  pellets: 1, spread: 0.08, dmg: 1,   speed: 44, range: 0.5,  pierce: 0, splash: 0,   knock: 0,   bossEff: 0.62,    lvMul: 1.3, maxLv: 3, ui: { power: 1, rate: 5, range: 3 } },
   { id: 'sniper',  name: '狙擊槍', desc: '一發貫穿整排',     fx: 'rail',   color: 0x9fe8ff, rate: 2.1, pellets: 1, spread: 0.01, dmg: 3.5,   speed: 90, range: 0.32, pierce: 5, splash: 0,   knock: 0.3, bossEff: 0.95,    lvMul: 1.3, maxLv: 3, ui: { power: 5, rate: 1, range: 5 } },
-  { id: 'flamer',  name: '火焰槍', desc: '燒穿整群，射程短', fx: 'flame',  color: 0xff7a2a, rate: 8.45,  pellets: 2, spread: 0.3,  dmg: 1.0, speed: 18, range: 0.6, pierce: 2, splash: 0,   knock: 0,   bossEff: 0.22,  lvMul: 1.3, maxLv: 3, ui: { power: 3, rate: 5, range: 1 } },
+  { id: 'flamer',  name: '火焰槍', desc: '燒穿整群，射程短', fx: 'flame',  color: 0xff7a2a, rate: 8.45,  pellets: 2, spread: 0.3,  dmg: 1.0, speed: 18, range: 0.6, pierce: 2, splash: 0,   knock: 0,   bossEff: 0.22,  lvMul: 1.3, maxLv: 3, ui: { power: 2, rate: 4, range: 1 } },
   { id: 'rocket',  name: '火箭筒', desc: '爆炸範圍傷害',     fx: 'rocket', color: 0xff9a40, rate: 1.22, pellets: 1, spread: 0.03, dmg: 5,   speed: 26, range: 0.9,  pierce: 0, splash: 1.6, knock: 1,   bossEff: 0.83,  lvMul: 1.3, maxLv: 3, ui: { power: 5, rate: 1, range: 4 } },
 ];
 
