@@ -314,31 +314,36 @@ const STEP = 1 / 60, MAX_STEPS = 4;   // fixed simulation step and the catch-up 
 
 // Every balance number lives here (read at use time, so tests can override them through __zb.TUNE before prepare()).
 const TUNE = {
-  startSquad: 3,
+  startSquad: 1,
   run: 4.6,                       // forward speed (units/s)
   // --- how the hordes grow. A horde's size/hp = base x stage factor x position factor.
-  hordeGrow: 0.38,                // size +38 % at stage 2 ...
-  hpPerStage: 0.4,                // ... ordinary zombies +0.4 hp (fractions are rolled per zombie) ...
-  stagePow: 0.5,                  // ... and later stages grow by (stage-1)^stagePow steps (concave: stage 3 is not twice stage 2)
-  rampPow: 2, ramp: 4.7, hpRamp: 5, bruteRamp: 3,   // along the bridge (position p = 0..1): size x (1 + ramp*p^rampPow), hp x (1 + hpRamp*p^rampPow), brute count likewise
-  count: { open: 8, wall: 50, blob: 30, line: 20 },
-  bruteBase: 2, brutePerStage: 1, bruteHp: 10, bruteHpPerStage: 4,
+  hordeGrow: 0.4,                 // size +40 % at the first stage step ...
+  hpPerStage: 0.5,                // ... ordinary zombies +0.5 hp per step (fractions are rolled per zombie) ...
+  stagePow: 0.9,                  // ... where a stage's step count is (stage-1)^stagePow
+  stageMul: [3.55, 2.1, 2.5],     // trim of the far-end horde growth (`ramp`) per stage; the last entry covers every later stage
+  early: 0.35, rampPow: 2, ramp: 13, hpRamp: 10, bruteRamp: 6,   // along the bridge (position p = 0..1): size x (early + ramp*p^rampPow), hp x (1 + hpRamp*p^rampPow), brute count likewise
+  count: { open: 3, wall: 50, blob: 30, line: 20, swarm: 24, runners: 20 },
+  bruteBase: 3, brutePerStage: 1, bruteHp: 10, bruteHpPerStage: 4,
   // --- layout spacing (units of empty bridge)
   spawnAhead: 58,                 // a horde is released when the squad is this far from its start line
   openingGap: 24,                 // between the opening cluster and the first pattern event
   hordeGap: [5, 8],               // after a horde (plus the horde's depth)
   gateGap: 12, weaponGap: 10,     // after a gate pair / a weapon pickup
   // --- gates and the opening cluster
-  openGatePf: 0.47,               // the opening red gate costs this fraction of the usual bullets per point
-  gatePer: 2, gatePerStage: 1, gatePerSquad: 5.3, // bullets for +1 on a gate = (per + perStage*stage + perSquad*min(squad,40)) -> a gate is worth about +5 whatever the squad size
-  battNeed: 36, battNeedPerStage: 10,
+  openGatePf: 0.35,               // the opening red gate costs this fraction of the usual bullets per point
+  gatePer: 2, gatePerStage: 1, gatePerSquad: 12, // bullets for +1 on a gate = (per + perStage*stage + perSquad*min(squad,40)) -> a gate is worth about +5 whatever the squad size
+  battNeed: 6, battNeedPerStage: 6,
   shieldSecs: 4,
+  crateRecruits: 5,               // soldiers that come with every gun crate (so a guns-only route still grows the squad)
   maxSquad: 60, mulChance: 0.3,   // squad size cap; chance that a good gate (after the first few) is a x2 gate
   // --- mech
-  splashR2: 3.4, splashDmg: 0.6,  // shells: blast radius squared and damage fraction
-  mechDmg: 2.5, mechDmgPerStage: 1, mechCd: 0.62,
+  splashR2: 3.4, splashDmg: 0.4,  // shells: blast radius squared and damage fraction
+  mechDmg: 1.4, mechDmgPerStage: 0.6, mechCd: 0.62,
   // --- boss: hp = bossHp*stage + bossDpsSecs * (squad damage per second that can land on it)
-  bossHp: 220, bossDpsSecs: 7, bossSpeed: 1.1, bossSpeedPerStage: 0.08,
+  bossHp: 220, bossDpsSecs: 10, bossDist: 26, bossSpeed: 1.3, bossSpeedPerStage: 0.1,   // bossDist: how far ahead it appears
+  knockMax: 1.4,                  // top knock-back speed (u/s); zombies walk 1-1.7, so a heavy push stalls them, never reverses them
+  hordeJitter: 0.25,              // every horde is released at x(1 +- this) of its planned size
+  bossKnock: 0,                   // fraction of a gun's knock that moves the boss back (0: bosses are immune; >0 let shotguns stall it forever)
   bossFocus: 0.5,                 // share of the squad that shoots the boss while minions are around
   bossMinions: 6, bossMinionsPerStage: 2, bossMinionEvery: 3.4,
 };
@@ -350,13 +355,13 @@ const TUNE = {
 // speed: units/s; range: bullet lifetime in s; pierce: extra zombies a shot passes through; splash: blast radius (0 = none);
 // knock: push-back on hit; bossEff: share of nominal damage that lands on the boss (sizes its hp).
 const WEAPONS = [
-  { id: 'pistol',  name: '手槍',   desc: '基本配槍',         fx: 'bullet', color: 0xffe08a, rate: 4,   pellets: 1, spread: 0.04, dmg: 1,   speed: 42, range: 0.56, pierce: 0, splash: 0,   knock: 0,   bossEff: 1,    lvMul: 1.35, maxLv: 3, ui: { power: 1, rate: 2, range: 3 } },
-  { id: 'rifle',   name: '步槍',   desc: '射速快、射程長',   fx: 'bullet', color: 0xffd060, rate: 10,  pellets: 1, spread: 0.05, dmg: 1,   speed: 46, range: 0.56, pierce: 0, splash: 0,   knock: 0,   bossEff: 1,    lvMul: 1.35, maxLv: 3, ui: { power: 2, rate: 4, range: 4 } },
-  { id: 'shotgun', name: '散彈槍', desc: '近距離一次轟一片', fx: 'pellet', color: 0xffb070, rate: 3.2, pellets: 5, spread: 0.18, dmg: 1,   speed: 40, range: 0.32, pierce: 0, splash: 0,   knock: 0.6, bossEff: 0.68, lvMul: 1.35, maxLv: 3, ui: { power: 4, rate: 2, range: 2 } },
-  { id: 'gatling', name: '加特林', desc: '火力全開的彈幕',   fx: 'bullet', color: 0xfff0a0, rate: 17,  pellets: 1, spread: 0.08, dmg: 1,   speed: 44, range: 0.5,  pierce: 0, splash: 0,   knock: 0,   bossEff: 1,    lvMul: 1.35, maxLv: 3, ui: { power: 2, rate: 5, range: 3 } },
-  { id: 'sniper',  name: '狙擊槍', desc: '一發貫穿整排',     fx: 'rail',   color: 0x9fe8ff, rate: 1.4, pellets: 1, spread: 0.01, dmg: 6,   speed: 90, range: 0.32, pierce: 6, splash: 0,   knock: 0.3, bossEff: 1,    lvMul: 1.35, maxLv: 3, ui: { power: 5, rate: 1, range: 5 } },
-  { id: 'flamer',  name: '火焰槍', desc: '燒穿整群，射程短', fx: 'flame',  color: 0xff7a2a, rate: 14,  pellets: 2, spread: 0.3,  dmg: 0.5, speed: 16, range: 0.42, pierce: 3, splash: 0,   knock: 0,   bossEff: 0.5,  lvMul: 1.35, maxLv: 3, ui: { power: 3, rate: 5, range: 1 } },
-  { id: 'rocket',  name: '火箭筒', desc: '爆炸範圍傷害',     fx: 'rocket', color: 0xff9a40, rate: 1.1, pellets: 1, spread: 0.03, dmg: 4,   speed: 26, range: 0.9,  pierce: 0, splash: 1.8, knock: 1,   bossEff: 0.8,  lvMul: 1.35, maxLv: 3, ui: { power: 5, rate: 1, range: 4 } },
+  { id: 'pistol',  name: '手槍',   desc: '基本配槍',         fx: 'bullet', color: 0xffe08a, rate: 20.5,   pellets: 1, spread: 0.04, dmg: 1,   speed: 42, range: 0.56, pierce: 0, splash: 0,   knock: 0,   bossEff: 0.93,    lvMul: 1.6, maxLv: 3, ui: { power: 1, rate: 2, range: 3 } },
+  { id: 'rifle',   name: '步槍',   desc: '射速快、射程長',   fx: 'bullet', color: 0xffd060, rate: 12.5,  pellets: 1, spread: 0.05, dmg: 1,   speed: 46, range: 0.56, pierce: 1, splash: 0,   knock: 0,   bossEff: 1,    lvMul: 1.3, maxLv: 3, ui: { power: 2, rate: 4, range: 4 } },
+  { id: 'shotgun', name: '散彈槍', desc: '近距離一次轟一片', fx: 'pellet', color: 0xffb070, rate: 6.4, pellets: 5, spread: 0.16, dmg: 1,   speed: 40, range: 0.32, pierce: 0, splash: 0,   knock: 0.6, bossEff: 0.3, lvMul: 1.3, maxLv: 3, ui: { power: 4, rate: 2, range: 2 } },
+  { id: 'gatling', name: '加特林', desc: '火力全開的彈幕',   fx: 'bullet', color: 0xfff0a0, rate: 21,  pellets: 1, spread: 0.08, dmg: 1,   speed: 44, range: 0.5,  pierce: 0, splash: 0,   knock: 0,   bossEff: 0.62,    lvMul: 1.3, maxLv: 3, ui: { power: 2, rate: 5, range: 3 } },
+  { id: 'sniper',  name: '狙擊槍', desc: '一發貫穿整排',     fx: 'rail',   color: 0x9fe8ff, rate: 2.1, pellets: 1, spread: 0.01, dmg: 3.5,   speed: 90, range: 0.32, pierce: 5, splash: 0,   knock: 0.3, bossEff: 0.95,    lvMul: 1.3, maxLv: 3, ui: { power: 5, rate: 1, range: 5 } },
+  { id: 'flamer',  name: '火焰槍', desc: '燒穿整群，射程短', fx: 'flame',  color: 0xff7a2a, rate: 8.45,  pellets: 2, spread: 0.3,  dmg: 1.0, speed: 18, range: 0.6, pierce: 2, splash: 0,   knock: 0,   bossEff: 0.22,  lvMul: 1.3, maxLv: 3, ui: { power: 3, rate: 5, range: 1 } },
+  { id: 'rocket',  name: '火箭筒', desc: '爆炸範圍傷害',     fx: 'rocket', color: 0xff9a40, rate: 1.22, pellets: 1, spread: 0.03, dmg: 5,   speed: 26, range: 0.9,  pierce: 0, splash: 1.6, knock: 1,   bossEff: 0.83,  lvMul: 1.3, maxLv: 3, ui: { power: 5, rate: 1, range: 4 } },
 ];
 
 let best = 1;
@@ -371,7 +376,8 @@ const G = {
 // Contract between game logic (emits) and presentation (listens). Logic never reaches into FX/HUD directly
 // for new effects; it emits one of these and presentation code subscribes with bus.on(name, fn).
 // Events: shot{x,z,w,lv} soldierDied{x,z} zombieDied{x,z,big} gateHit{e} gatePass{e,diff}
-//         weaponPickup{e,w,lv,upgrade} heroActivated{e} bossSpawn{} bossHit{} bossDied{x,z} soldierContact{} gameOver{reason,cause,kind,phase} win{}
+//         explode{x,z,r} weaponPickup{e,w,lv,upgrade,recruits} heroActivated{e} bossSpawn{} bossHit{} bossDied{x,z} soldierContact{} gameOver{reason,cause,kind,phase} win{}
+// explode: one per blast (mech shell or rocket), r = its real radius. weaponPickup.upgrade is true when the gun you held levelled up (lv = new level).
 // gameOver.cause is 'horde' | 'boss' | 'gate'; kind is the horde kind of the zombie that landed the last blow (or '').
 // Payloads are fresh objects; handlers may keep them.
 const bus = {
@@ -611,7 +617,10 @@ scene.add(bMesh);
 const bx = new Float32Array(MAXB), bz = new Float32Array(MAXB), bdx = new Float32Array(MAXB), bdz = new Float32Array(MAXB);
 const bl = new Float32Array(MAXB), bd = new Float32Array(MAXB), bk = new Uint8Array(MAXB);
 const bw = new Uint8Array(MAXB);   // WEAPONS index that fired the bullet (meaningful when bk === 0; bk 1 = mech shell)
+// pierce bookkeeping: extra zombies a bullet may still pass through, and the zombies it has already hit (so it never hits one twice)
+const bpr = new Uint8Array(MAXB), bhn = new Uint8Array(MAXB), bhid = new Int32Array(MAXB * 8);
 let nb = 0;
+// bl[] is the bullet's remaining lifetime in seconds (presentation may fade flames / trails with it); its starting value is WEAPONS[w].range.
 
 function dotTexture() {
   const c = document.createElement('canvas'); c.width = c.height = 64;
@@ -753,16 +762,40 @@ function buildScenery(len, mid) {
 function hordeSpec(kind, n, side, p) {
   p = Math.pow(p || 0, TUNE.rampPow);
   const sd = Math.pow(n - 1, TUNE.stagePow);      // stage steps: concave when stagePow < 1 (later stages grow more slowly)
-  const f = (1 + sd * TUNE.hordeGrow) * (1 + TUNE.ramp * p);
+  const f = (1 + sd * TUNE.hordeGrow) * (TUNE.early + TUNE.ramp * p * TUNE.stageMul[Math.min(n, TUNE.stageMul.length) - 1]);
   const hp = (1 + sd * TUNE.hpPerStage) * (1 + TUNE.hpRamp * p);
   const C = TUNE.count;
   switch (kind) {
     case 'wall':   return { kind, cx: side * 2.1, w: 3.4, d: 14, count: Math.round(C.wall * f), hp };
     case 'blob':   return { kind, cx: rnd(-1.6, 1.6), w: 3.6, d: 6, count: Math.round(C.blob * f), hp };
     case 'line':   return { kind, cx: 0, w: 7.4, d: 2.6, count: Math.round(C.line * f), hp };
+    case 'swarm':  return { kind, cx: 0, w: 7.4, d: 10, count: Math.round(C.swarm * f), hp: 1 + (hp - 1) * 0.35 };          // a mass of weak ones: cheap bullets and area fire shine
+    case 'runners': return { kind, cx: 0, w: 7.4, d: 5, count: Math.round(C.runners * f), hp: hp * 0.8, fast: 1.9 };       // few and fast: reach and rate of fire shine
     case 'brutes': return { kind, cx: 0, w: 6.4, d: 4, count: Math.round((TUNE.bruteBase + TUNE.brutePerStage * n) * (1 + TUNE.bruteRamp * p)), hp: Math.round((TUNE.bruteHp + n * TUNE.bruteHpPerStage) * (1 + TUNE.hpRamp * p)), big: true };
     default:       return { kind: 'open', cx: -1.8, w: 3.6, d: 6, count: Math.round(C.open * (1 + sd * TUNE.hordeGrow)), hp: 1 + sd * TUNE.hpPerStage };
   }
+}
+
+// Gun pickups per stage, as indices into WEAPONS (0 pistol, 1 rifle, 2 shotgun, 3 gatling, 4 sniper, 5 flamer, 6 rocket).
+// The opening cluster always has the rifle. A slot is an either/or pair (or a single gun). Every stage offers all seven guns across its
+// four pairs (the rifle twice), so whichever gun you carry you will meet it again: levelling up is always a real option next to swapping.
+const WEAPON_PLAN = {
+  1: [[2, 4], [1, 0], [3, 5], [6, 0]],
+  2: [[5, 6], [3, 4], [2, 1], [0, 3]],
+  3: [[6, 4], [3, 5], [2, 0], [1, 2]],
+};
+function weaponSlots(n) {
+  if (WEAPON_PLAN[n]) return WEAPON_PLAN[n];
+  const pool = [0, 1, 2, 3, 4, 5, 6], out = [];          // later stages: all seven guns shuffled into four pairs (one gun appears twice)
+  pool.push(Math.floor(R() * 7));
+  while (pool.length) {
+    const a = pool.splice(Math.floor(R() * pool.length), 1)[0];
+    let k = 0;
+    while (k < pool.length - 1 && pool[k] === a) k++;       // avoid a pair of identical guns when possible
+    const b = pool.splice(Math.min(k, pool.length - 1), 1)[0];
+    out.push([a, b]);
+  }
+  return out;
 }
 
 function makeEvents(n, L) {
@@ -779,8 +812,9 @@ function makeEvents(n, L) {
   E.push(makeHero(z + 0.5, heroSide, n));
   z -= TUNE.openingGap;
 
-  const pattern = ['wall', 'gates', 'line', 'blob', 'weapon', 'gates', 'brutes', 'wall', 'gates', 'line', 'weapon', 'blob', 'gates', 'brutes'];
-  let i = 0, tier = 2;
+  const pattern = ['weapon', 'wall', 'gates', 'weapon', 'line', 'weapon', 'blob', 'gates', 'weapon', 'brutes', 'swarm', 'gates', 'runners', 'blob', 'gates', 'brutes'];
+  const slots = weaponSlots(n);
+  let i = 0, si = 0;
   while (z > -L + 12) {
     const t = pattern[i % pattern.length]; i++;
     if (t === 'gates') {
@@ -794,7 +828,17 @@ function makeEvents(n, L) {
       E.push(good, bad);
       z -= TUNE.gateGap;
     } else if (t === 'weapon') {
-      if (tier < WEAPONS.length) { E.push(makeWeapon(z, rnd(-2.2, 2.2), tier++)); z -= TUNE.weaponGap; }
+      if (si < slots.length) {
+        const slot = slots[si++];
+        if (slot.length === 1) E.push(makeWeapon(z, rnd(-2.2, 2.2), slot[0]));
+        else {                                              // a pair: two guns side by side, take one
+          const flip = R() < 0.5 ? -1 : 1;
+          const a = makeWeapon(z, -1.8 * flip, slot[0]), b = makeWeapon(z, 1.8 * flip, slot[1]);
+          a.mate = b; b.mate = a;
+          E.push(a, b);
+        }
+        z -= TUNE.weaponGap;
+      }
     } else {
       const spec = hordeSpec(t, n, R() < 0.5 ? -1 : 1, Math.min(1, -z / L));
       E.push({ type: 'horde', z, spec });
@@ -930,6 +974,7 @@ function makeHero(z, side, n) {
 }
 
 // ---------------------------------------------------------------- spawning
+let zuid = 0;   // unique zombie ids (piercing bullets remember which zombies they already hit)
 const TINTS = [[1, 1, 1], [1.15, 0.95, 0.85], [0.85, 0.92, 1.06], [1.08, 1.06, 0.8], [0.82, 0.82, 0.84], [1.1, 0.85, 0.9]];
 function spawnHorde(spec, z0) {
   // pool full: spawn what fits (the horde just gets thinner) instead of failing or overrunning the instance buffer
@@ -939,8 +984,8 @@ function spawnHorde(spec, z0) {
     Z.push({
       x: clamp(spec.cx + (Math.random() - 0.5) * spec.w, -ROAD + 0.35, ROAD - 0.35),
       z: z0 - Math.random() * spec.d,
-      sp: big ? rr(0.7, 0.85) : rr(1, 1.7),
-      hp: Math.floor(spec.hp) + (Math.random() < spec.hp % 1 ? 1 : 0), kind: spec.kind || '', s: big ? 1.65 : rr(0.92, 1.08), flash: 0, dying: 0, ph: Math.random() * 6.28, vx: 0,
+      sp: big ? rr(0.7, 0.85) : rr(1, 1.7) * (spec.fast || 1),
+      uid: ++zuid, kv: 0, hp: Math.floor(spec.hp) + (Math.random() < spec.hp % 1 ? 1 : 0), kind: spec.kind || '', s: big ? 1.65 : rr(0.92, 1.08), flash: 0, dying: 0, ph: Math.random() * 6.28, vx: 0,
       tint: big ? [1.25, 0.6, 0.55] : TINTS[(Math.random() * TINTS.length) | 0], big,
     });
   }
@@ -1065,8 +1110,10 @@ function fillBuckets() {
 
 function spawnBullet(x, z, dx, dz, dmg, kind, w) {
   if (nb >= MAXB) return;
-  bw[nb] = w || 0;
-  bx[nb] = x; bz[nb] = z; bdx[nb] = dx; bdz[nb] = dz; bl[nb] = kind ? 0.75 : 0.56; bd[nb] = dmg; bk[nb] = kind;
+  w = w || 0;
+  bw[nb] = w;
+  bpr[nb] = kind ? 0 : WEAPONS[w].pierce; bhn[nb] = 0;
+  bx[nb] = x; bz[nb] = z; bdx[nb] = dx; bdz[nb] = dz; bl[nb] = kind ? 0.75 : WEAPONS[w].range; bd[nb] = dmg; bk[nb] = kind;
   bMesh.setColorAt(nb, kind ? tmpC.setRGB(1, 0.5, 0.15) : tmpC.setRGB(1, 0.88, 0.45));
   nb++;
 }
@@ -1074,6 +1121,8 @@ function removeBullet(i) {
   const j = --nb;
   if (i === j) return;
   bw[i] = bw[j];
+  bpr[i] = bpr[j]; bhn[i] = bhn[j];
+  for (let q = 0, n = bhn[j]; q < n; q++) bhid[i * 8 + q] = bhid[j * 8 + q];
   bx[i] = bx[j]; bz[i] = bz[j]; bdx[i] = bdx[j]; bdz[i] = bdz[j]; bl[i] = bl[j]; bd[i] = bd[j]; bk[i] = bk[j];
   bMesh.setColorAt(i, bk[i] ? tmpC.setRGB(1, 0.5, 0.15) : tmpC.setRGB(1, 0.88, 0.45));
 }
@@ -1089,14 +1138,18 @@ function hitZombie(zb, dmg) {
     bus.emit('zombieDied', { x: zb.x, z: zb.z, big: zb.big });
   }
 }
-function splash(x, z, dmg) {
+// Blast at (x, z): everything within `r` (default: the mech shell radius) takes TUNE.splashDmg of the shell's damage.
+function splash(x, z, dmg, r) {
+  const r2 = r ? r * r : TUNE.splashR2;
+  bus.emit('explode', { x, z, r: Math.sqrt(r2) });          // exactly one per detonation, with the real blast radius
   burst(x, 1, z, 16, [1, 0.55, 0.15], 4.5, 0.4);
-  const k0 = bIdx(z);
-  for (let k = k0 - 2; k <= k0 + 2; k++) {
+  const k0 = bIdx(z), reach = Math.ceil(Math.sqrt(r2)) + 1;
+  for (let k = k0 - reach; k <= k0 + reach; k++) {
     if (k < 0 || k >= BN) continue;
-    for (const zi of buckets[k]) {
-      const zb = Z[zi];
-      if ((zb.x - x) ** 2 + (zb.z - z) ** 2 < TUNE.splashR2) hitZombie(zb, dmg * TUNE.splashDmg);
+    const arr = buckets[k];
+    for (let a = 0; a < arr.length; a++) {
+      const zb = Z[arr[a]];
+      if ((zb.x - x) ** 2 + (zb.z - z) ** 2 < r2) hitZombie(zb, dmg * TUNE.splashDmg);
     }
   }
 }
@@ -1159,21 +1212,24 @@ function activateHero(e) {
 
 const tgX = new Float32Array(6), tgZ = new Float32Array(6), tgS = new Float32Array(6);
 let nT = 0;
+let tgReach = 16;   // how far ahead the squad picks targets: the current gun's reach (speed x range), 6..24 units
 function findTargets() {
   nT = 0;
   const b = G.boss;
-  if (b && b.alive && G.z - b.z < 24) { tgX[0] = b.x; tgZ[0] = b.z; tgS[0] = 0; nT = 1; }
+  const W = WEAPONS[G.weapon];
+  tgReach = clamp(W.speed * W.range * 0.95, 6, 24);
+  if (b && b.alive && G.z - b.z < tgReach + 4) { tgX[0] = b.x; tgZ[0] = b.z; tgS[0] = 0; nT = 1; }
   // Zombies 0.3..16 ahead sit in buckets 10..26 (bIdx = floor(G.z + 10 - z)); pad by one on each side because the squad has
   // moved a little since the buckets were filled. Nearest first, so we can stop once nothing left can beat the worst pick.
   let worst = 0;
-  for (let k = 9; k <= 27; k++) {
+  for (let k = 9, kEnd = Math.min(BN - 1, 11 + Math.ceil(tgReach)); k <= kEnd; k++) {
     if (nT === 6 && k - 11 >= tgS[worst]) break;
     const arr = buckets[k];
     for (let a = 0; a < arr.length; a++) {
       const zb = Z[arr[a]];
       if (zb.dying > 0) continue;
       const d = G.z - zb.z;
-      if (d < 0.3 || d > 16) continue;
+      if (d < 0.3 || d > tgReach) continue;
       const ax = Math.abs(zb.x - G.x);
       if (ax > d * 0.9 + 1.5) continue;
       const sc = d + ax * 0.6;
@@ -1194,7 +1250,13 @@ function findTargets() {
 function updateEvents(dt) {
   for (const e of G.events) {
     if (e.type === 'horde') {
-      if (!e.spawned && e.z > G.z - TUNE.spawnAhead) { e.spawned = true; spawnHorde(e.spec, e.z); }
+      if (!e.spawned && e.z > G.z - TUNE.spawnAhead) {
+        e.spawned = true;
+        // the bridge layout is fixed per stage, but every release of a horde is a little bigger or smaller (+-hordeJitter), so one
+        // attempt is not a copy of the last and the difficulty curve is not a cliff
+        const j = 1 + (Math.random() * 2 - 1) * TUNE.hordeJitter;
+        spawnHorde(j === 1 ? e.spec : Object.assign({}, e.spec, { count: Math.max(1, Math.round(e.spec.count * j)) }), e.z);
+      }
       continue;
     }
     if (e.type === 'gate') {
@@ -1221,18 +1283,25 @@ function updateEvents(dt) {
       e.gun.rotation.y += dt * 2;
       e.gun.position.y = 0.75 + Math.sin(G.time * 3 + e.z) * 0.1;
       e.ring.material.opacity = 0.55 + Math.sin(G.time * 5) * 0.25;
-      if (Math.abs(G.z - e.z) < 0.9 && Math.abs(G.x - e.x) < 1.4 + formationHalf()) {
+      // a pair (e.mate) is an either/or: only the nearer gun can be taken, and taking it removes the other
+      if (Math.abs(G.z - e.z) < 0.9 && Math.abs(G.x - e.x) < (e.mate ? 0.9 + formationHalf() * 0.5 : 1.4 + formationHalf()) && !(e.mate && !e.mate.taken && Math.abs(G.x - e.mate.x) < Math.abs(G.x - e.x))) {
         e.taken = true; e.grp.visible = false;
+        if (e.mate) { e.mate.taken = true; e.mate.grp.visible = false; }
         burst(e.x, 1, e.z, 30, [1, 0.7, 0.2], 3.5, 0.6);
-        if (e.tier > G.weapon) {
-          G.weapon = e.tier;
-          pop(WEAPONS[e.tier].name + '！', e.x, 2.4, e.z, 'gold');
+        const w = e.w, WP = WEAPONS[w];
+        let upgrade = false;
+        if (w === G.weapon && G.weaponLv < WP.maxLv) {
+          G.weaponLv++; upgrade = true;                                 // the gun you hold: level up
+          pop(WP.name + ' Lv' + G.weaponLv + '！', e.x, 2.4, e.z, 'gold');
+        } else if (w === G.weapon) {
+          pop('+' + TUNE.crateRecruits, e.x, 2.4, e.z, 'good');             // already at max level: the crate is just recruits
         } else {
-          G.squad = Math.min(G.squad + 2, TUNE.maxSquad); syncSoldiers();
-          pop('+2', e.x, 2.4, e.z, 'good');
+          G.weapon = w; G.weaponLv = 1;                                 // a different gun: swap, back to Lv1
+          pop(WP.name + '！', e.x, 2.4, e.z, 'gold');
         }
+        G.squad = Math.min(G.squad + TUNE.crateRecruits, TUNE.maxSquad); syncSoldiers();   // every crate brings recruits along
         SFX.good();
-        bus.emit('weaponPickup', { e, w: e.w, lv: G.weaponLv, upgrade: false });
+        bus.emit('weaponPickup', { e, w, lv: G.weaponLv, upgrade, recruits: TUNE.crateRecruits });
       } else if (G.z < e.z - 3) {
         e.taken = true; e.grp.visible = false;
       }
@@ -1294,6 +1363,7 @@ function updateSquad(dt) {
   const n = G.soldiers.length, per = perRow(n);
   const W = WEAPONS[G.weapon];
   findTargets();
+  const shotDmg = W.dmg * Math.pow(W.lvMul, G.weaponLv - 1) * G.dmgMul;
   const bossOn = !!(G.boss && G.boss.alive && G.z - G.boss.z < 24);
   const running = G.phase === 'run';
   for (let i = 0; i < n; i++) {
@@ -1319,7 +1389,7 @@ function updateSquad(dt) {
         const a = (Math.random() - 0.5) * W.spread * 2 + (W.pellets > 1 ? (p - (W.pellets - 1) / 2) * W.spread * 0.7 : 0);
         const ca = Math.cos(a), sa = Math.sin(a);
         const rx = dx * ca - dz * sa, rz = dx * sa + dz * ca;
-        spawnBullet(s.x + rx * 0.5 + 0.14, s.z + rz * 0.5, rx, rz, W.dmg * G.dmgMul, 0, G.weapon);
+        spawnBullet(s.x + rx * 0.5 + 0.14, s.z + rz * 0.5, rx, rz, shotDmg, 0, G.weapon);
       }
       SFX.shot();
       bus.emit('shot', { x: s.x, z: s.z, w: G.weapon, lv: G.weaponLv });
@@ -1380,6 +1450,7 @@ function updateZombies(dt) {
     if (zb.flash > 0) zb.flash -= dt;
     if (!moving) continue;
     zb.z += zb.sp * dt;
+    if (zb.kv > 0) { zb.z -= zb.kv * dt; zb.kv = Math.max(0, zb.kv - 4 * dt); }   // knock-back decays
     const d = G.z - zb.z;
     if (d < 8 && d > -1.5) {
       const target = G.x + clamp(zb.x - G.x, -half, half);
@@ -1449,28 +1520,44 @@ function updateBullets(dt) {
   const b = G.boss;
   for (let i = 0; i < nb; i++) {
     let hit = false;
-    for (let step = 0; step < 2 && !hit; step++) {
+    const WB = bk[i] ? null : WEAPONS[bw[i]];                  // null for mech shells
+    const spd = WB ? WB.speed : BULLET_SPEED;
+    const nsub = spd * dt > 1.3 ? 3 : 2;                        // fast bullets are sub-stepped so they cannot skip a zombie
+    for (let step = 0; step < nsub && !hit; step++) {
       const oz = bz[i];
-      bx[i] += bdx[i] * BULLET_SPEED * dt * 0.5;
-      bz[i] += bdz[i] * BULLET_SPEED * dt * 0.5;
+      bx[i] += bdx[i] * spd * dt / nsub;
+      bz[i] += bdz[i] * spd * dt / nsub;
       const x = bx[i], z = bz[i], dmg = bd[i], kind = bk[i];
       if (b && b.alive && Math.abs(x - b.x) < 1.25 && Math.abs(z - b.z) < 0.9) {
         hitBoss(dmg); burst(x, 2.4, z, 2, [0.45, 1, 0.3], 2, 0.25);
         if (kind) splash(x, z, dmg);
-        hit = true; break;
+        else if (WB.splash) splash(x, z, dmg, WB.splash);
+        if (WB && WB.knock && b.alive) b.z -= WB.knock * TUNE.bossKnock;
+        hit = true; break;                                     // the boss stops every shot, piercing or not
       }
       const k0 = bIdx(z);
       for (let k = k0 - 1; k <= k0 + 1 && !hit; k++) {
         if (k < 0 || k >= BN) continue;
         const arr = buckets[k];
-        for (let a = 0; a < arr.length; a++) {
+        for (let a = 0; a < arr.length && !hit; a++) {
           const zb = Z[arr[a]];
           if (zb.dying > 0) continue;
           const r = 0.32 * zb.s;
           if (Math.abs(zb.x - x) < r + 0.06 && Math.abs(zb.z - z) < r + 0.25) {
+            if (bpr[i] > 0 || bhn[i] > 0) {                      // piercing shot: never hit the same zombie twice
+              let seen = false;
+              for (let q = 0, n = bhn[i]; q < n; q++) if (bhid[i * 8 + q] === zb.uid) { seen = true; break; }
+              if (seen) continue;
+              if (bhn[i] < 8) bhid[i * 8 + bhn[i]++] = zb.uid;
+            }
             hitZombie(zb, dmg);
             if (kind) splash(x, z, dmg);
-            else burst(x, 1.2, z, 1, [0.6, 1, 0.35], 1.5, 0.2);
+            else {
+              if (WB.splash) splash(x, z, dmg, WB.splash);
+              else burst(x, 1.2, z, 1, [0.6, 1, 0.35], 1.5, 0.2);
+              if (WB.knock) zb.kv = Math.min(TUNE.knockMax, zb.kv + WB.knock * 1.5);   // shoved back: a slowing push, capped so a gun cannot hold a horde out of its own range
+            }
+            if (bpr[i] > 0) { bpr[i]--; continue; }              // passes through, keeps flying
             hit = true; break;
           }
         }
@@ -1500,9 +1587,9 @@ scene.add(bossMesh);
 function startBoss() {
   G.phase = 'boss';
   const W = WEAPONS[G.weapon];
-  const dps = G.squad * W.rate * W.pellets * W.dmg * W.bossEff + (G.mech ? 2 * (TUNE.mechDmg + G.level * TUNE.mechDmgPerStage) / TUNE.mechCd : 0);
+  const dps = G.squad * W.rate * W.pellets * W.dmg * Math.pow(W.lvMul, G.weaponLv - 1) * W.bossEff + (G.mech ? 2 * (TUNE.mechDmg + G.level * TUNE.mechDmgPerStage) / TUNE.mechCd : 0);
   const hp = Math.round(TUNE.bossHp * G.level + dps * TUNE.bossDpsSecs);
-  G.boss = { x: 0, z: G.z - 30, hp, max: hp, sp: TUNE.bossSpeed + G.level * TUNE.bossSpeedPerStage, flash: 0, alive: true, deadT: 0, spawnT: 2.5, hitT: 0 };
+  G.boss = { x: 0, z: G.z - TUNE.bossDist, hp, max: hp, sp: TUNE.bossSpeed + G.level * TUNE.bossSpeedPerStage, flash: 0, alive: true, deadT: 0, spawnT: 2.5, hitT: 0 };
   bossMesh.visible = true;
   bossMesh.rotation.set(0, 0, 0);
   $('#bossbar').hidden = false;
@@ -2049,7 +2136,7 @@ function resetWorld() {
   for (const p of pops) p.el.remove();
   pops.length = 0;
   acc = 0;
-  Object.assign(G, { x: 0, tx: 0, z: 0, squad: TUNE.startSquad, weapon: 0, kills: 0, shield: 0, shake: 0, time: 0, safe: false, dmgMul: 1 });
+  Object.assign(G, { x: 0, tx: 0, z: 0, squad: TUNE.startSquad, weapon: 0, weaponLv: 1, kills: 0, shield: 0, shake: 0, time: 0, safe: false, dmgMul: 1 });
 }
 function prepare(level) {
   G.level = level;
@@ -2245,7 +2332,7 @@ requestAnimationFrame(frame);
 
 // handle for automated play-tests
 window.__zb = { renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
-  stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0) }),
+  stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0), bw: Array.from(bw.subarray(0, nb)), bl: Array.from(bl.subarray(0, nb)) }),
   perf: () => ({ pr: PR_STEPS[prIdx], steps: PR_STEPS, avg: Perf.avg, fxScale }) };
 })();
 </script>
