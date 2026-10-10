@@ -34,6 +34,12 @@ const opt = {
   holdTake: !!args['hold-take'],                       // with --hold: still pick up other guns' crates for the recruits (the held gun is handed back)
   hold: args.hold !== undefined ? String(args.hold) : null,   // force one gun for the whole run: index, id, or 'all' (one row per gun)
   noise: args.noise !== undefined ? Number(args.noise) : 1,   // human imperfection: 0 = perfect bot, 1 = decent human, 2 = sloppy
+  entry: args.entry !== undefined ? String(args.entry) : 'auto',   // single-stage runs: the squad stage n>1 starts with ('auto' = a typical carried-over squad per stage, or a number)
+  ups: args.ups ? JSON.parse(String(args.ups)) : {},               // single-stage runs: permanent upgrade levels, e.g. '{"dmg":3,"rate":3}'
+  campaign: !!args.campaign,                                       // play stage 1 -> cstages in a row, carrying the squad (see README)
+  cstages: Number(args.cstages || 5),
+  upgrades: !!args.upgrades,                                       // campaign: buy upgrades greedily with the coins between stages
+  retries: Number(args.retries || 0),                              // campaign: how often a lost stage is retried (after buying upgrades) before giving up
   line: !!args.line,                                 // one-line summary per row instead of the table (for sweeps)
   quiet: !!args.quiet,
   trace: !!args.trace,                               // print a coarse timeline for the first attempts of each row
@@ -105,6 +111,11 @@ function botRun(cfg) {
   };
 
   const popLayer = document.getElementById('pops');
+  if (!cfg.campaign && zb.resetSave) {                  // single-stage run: a clean save; stage n > 1 starts with a typical carried-over squad
+    zb.resetSave();
+    if (cfg.stage > 1) zb.SAVE.stages[cfg.stage] = { entry: cfg.entry, stars: 0 };
+    for (const k of Object.keys(cfg.ups || {})) zb.SAVE.upgrades[k] = cfg.ups[k];
+  }
   zb.prepare(cfg.stage);
   zb.start();
   window.__hold = null;
@@ -171,7 +182,7 @@ function botRun(cfg) {
   // value (in the same units as gate values) of walking over weapon pickup e
   function gunValue(e) {
     const w = e.w;
-    const crate = 1.2 * (zb.TUNE.crateRecruits || 0);                   // every crate brings recruits
+    const crate = 1.2 * ((zb.TUNE.crateRecruits || 0) + ((zb.SAVE && zb.SAVE.upgrades.recruit) || 0));   // every crate brings recruits
     // forced to keep one gun: by default never walk over another gun's crate; with --hold-take the squad still collects the recruits (the harness hands the held gun back)
     if (cfg.hold !== undefined && cfg.hold !== null && w !== cfg.hold) return cfg.holdTake ? crate : -60;
     const cur = gunScore(G.weapon, G.weaponLv);
@@ -208,6 +219,7 @@ function botRun(cfg) {
       if (dz < -1 || dz > 42) continue;
       if (e.type === 'gate' && !e.used) gates.push(e);
       else if (e.type === 'weapon' && !e.taken) others.push(e);
+      else if (e.type === 'barrel' && !e.dead) others.push(e);
       else if (e.type === 'hero' && !e.done && !e.missed) others.push(e);
     }
     const hps = hitsPerSec();
@@ -225,6 +237,9 @@ function botRun(cfg) {
         if (side !== e.side) continue;                 // the other gate of the pair (or nothing) is what we pass
         let v = e.val;
         if (e.kind === 'mul') v = Math.max(0, G.squad * (e.val - 1));
+        else if (e.kind === 'rate') v = G.squad * e.val * 0.6;                                   // +20 % fire rate ~ a fifth more soldiers
+        else if (e.kind === 'level') v = G.weaponLv < WP[G.weapon].maxLv ? (WP[G.weapon].lvMul - 1) * G.squad * 0.7 : zb.TUNE.levelGateRecruits;
+        else if (e.kind === 'mystery') v = 3.5 + (G.level / 2 | 0);                              // a gamble that is mostly good
         else {
           const inLane = Math.max(0, 1 - Math.abs(x - e.x) / (1.85 + h));
           const noShoot = (mode !== 'auto' && opening.has(e) && mode !== 'gate') || weaponsRoute;
@@ -246,6 +261,9 @@ function botRun(cfg) {
           const rad = e.mate ? 0.9 + h * 0.5 : 1.4 + h;
           const val = gv.get(e);
           if (Math.abs(x - e.x) < rad - 0.15) c -= wt * val * (val > 0 ? opinion(e) : 1);
+        } else if (e.type === 'barrel') {
+          // line up behind a barrel that sits in a horde so the stray bullets set it off at the right moment
+          if (dz > 6 && dz < 28 && Math.abs(x - e.x) < 0.9) c -= 2.0;
         } else {
           if (weaponsRoute) continue;
           if (skip && mode !== 'battery') continue;
@@ -302,9 +320,48 @@ function botRun(cfg) {
     bossSecs: LOG.bossT === undefined ? null : (LOG.bossDeadT !== undefined ? LOG.bossDeadT - LOG.bossT : (LOG.overT !== undefined ? LOG.overT - LOG.bossT : null)),
     bossKilled: LOG.bossDeadT !== undefined,
     bossHpLeft: G.boss ? Math.max(0, G.boss.hp / G.boss.max) : null,
+    entry: G.entrySquad, stars: G.result ? G.result.stars : 0, coinsRun: G.result ? G.result.coins : 0, comboBest: G.comboBest, stage: cfg.stage,
     gateDiffs: LOG.gateDiffs || [], deathZ: G.z, trace: cfg.trace ? trace : undefined, hero: !!LOG.hero, heroCharge: (() => { const h = G.events.find(e => e.type === 'hero'); return h ? Math.round(h.charge) + '/' + h.need : null; })(), tier: LOG.tier || 0, badGates: LOG.badGates || 0,
   };
   return res;
+}
+
+// Campaign: stages 1..cfg.stages in a row on one save, carrying the squad (and, if asked, buying upgrades greedily with the coins).
+// Runs inside the page and calls the bot installed as window.__botRun.
+function botCampaign(cfg) {
+  const zb = window.__zb;
+  zb.resetSave();
+  const W = { dmg: 1.0, rate: 1.0, recruit: 1.2, shield: 0.5, luck: 0.4 };       // how much a greedy player likes each upgrade
+  function buyGreedy() {
+    let bought = 0;
+    for (;;) {
+      let bestId = null, bestV = 0;
+      for (const u of zb.UPGRADES) {
+        const lv = zb.SAVE.upgrades[u.id] | 0;
+        if (lv >= u.max) continue;
+        const cost = zb.upgradeCost(u.id);
+        if (cost > zb.SAVE.coins) continue;
+        const v = W[u.id] / cost / (1 + lv * 0.15);
+        if (v > bestV) { bestV = v; bestId = u.id; }
+      }
+      if (!bestId || !zb.buyUpgrade(bestId)) return bought;
+      bought++;
+    }
+  }
+  const stages = [];
+  for (let st = 1; st <= cfg.cstages; st++) {
+    let tries = 0, res;
+    for (;;) {
+      res = window.__botRun(Object.assign({}, cfg, { campaign: true, stage: st, seed: cfg.seed + st * 7919 + tries * 104729 }));
+      if (res.won || tries >= cfg.retries) break;
+      tries++;
+      if (cfg.upgrades) buyGreedy();
+    }
+    stages.push({ stage: st, won: res.won, tries, entry: res.entry, squad: res.squad, stars: res.stars, coins: res.coinsRun, boss: res.bossSecs, cause: res.cause, wallet: zb.SAVE.coins });
+    if (!res.won) break;
+    if (cfg.upgrades) buyGreedy();
+  }
+  return { stages, ups: Object.assign({}, zb.SAVE.upgrades), wallet: zb.SAVE.coins };
 }
 
 // ------------------------------------------------------------------ driver
@@ -322,9 +379,10 @@ async function newPage() {
   await page.goto('file://' + opt.html);
   await page.waitForFunction(() => window.__zb);
   await page.evaluate(() => document.getElementById('mute').click());   // SFX off: no WebAudio nodes while fast-forwarding
+  await page.evaluate(([a, b]) => { window.__botRun = (0, eval)('(' + a + ')'); window.__botCampaign = (0, eval)('(' + b + ')'); }, [botRun.toString(), botCampaign.toString()]);
   await page.evaluate(tune => {
     for (const [k, v] of Object.entries(tune)) {
-      const parts = k.split('.'); let o = parts[0] === 'WEAPONS' ? window.__zb : window.__zb.TUNE;   // e.g. WEAPONS.1.rate
+      const parts = k.split('.'); let o = parts[0] === 'WEAPONS' || parts[0] === 'UPGRADES' ? window.__zb : window.__zb.TUNE;   // e.g. WEAPONS.1.rate, UPGRADES.0.per
       for (let i = 0; i < parts.length - 1; i++) o = o[parts[i]];
       if (!(parts[parts.length - 1] in o)) throw new Error('unknown TUNE key ' + k);
       o[parts[parts.length - 1]] = v;
@@ -343,7 +401,7 @@ async function runJobs(jobs) {
     while (true) {
       const j = next++;
       if (j >= jobs.length) return;
-      out[j] = await page.evaluate(botRun, jobs[j]);
+      out[j] = await page.evaluate(cfg => window.__botRun(cfg), jobs[j]);
     }
   }));
   return out;
@@ -353,6 +411,36 @@ const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN;
 const pct = (x, n) => n ? (100 * x / n).toFixed(0) + '%' : '-';
 const f1 = v => Number.isFinite(v) ? v.toFixed(1) : '-';
 
+// ---- campaign mode (--campaign [--upgrades] [--retries K] [--cstages 5]): its own report, then exit
+if (opt.campaign) {
+  await page_campaign();
+}
+async function page_campaign() {
+  const cfgs = [];
+  for (let i = 0; i < opt.n; i++) cfgs.push({ noise: opt.noise, opening: 'auto', seed: opt.seed * 100003 + i * 7919 + 1, maxSeconds: opt.maxSeconds, dodge: opt.dodge, cstages: opt.cstages, upgrades: opt.upgrades, retries: opt.retries });
+  const out = new Array(cfgs.length);
+  let next = 0;
+  await Promise.all(pages.map(async page => {
+    for (;;) { const j = next++; if (j >= cfgs.length) return; out[j] = await page.evaluate(c => window.__botCampaign(c), cfgs[j]); }
+  }));
+  console.log(`campaign: ${opt.n} runs, stages 1-${opt.cstages}, upgrades ${opt.upgrades ? 'greedy' : 'none'}, retries ${opt.retries}, seed ${opt.seed}`);
+  console.log('stage  reached  cleared|reached  cumulative  tries  entry  survivors  stars  coins/run  boss s');
+  for (let st = 1; st <= opt.cstages; st++) {
+    const at = out.filter(r => r.stages.length >= st).map(r => r.stages[st - 1]);
+    const won = at.filter(x => x.won);
+    const first = at.filter(x => x.tries === 0);
+    const m = (a, f) => a.length ? (a.reduce((x, y) => x + f(y), 0) / a.length) : NaN;
+    console.log([st, pct(at.length, opt.n), pct(won.length, at.length), pct(won.length, opt.n), f1(m(at, x => x.tries)), f1(m(at, x => x.entry)), f1(m(won, x => x.squad)), f1(m(won, x => x.stars)), f1(m(at, x => x.coins)), f1(m(won.filter(x => x.boss != null), x => x.boss))].map((v, i) => String(v).padEnd(i ? 14 : 7)).join(''));
+  }
+  const upsAvg = {};
+  for (const r of out) for (const [k, v] of Object.entries(r.ups)) upsAvg[k] = (upsAvg[k] || 0) + v / out.length;
+  console.log('mean upgrade levels at the end: ' + Object.entries(upsAvg).map(([k, v]) => k + ' ' + v.toFixed(1)).join(', ') + '; mean leftover wallet ' + f1(out.reduce((a, r) => a + r.wallet, 0) / out.length));
+  console.log('page errors: ' + errors.length);
+  if (errors.length) console.log(errors.slice(0, 10).join('\n'));
+  await browser.close();
+  process.exit(errors.length ? 1 : 0);
+}
+const ENTRY_AUTO = [1, 1, 48, 55, 50, 45, 45];   // typical survivors carried into stage n (index = n) for single-stage runs
 const GUNS = ['pistol', 'rifle', 'shotgun', 'gatling', 'sniper', 'flamer', 'rocket'];
 const gunIndex = v => { const i = GUNS.indexOf(v); return i >= 0 ? i : Number(v); };
 // one row per strategy: { label, opening, hold }
@@ -369,7 +457,7 @@ for (const stage of opt.stages) {
   for (const row of openings) {
     const opening = row.label;
     const jobs = [];
-    for (let i = 0; i < opt.n; i++) jobs.push({ noise: opt.noise, trace: opt.trace && i < 3, stage, opening: row.opening, hold: row.hold, holdTake: opt.holdTake, seed: opt.seed * 100003 + stage * 1009 + i * 7919 + 1, maxSeconds: opt.maxSeconds, dodge: opt.dodge });
+    for (let i = 0; i < opt.n; i++) jobs.push({ entry: opt.entry === 'auto' ? ENTRY_AUTO[Math.min(stage, ENTRY_AUTO.length - 1)] : Number(opt.entry), ups: opt.ups, noise: opt.noise, trace: opt.trace && i < 3, stage, opening: row.opening, hold: row.hold, holdTake: opt.holdTake, seed: opt.seed * 100003 + stage * 1009 + i * 7919 + 1, maxSeconds: opt.maxSeconds, dodge: opt.dodge });
     const res = await runJobs(jobs);
     if (opt.trace) for (const r of res) if (r.trace) { console.log(`--- stage ${stage} ${opening} won=${r.won} cause=${r.cause} gates=${r.gateDiffs.join(',')}`); console.log(r.trace.join('\n')); }
     if (opt.dump) fs.appendFileSync(opt.dump, res.map((r, i) => JSON.stringify({ stage, opening, seed: jobs[i].seed, ...r })).join('\n') + '\n');
