@@ -2238,7 +2238,7 @@ function drawScene(){
 
 /* ---------- video overlay ---------- */
 const vid = $('vid');
-const VS = {loaded:false, w:0, h:0, dur:0, fps:30, factor:1, range:[0,0], busy:false, cancel:false,
+const VS = {loaded:false, w:0, h:0, dur:0, firstFrame:0, fps:30, factor:1, range:[0,0], busy:false, cancel:false,
   calib:{pts:[], mode:'doubles', active:false, drag:-1, hover:null, H:null, cam:null}};
 function playerSample(p, time){
   const arr = rally.fit?.players?.[p]; if (!arr || !arr.length) return null;
@@ -2430,9 +2430,12 @@ function setPlaying(v){
 }
 const videoStart = () => rally.video?.start ?? 0;
 const videoFactor = () => rally.video?.factor ?? VS.factor;
+// some files have sound for seconds before the first picture (VS.firstFrame): never seek into that gap
+const seekVid = x => { vid.currentTime = Math.max(x, VS.firstFrame); };
+const picDur = () => VS.dur - VS.firstFrame;      // length of the part that has a picture
 function setTime(x){
   t = clamp(x, 0, TL.total);
-  if (view === 'video' && VS.loaded) vid.currentTime = videoStart() + t*videoFactor();
+  if (view === 'video' && VS.loaded) seekVid(videoStart() + t*videoFactor());
   dirty = true;
 }
 function seekShot(i){ if (!TL.spans[i]) return; setTime(Math.max(0, TL.spans[i].t0 - (rally.fit ? 0.25 : 0))); }
@@ -2457,6 +2460,7 @@ function setView(v){
 /* ---------- loop ---------- */
 function frame(now){
   if (view === 'video' && VS.loaded && !VS.busy){
+    if (VS.firstFrame > 0 && !vid.seeking && vid.currentTime < VS.firstFrame - 0.005) seekVid(VS.firstFrame);  // anything else that strayed into the gap
     const vt = (vid.currentTime - videoStart())/videoFactor();
     if (Math.abs(vt - t) > 1e-4){ t = vt; dirty = true; }
     if (playing && t >= TL.total){ setPlaying(false); }
@@ -2638,20 +2642,20 @@ function setCalibActive(on){
 $('bCalib').onclick = () => setCalibActive(!VS.calib.active);
 $('bCalibReset').onclick = () => { VS.calib.pts = []; updateCalibration(); setCalibActive(true); };
 $('cMode').onchange = e => { VS.calib.mode = e.target.value; updateCalibration(); };
-$('bRS').onclick = () => { VS.range[0] = clamp(vid.currentTime, 0, VS.range[1] - 0.5); refreshSteps(); };
+$('bRS').onclick = () => { VS.range[0] = clamp(vid.currentTime, VS.firstFrame, VS.range[1] - 0.5); refreshSteps(); };
 $('bRE').onclick = () => { VS.range[1] = clamp(vid.currentTime, VS.range[0] + 0.5, VS.dur); refreshSteps(); };
 $('fps').onchange = e => { VS.fps = clamp(+e.target.value || 30, 10, 480); };
-$('slo').onchange = e => { VS.factor = +e.target.value || 1; if (!rally.fit && rally.video){ rally.video.factor = VS.factor; rally.video.dur = VS.dur/VS.factor; commit(); } };
+$('slo').onchange = e => { VS.factor = +e.target.value || 1; if (!rally.fit && rally.video){ rally.video.factor = VS.factor; rally.video.dur = picDur()/VS.factor; commit(); } };
 
 function freshVideoRally(){
   const r = {meta:{tag:'影片', event:VS.name, headline:'標出球場四角後按「開始分析」'}, players:clone(rally.players), shots:[],
-    video:{start:0, factor:VS.factor, dur:VS.dur/VS.factor}};
+    video:{start:VS.firstFrame, factor:VS.factor, dur:picDur()/VS.factor}};
   if (r.players.A.name === 'CHEN' && r.players.B.name === 'MOREAU') r.players = {A:{name:'近端'}, B:{name:'遠端'}};
   return r;
 }
 async function onVideoReady(){
   VS.w = vid.videoWidth; VS.h = vid.videoHeight; VS.dur = vid.duration;
-  VS.loaded = true; VS.range = [0, Math.min(VS.dur, 20)];
+  VS.loaded = true; VS.firstFrame = 0; VS.range = [0, Math.min(VS.dur, 20)];
   $('screen').style.setProperty('--ar', `${VS.w}/${VS.h}`);
   VS.calib.pts = []; VS.calib.H = null; VS.calib.cam = null;
   rally = freshVideoRally(); t = 0; commit();
@@ -2659,12 +2663,16 @@ async function onVideoReady(){
   setView('video');
   const fps = await detectFps();
   VS.fps = fps || 30; $('fps').value = VS.fps;
-  if (VS.firstFrame > 0.2 && VS.firstFrame < VS.dur - 1){  // some files carry seconds of sound before the first picture
-    VS.range = [Math.floor(VS.firstFrame*100)/100, Math.min(VS.dur, VS.firstFrame + 20)];
-    refreshSteps();
-  }
-  $('vInfo').textContent = `${VS.w}×${VS.h} · ${fmt(VS.dur,1)} s · ${fps ? `${VS.fps} fps` : '無法偵測幀率，請自行填寫'}`;
-  vid.currentTime = VS.range[0];
+  const gap = VS.firstFrame > 0.2 && VS.firstFrame < VS.dur - 1;
+  if (gap){  // some files carry seconds of sound before the first picture: the player and the timeline start at the picture
+    VS.range = [Math.ceil(VS.firstFrame*100 - 1e-6)/100, Math.min(VS.dur, VS.firstFrame + 20)];
+  } else VS.firstFrame = 0;
+  rally.video.start = VS.firstFrame; rally.video.dur = picDur()/VS.factor;
+  t = 0; commit(); refreshSteps();
+  $('vInfo').textContent = `${VS.w}×${VS.h} · ${fmt(picDur(),1)} s · ${fps ? `${VS.fps} fps` : '無法偵測幀率，請自行填寫'}` + (gap ? `（影片前 ${fmt(VS.firstFrame,1)} 秒沒有畫面，已略過）` : '');
+  if (gap){  // show the first picture right away
+    await new Promise(res => { vid.addEventListener('seeked', res, {once:true}); setTimeout(res, 2000); vid.currentTime = VS.firstFrame; });
+  } else vid.currentTime = VS.range[0];
   setCalibActive(true);
   $('result').hidden = true;
 }
