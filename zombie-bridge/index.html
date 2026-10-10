@@ -216,13 +216,112 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 @media (max-height: 520px) and (min-width: 560px) {
   .overlay > .card { max-width: 720px; display: grid; grid-template-columns: 1fr 1fr; text-align: left; justify-items: stretch; align-items: center; column-gap: 28px; row-gap: 8px; }
   .card > * { grid-column: 1; }
-  .card > .rules { grid-column: 2; grid-row: 1 / span 5; }
-  .card .btn, .card .best, .card .btnstack, .card .stagepick, .card .link { justify-self: start; }
+  .card > .rules { grid-column: 2; grid-row: 1 / span 7; }
+  .card .btn, .card .best, .card .btnstack, .card .btnrow, .card .entryline, .card .menu-wallet, .card .stagepick, .card .link { justify-self: start; }
 }
 @media (min-width: 900px) and (min-height: 600px) {
   .card { max-width: 400px; }
 }
 @media (prefers-reduced-motion: reduce) { .tip span { animation: none; } .tip { transition: none; } }
+
+/* ---- round 3: combo, coins, buffs, banners, result, shop ---- */
+#over, #win { display: none !important; }   /* superseded by #result (logic still writes into them, harmlessly) */
+.chip.coin { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px 4px 6px; }
+.chip.coin b { color: #ffe08a; }
+.cico { width: 20px; height: 20px; flex: none; }
+.subrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 30px; }
+#buffs { display: flex; gap: 6px; }
+.buff { display: flex; align-items: center; gap: 6px; padding: 3px 11px 3px 4px; border-radius: 999px; background: var(--panel); font: 900 13px var(--body); color: #fff; box-shadow: 0 0 0 2px var(--bc); letter-spacing: .06em; }
+.buff svg { width: 26px; height: 26px; transform: rotate(-90deg); }
+.buff circle { fill: none; stroke-width: 4; }
+.buff .bg { stroke: rgba(255,255,255,.2); }
+.buff .fg { stroke: var(--bc); stroke-linecap: round; }
+.buff b { font-variant-numeric: tabular-nums; color: var(--bc); min-width: 1.2em; text-align: right; }
+#combo {
+  position: absolute; left: 16px; top: calc(env(safe-area-inset-top, 0px) + 112px); display: flex; align-items: baseline; gap: 8px;
+  pointer-events: none; opacity: 0; transition: opacity .12s; transform-origin: 0 60%; --cc: #fff; --cs: 40px;
+}
+#combo.on { opacity: 1; }
+#combo b { font: 400 var(--cs)/1 var(--display); color: var(--cc); font-variant-numeric: tabular-nums; text-shadow: 0 3px 0 var(--ink), 0 0 18px var(--cc); }
+#combo span { font: 900 14px var(--body); color: var(--paper); text-shadow: 0 1px 3px #000; letter-spacing: .1em; }
+#combo.t1 { --cc: #ffe14d; --cs: 50px; } #combo.t2 { --cc: #ff9a2a; --cs: 60px; } #combo.t3 { --cc: #ff4048; --cs: 70px; } #combo.t4 { --cc: #c06bff; --cs: 80px; }
+.pop.crit { color: #ffe14d; font-size: 34px; text-shadow: 0 3px 0 #7a3b00, 0 0 14px rgba(255,200,40,.75); }
+.pop.chain { color: #ff9a2a; font-family: var(--body); font-weight: 900; font-size: 30px; text-shadow: 0 3px 0 #5a1a00, 0 0 14px rgba(255,120,30,.8); }
+#banner2 { position: fixed; left: 0; right: 0; top: 33%; display: grid; place-items: center; gap: 2px; pointer-events: none; opacity: 0; }
+#banner2 b { font: 900 clamp(30px, 10vw, 46px)/1.1 var(--body); letter-spacing: .06em; color: var(--wc, #fff); text-align: center; padding: 0 12px; text-shadow: 0 3px 0 var(--ink), 0 0 20px var(--wc, #fff), 0 0 3px #000; }
+#banner2 small { font: 900 16px var(--body); color: #ffe08a; text-shadow: 0 2px 0 var(--ink); letter-spacing: .08em; }
+#flies { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 4; }
+.cfly { position: absolute; left: 0; top: 0; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%; will-change: transform;
+  background: radial-gradient(circle at 35% 30%, #fff6b8, #ffd34d 55%, #c98a00); box-shadow: 0 0 8px #ffd34d; }
+.cico.bump { animation: cbump .22s ease-out; }
+@keyframes cbump { 40% { transform: scale(1.5) rotate(-14deg); } }
+
+/* result screen */
+#result { background: radial-gradient(120% 80% at 50% 35%, rgba(16,21,27,.55), rgba(16,21,27,.92)); }
+.resc { gap: 10px; }
+.resc h2 { opacity: 0; }
+.resc.go h2 { animation: titlein .5s cubic-bezier(.2,1.4,.4,1) forwards; }
+@keyframes titlein { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: scale(1); } }
+.stars { display: flex; gap: 10px; justify-content: center; min-height: 56px; }
+.stars.none { display: none; }
+.star { width: 54px; height: 54px; fill: rgba(255,255,255,.12); stroke: rgba(255,255,255,.35); stroke-width: 1.2; stroke-linejoin: round; transform-origin: 50% 55%; }
+.star.on { fill: #ffd34d; stroke: #a86a00; stroke-width: 1.4; animation: starpop .55s cubic-bezier(.2,1.7,.4,1); filter: drop-shadow(0 0 8px rgba(255,200,60,.8)); }
+@keyframes starpop { from { transform: scale(0) rotate(-60deg); } 60% { transform: scale(1.35) rotate(8deg); } to { transform: scale(1) rotate(0); } }
+.newbest { font: 900 15px var(--body); color: var(--ink); background: var(--hazard); padding: 4px 14px; border-radius: 999px; letter-spacing: .1em; animation: nbpulse 1.1s ease-in-out infinite; }
+@keyframes nbpulse { 50% { transform: scale(1.1); } }
+.carry { font: 900 17px var(--body); color: #9fd0ff; background: rgba(47,123,255,.18); border-radius: 12px; padding: 7px 14px; letter-spacing: .06em; animation: titlein .45s cubic-bezier(.2,1.4,.4,1); }
+.carry b { font-family: var(--display); font-weight: 400; color: #fff; font-size: 20px; }
+.tally { width: 100%; box-sizing: border-box; display: grid; gap: 6px; background: var(--panel); border-radius: 14px; padding: 10px 14px; text-align: left; }
+.trow { display: flex; align-items: center; justify-content: space-between; font: 500 14px var(--body); color: var(--muted); min-height: 26px; }
+.trow b { font: 400 20px var(--display); color: var(--paper); font-variant-numeric: tabular-nums; }
+.trow b.gold { color: #ffe08a; }
+.trow.total { border-top: 1px solid rgba(255,255,255,.14); padding-top: 6px; }
+.trow.bonus { opacity: 0; transition: opacity .3s; }
+.trow.bonus.on { opacity: 1; }
+.chestwrap { display: inline-flex; align-items: center; gap: 8px; }
+.chest { width: 40px; height: 34px; overflow: visible; }
+.chest .lid { transform-box: fill-box; transform-origin: 4% 92%; transition: transform .3s cubic-bezier(.3,1.6,.5,1); }
+.chest .glow { opacity: 0; }
+.chest.shake { animation: cshake .45s ease-in-out; }
+.chest.open .lid { transform: rotate(-42deg); }
+.chest.open .glow { opacity: 1; filter: drop-shadow(0 0 8px #ffd34d); }
+@keyframes cshake { 20% { transform: rotate(-9deg); } 40% { transform: rotate(8deg); } 60% { transform: rotate(-6deg); } 80% { transform: rotate(4deg); } }
+.btnrow { display: flex; gap: 10px; justify-content: center; align-items: center; }
+.btnrow .btn.ghost { padding: 11px 22px; font-size: 17px; }
+.menu-wallet { justify-self: end; }
+.entryline { font: 900 14px var(--body); color: var(--paper); letter-spacing: .08em; min-height: 18px; }
+.entryline .st { color: #ffd34d; letter-spacing: .12em; }
+.entryline .st i { font-style: normal; color: rgba(255,255,255,.22); }
+
+/* shop */
+#shop { background: rgba(10,14,20,.975); z-index: 6; }
+.shopc { gap: 12px; }
+.shophead { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+.shophead h2 { font-size: 34px; }
+.upl { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; width: 100%; }
+.upi { display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; align-items: center; padding: 9px 12px; background: var(--panel); border-radius: 12px; text-align: left; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+.upi .nm { font: 900 16px var(--body); color: var(--paper); }
+.upi .nm em { font: 400 12px var(--display); font-style: normal; color: var(--muted); margin-left: 6px; }
+.upi .ds { grid-column: 1; font: 500 12px/1.3 var(--body); color: var(--muted); }
+.upi .pp { grid-column: 1; display: flex; gap: 3px; flex-wrap: wrap; margin-top: 2px; }
+.upi .pp i { width: 12px; height: 7px; border-radius: 2px; background: rgba(255,255,255,.16); }
+.upi .pp i.on { background: var(--hazard); }
+.upi .pp i.fresh { animation: pipfill .6s ease-out; }
+@keyframes pipfill { 0% { transform: scaleY(3); background: #fff; box-shadow: 0 0 10px #fff; } 100% { transform: none; } }
+.buy { grid-column: 2; grid-row: 1 / span 3; pointer-events: auto; cursor: pointer; border: 0; border-radius: 10px; padding: 9px 12px; min-width: 76px; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  background: var(--hazard); color: var(--ink); font: 900 15px var(--body); box-shadow: 0 3px 0 var(--hazard-deep); }
+.buy .cico { width: 16px; height: 16px; }
+.buy:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--hazard-deep); }
+.buy:disabled { background: rgba(255,255,255,.12); color: rgba(255,255,255,.4); box-shadow: none; cursor: default; transform: none; }
+.buy.maxed { background: transparent; color: #9fd0ff; box-shadow: inset 0 0 0 2px rgba(159,208,255,.5); }
+@media (max-height: 700px) {
+  .stars { min-height: 44px; } .star { width: 44px; height: 44px; }
+  .resc { gap: 6px; } .trow { min-height: 22px; font-size: 13px; } .trow b { font-size: 18px; } .tally { padding: 7px 12px; gap: 3px; }
+  .upi { padding: 6px 10px; } .shopc { gap: 8px; } .upl { gap: 6px; } .upi .ds { font-size: 11px; }
+  #combo { top: calc(env(safe-area-inset-top, 0px) + 104px); }
+}
+@media (prefers-reduced-motion: reduce) { .star.on, .newbest, .carry, .resc.go h2, .upi .pp i.fresh, .cico.bump, .chest.shake { animation: none; } .resc h2 { opacity: 1; } .chest .lid { transition: none; } .trow.bonus { transition: none; } #combo { transition: none; } }
+
 </style>
 </head>
 <body>
@@ -237,11 +336,16 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
       <button id="pause" type="button" aria-label="暫停"><svg viewBox="0 0 14 14" aria-hidden="true"><rect x="2" y="1" width="3.6" height="12" rx="1"/><rect x="8.4" y="1" width="3.6" height="12" rx="1"/></svg></button>
       <button id="mute" type="button" aria-label="切換音效">音</button>
     </div>
+    <div class="subrow">
+      <span class="chip coin" id="coinChip"><svg class="cico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="#ffd34d" stroke="#a86a00" stroke-width="2"/><circle cx="12" cy="12" r="6.2" fill="none" stroke="#c98a00" stroke-width="2"/></svg><b id="hudCoins">0</b></span>
+      <div id="buffs"></div>
+    </div>
     <div id="bossbar" hidden>
       <span class="label">巨屍 BOSS</span>
       <div class="track"><div class="ghost" id="bossGhost"></div><div class="fill" id="bossFill"></div></div>
     </div>
   </div>
+  <div id="combo" aria-live="off"><b id="comboN">0</b><span id="comboLbl">連殺</span></div>
   <div id="hint">按住左右拖曳移動 · 小隊自動開火</div>
   <div class="hud-bottom">
     <div class="squad"><span class="k">小隊</span><span class="v" id="hudSquad">×1</span></div>
@@ -252,26 +356,33 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 <div id="tips" aria-hidden="true"></div>
 <div id="cards" aria-hidden="true"></div>
 <div id="banner" aria-live="polite"><b></b></div>
+<div id="banner2"><b></b><small></small></div>
+<div id="flies" aria-hidden="true"></div>
 <div id="vignette"></div>
 <div id="flash"></div>
 
 <section class="overlay" id="menu">
   <div class="card">
+    <span class="chip coin menu-wallet" id="menuWallet"><svg class="cico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="#ffd34d" stroke="#a86a00" stroke-width="2"/><circle cx="12" cy="12" r="6.2" fill="none" stroke="#c98a00" stroke-width="2"/></svg><b id="menuCoins">0</b></span>
     <div class="stagepick">
       <button class="step" id="stagePrev" type="button" aria-label="上一關" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
       <span class="eyebrow" id="menuLevel">STAGE 1</span>
       <button class="step" id="stageNext" type="button" aria-label="下一關" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
     </div>
+    <div class="entryline" id="entryLine"></div>
     <h1>屍潮斷橋</h1>
     <p class="lede">已經有很多人倒在這座橋上。你能帶著小隊衝到對岸嗎？</p>
     <ul class="rules">
       <li><span><strong>左右拖曳</strong>移動，小隊會自動朝前方開火。</span></li>
       <li style="--c: var(--ally)"><span><strong>射擊數字門</strong>讓數字變大，穿過去就能補兵。紅色負數會扣人。</span></li>
-      <li style="--c: var(--holo)"><span><strong>打滿電池</strong>召喚機甲。</span></li>
-      <li style="--c: var(--hazard)"><span><strong>走過去撿槍</strong>換武器，共 <span id="ruleGuns">7</span> 種。撿到手上同一把就<strong>升級</strong>，最高 Lv<span id="ruleLv">3</span>。</span></li>
-      <li style="--c: var(--blood)"><span>在橋尾<strong>擊倒巨屍</strong>才算過關。</span></li>
+      <li style="--c: var(--holo)"><span><strong>打滿電池</strong>召喚機甲；<strong>撿槍</strong>換武器（共 <span id="ruleGuns">7</span> 種），撿到同一把就<strong>升級</strong>，最高 Lv<span id="ruleLv">3</span>。</span></li>
+      <li style="--c: #c06bff"><span><strong>連殺</strong>拿金幣、炸<strong>油桶</strong>清一片；金色、紫色、<strong>?</strong> 門有特殊獎勵。</span></li>
+      <li style="--c: var(--blood)"><span><strong>擊倒巨屍</strong>才算過關，活下來的隊員<strong>帶到下一關</strong>。</span></li>
     </ul>
-    <button class="btn" id="btnStart" type="button">出發</button>
+    <div class="btnrow">
+      <button class="btn" id="btnStart" type="button">出發</button>
+      <button class="btn ghost" id="btnShop" type="button">強化</button>
+    </div>
     <span class="best" id="bestLine"></span>
   </div>
 </section>
@@ -305,6 +416,40 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
       <button class="btn" id="btnNext" type="button">下一關</button>
       <button class="link" id="btnMenu2" type="button">回主選單</button>
     </div>
+  </div>
+</section>
+
+<section class="overlay" id="result" hidden role="dialog" aria-label="關卡結果">
+  <div class="card resc">
+    <span class="eyebrow" id="resEyebrow">STAGE 1 CLEAR</span>
+    <h2 id="resTitle">成功過橋</h2>
+    <div class="stars" id="resStars"><svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.3 5.9 20.8l1.4-6.8L2.2 9.3l6.9-.8z"/></svg><svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.3 5.9 20.8l1.4-6.8L2.2 9.3l6.9-.8z"/></svg><svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.3 5.9 20.8l1.4-6.8L2.2 9.3l6.9-.8z"/></svg></div>
+    <div class="newbest" id="resNew" hidden>新紀錄！</div>
+    <p class="lede" id="resLede"></p>
+    <div class="carry" id="resCarry" hidden></div>
+    <div class="tally">
+      <div class="trow"><span>擊殺</span><b id="resKills">0</b></div>
+      <div class="trow"><span>最高連殺</span><b id="resCombo">0</b></div>
+      <div class="trow"><span>金幣</span><b class="gold" id="resCoins">0</b></div>
+      <div class="trow bonus" id="resBonusRow">
+        <span class="chestwrap"><svg class="chest" id="resChest" viewBox="0 0 48 40" aria-hidden="true"><g class="lid"><path d="M4 16 Q4 4 24 4 Q44 4 44 16Z" fill="#a8641f" stroke="#5e330c" stroke-width="2"/><rect x="21" y="9" width="6" height="8" rx="1" fill="#ffd34d"/></g><rect class="glow" x="8" y="12" width="32" height="6" rx="3" fill="#fff3a6"/><path d="M4 16h40v20a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" fill="#c0792b" stroke="#5e330c" stroke-width="2"/><rect x="4" y="22" width="40" height="4" fill="#8c531a"/><rect x="20" y="19" width="8" height="10" rx="1.5" fill="#ffd34d" stroke="#a86a00" stroke-width="1.5"/></svg><span id="resBonusLbl">星等獎勵</span></span><b class="gold" id="resBonus">+0</b>
+      </div>
+      <div class="trow total"><span>錢包</span><b class="gold" id="resWallet">0</b></div>
+    </div>
+    <div class="btnstack">
+      <button class="btn" id="resMain" type="button">下一關</button>
+      <span class="best" id="resSub"></span>
+      <button class="btn ghost" id="resShop" type="button">強化</button>
+      <button class="link" id="resMenu" type="button">回主選單</button>
+    </div>
+  </div>
+</section>
+
+<section class="overlay" id="shop" hidden role="dialog" aria-modal="true" aria-label="強化">
+  <div class="card shopc">
+    <div class="shophead"><h2>強化</h2><span class="chip coin"><svg class="cico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="#ffd34d" stroke="#a86a00" stroke-width="2"/><circle cx="12" cy="12" r="6.2" fill="none" stroke="#c98a00" stroke-width="2"/></svg><b id="shopCoins">0</b></span></div>
+    <ul class="upl" id="shopList"></ul>
+    <button class="btn ghost wide" id="shopBack" type="button">返回</button>
   </div>
 </section>
 
@@ -978,35 +1123,67 @@ function makeGate(z, side, val, kind, n) {
   e.draw();
   return e;
 }
+// What a gate shows. The one place that maps the engine's gate fields (e.kind, e.val) to a look, so merge changes stay small.
+// kinds: 'add' (+/- squad), 'mul' (x squad), 'rate' (fire rate, gold), 'level' (gun level, purple), 'mystery' ('?', revealed on gateReveal).
+function gateLook(e) {
+  if (e.fxShow) return e.fxShow;          // slot-machine shuffle / just-revealed face (cleared once the engine updates e.kind)
+  return { kind: e.kind, val: e.val };
+}
+const GATE_STYLE = {
+  neg:     { hi: '#ff6a6e', lo: '#b3151d', glow: '#ff4048', base: 0xff5a5a },
+  pos:     { hi: '#6aa9ff', lo: '#1f55d6', glow: '#4d95ff', base: 0x6aa0ff },
+  rate:    { hi: '#ffe27a', lo: '#c98300', glow: '#ffb020', base: 0xffc84a },
+  level:   { hi: '#c88bff', lo: '#5a2bb5', glow: '#a45bff', base: 0xb070ff },
+  mystery: { hi: '#7fe6d6', lo: '#23707f', glow: '#3fe0cf', base: 0x5fd0c6 },
+};
+function gateText(look) {
+  const v = look.val;
+  switch (look.kind) {
+    case 'mul': return { big: '×' + v, tag: '' };
+    case 'rate': return { big: typeof v === 'number' ? '+' + v : '▲', tag: '射速' };
+    case 'level': return { big: typeof v === 'number' ? '+' + v : '▲', tag: '槍等級' };
+    case 'mystery': return { big: '?', tag: '' };
+    default: return { big: (v > 0 ? '+' : '') + v, tag: '' };
+  }
+}
 function drawGate(e) {
   const { ctx: c, cw: W, ch: H } = e.p;
-  const pos = e.kind === 'mul' || e.val > 0;
+  const look = gateLook(e);
+  const st = look.kind === 'rate' || look.kind === 'level' || look.kind === 'mystery' ? GATE_STYLE[look.kind]
+    : (look.kind === 'mul' || look.val > 0 ? GATE_STYLE.pos : GATE_STYLE.neg);
   const m = 24, x0 = m, y0 = m, w = W - 2 * m, h = H - 2 * m;
   c.clearRect(0, 0, W, H);
   // outer glow (the blur is what makes the number readable from the far end of the bridge)
   c.save();
-  c.shadowColor = pos ? '#4d95ff' : '#ff4048'; c.shadowBlur = 22;
-  rrect(c, x0, y0, w, h, 20); c.fillStyle = pos ? '#1f55d6' : '#b3151d'; c.fill();
+  c.shadowColor = st.glow; c.shadowBlur = 22;
+  rrect(c, x0, y0, w, h, 20); c.fillStyle = st.lo; c.fill();
   c.restore();
   const g = c.createLinearGradient(0, y0, 0, y0 + h);
-  if (pos) { g.addColorStop(0, '#6aa9ff'); g.addColorStop(1, '#1f55d6'); }
-  else { g.addColorStop(0, '#ff6a6e'); g.addColorStop(1, '#b3151d'); }
+  g.addColorStop(0, st.hi); g.addColorStop(1, st.lo);
   rrect(c, x0, y0, w, h, 20); c.globalAlpha = 0.94; c.fillStyle = g; c.fill();
   c.globalAlpha = 1;
   c.save(); rrect(c, x0, y0, w, h, 20); c.clip();
   c.fillStyle = 'rgba(255,255,255,.16)'; c.fillRect(x0, y0, w, h * 0.42);
+  if (look.kind === 'mystery') {          // diagonal hazard-ish stripes so '?' gates never read as a normal number gate
+    c.fillStyle = 'rgba(255,255,255,.1)';
+    for (let i = -4; i < 10; i++) { c.beginPath(); c.moveTo(x0 + i * 40, y0 + h); c.lineTo(x0 + i * 40 + 22, y0 + h); c.lineTo(x0 + i * 40 + 22 + h, y0); c.lineTo(x0 + i * 40 + h, y0); c.closePath(); c.fill(); }
+  }
   c.restore();
   rrect(c, x0, y0, w, h, 20); c.lineWidth = 7; c.strokeStyle = 'rgba(255,255,255,.95)'; c.stroke();
-  const txt = e.kind === 'mul' ? '×' + e.val : (e.val > 0 ? '+' : '') + e.val;
-  const prog = e.kind !== 'mul';
+  const tx = gateText(look), prog = look.kind === 'add';
   c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineJoin = 'round';
-  let fs = 120;
+  if (tx.tag) {
+    c.font = '900 34px "Noto Sans TC", sans-serif';
+    c.lineWidth = 8; c.strokeStyle = 'rgba(10,14,22,.8)'; c.strokeText(tx.tag, W / 2, y0 + 30);
+    c.fillStyle = '#fff'; c.fillText(tx.tag, W / 2, y0 + 30);
+  }
+  let fs = tx.tag ? 96 : 120;
   c.font = fs + 'px Bungee, "Noto Sans TC", sans-serif';
-  const tw = c.measureText(txt).width;
+  const tw = c.measureText(tx.big).width;
   if (tw > w - 40) { fs = Math.floor(fs * (w - 40) / tw); c.font = fs + 'px Bungee, "Noto Sans TC", sans-serif'; }
-  const ty = y0 + h / 2 + (prog ? -6 : 4);
-  c.lineWidth = 14; c.strokeStyle = 'rgba(10,14,22,.85)'; c.strokeText(txt, W / 2, ty);
-  c.fillStyle = '#fff'; c.fillText(txt, W / 2, ty);
+  const ty = y0 + h / 2 + (prog ? -6 : tx.tag ? 18 : 4);
+  c.lineWidth = 14; c.strokeStyle = 'rgba(10,14,22,.85)'; c.strokeText(tx.big, W / 2, ty);
+  c.fillStyle = '#fff'; c.fillText(tx.big, W / 2, ty);
   if (prog) {
     // shots-to-next-point meter: every bullet that lands visibly moves it
     const bw = w - 70, bx0 = (W - bw) / 2, by = y0 + h - 22, f = clamp(e.hits / e.per, 0, 1);
@@ -1016,7 +1193,7 @@ function drawGate(e) {
   if (e.fxFlash > 0) {
     rrect(c, x0, y0, w, h, 20); c.fillStyle = 'rgba(255,255,255,' + Math.min(0.6, e.fxFlash * 3) + ')'; c.fill();
   }
-  if (e.p.baseMat) e.p.baseMat.color.setHex(pos ? 0x6aa0ff : 0xff5a5a);
+  if (e.p.baseMat) e.p.baseMat.color.setHex(st.base);
   e.p.tex.needsUpdate = true;
 }
 
@@ -1231,6 +1408,37 @@ const SFX = {
     const now = c.currentTime; if (now - (this.lastBoom || 0) < 0.07) return; this.lastBoom = now;
     this.noiseHit(now, 'lowpass', 520, 0.7, 0.34, 0.42); this.tone(78, 0.4, 'sine', 0.26, -48);
   },
+  coinTick(streak) {
+    const c = this.ctx; if (!c || !this.on) return;
+    const now = c.currentTime; if (now - (this.lastCoin || 0) < 0.035) return; this.lastCoin = now;
+    this.tone(880 * Math.pow(2, Math.min(streak, 14) / 12), 0.07, 'square', 0.04);
+  },
+  comboTick(n) {
+    const c = this.ctx; if (!c || !this.on) return;
+    const now = c.currentTime; if (now - (this.lastCb || 0) < 0.06) return; this.lastCb = now;
+    const st = Math.min(n, 60), deg = [0, 2, 4, 7, 9][st % 5], oct = Math.min(2, Math.floor(st / 5));
+    this.tone(392 * Math.pow(2, (deg + 12 * oct) / 12), 0.08, 'triangle', 0.05);
+  },
+  milestone(tier) { const base = [523, 587, 659, 784, 880][clamp(tier, 0, 4)]; [1, 1.26, 1.5, 2, 2.52].forEach((m, i) => this.tone(base * m, 0.16, 'triangle', 0.09, 0, i * 0.055)); },
+  star(i) { [660, 880, 1175][clamp(i, 0, 2)] && [1, 1.5, 2].forEach((m, k) => this.tone([660, 880, 1175][clamp(i, 0, 2)] * m, 0.2, 'triangle', 0.08 - k * 0.02, 0, k * 0.05)); },
+  buffStart() { this.tone(300, 0.3, 'sawtooth', 0.07, 650); this.tone(900, 0.2, 'triangle', 0.07, 0, 0.18); },
+  buffEnd() { this.tone(600, 0.22, 'triangle', 0.06, -380); },
+  powerup() { [784, 988, 1175, 1568].forEach((f, i) => this.tone(f, 0.12, 'square', 0.05, 0, i * 0.045)); },
+  crit() {
+    const c = this.ctx; if (!c || !this.on) return;
+    const now = c.currentTime; if (now - (this.lastCrit || 0) < 0.08) return; this.lastCrit = now;
+    this.tone(1500, 0.07, 'square', 0.05); this.tone(2100, 0.09, 'triangle', 0.05, 0, 0.04);
+  },
+  ping() {
+    const c = this.ctx; if (!c || !this.on) return;
+    const now = c.currentTime; if (now - (this.lastPing || 0) < 0.05) return; this.lastPing = now;
+    this.tone(2400, 0.05, 'square', 0.035, -900);
+  },
+  shuffle() { this.tone(500 + Math.random() * 500, 0.035, 'square', 0.03); },
+  reveal() { [659, 880, 1318].forEach((f, i) => this.tone(f, 0.14, 'triangle', 0.09, 0, i * 0.06)); },
+  buy() { this.tone(988, 0.08, 'square', 0.06); this.tone(1318, 0.16, 'square', 0.06, 0, 0.07); },
+  chestShake() { for (let i = 0; i < 4; i++) this.tone(180 + (i % 2) * 40, 0.05, 'square', 0.05, 0, i * 0.09); },
+  chestOpen() { this.tone(260, 0.25, 'sawtooth', 0.06, 700); [988, 1318, 1568].forEach((f, i) => this.tone(f, 0.18, 'triangle', 0.09, 0, 0.12 + i * 0.07)); },
   levelUp() { [659, 784, 988, 1318].forEach((f, i) => this.tone(f, 0.13, 'triangle', 0.1, 0, 0.12 + i * 0.06)); },
   tone(freq, dur, type, vol, slide, delay) {
     const c = this.ctx; if (!c || !this.on) return;
@@ -1789,7 +1997,21 @@ function updateBoss(dt) {
 
 // ---------------------------------------------------------------- rendering
 const zWalkArr = zWalk.array;
+// Special zombies. The engine's marker fields (exploder `ex`, shield `sh`) are read only here, so a rename is a one-line change.
+const zIsExploder = zb => !!(zb.ex || zb.exploder);
+const zIsShield = zb => !!(zb.sh || zb.shield);
+const BELLY_MAX = 64, bellyX = new Float32Array(BELLY_MAX), bellyY = new Float32Array(BELLY_MAX), bellyZ = new Float32Array(BELLY_MAX), bellyP = new Float32Array(BELLY_MAX);
+let nBelly = 0, nShield = 0, renderDt = 0;
+const SHZ_CAP = 240;
+const shZMesh = new T.InstancedMesh(boxes([
+  [0.8, 1.2, 0.08, 0, 0.82, 0, 0x6f8196], [0.8, 0.14, 0.09, 0, 1.36, 0, 0xe3b72a], [0.8, 0.14, 0.09, 0, 0.3, 0, 0xe3b72a],
+  [0.46, 0.2, 0.1, 0, 1.08, 0.01, 0x2b4a5c], [0.06, 1.0, 0.1, -0.28, 0.82, 0.005, 0x4c5b6c], [0.06, 1.0, 0.1, 0.28, 0.82, 0.005, 0x4c5b6c]]),
+  new T.MeshLambertMaterial({ vertexColors: true }), SHZ_CAP);
+shZMesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
+shZMesh.frustumCulled = false; shZMesh.setColorAt(0, tmpC.setRGB(1, 1, 1)); shZMesh.count = 0;
+scene.add(shZMesh);
 function drawZombies(t) {
+  nBelly = 0; nShield = 0;
   const moving = G.phase === 'run' || G.phase === 'boss';
   for (let i = 0; i < Z.length; i++) {
     const zb = Z[i];
@@ -1805,8 +2027,22 @@ function drawZombies(t) {
     dummy.updateMatrix();
     zMesh.setMatrixAt(i, dummy.matrix);
     if (zb.flash > 0) tmpC.setRGB(0.6, 2.6, 0.4);
-    else tmpC.setRGB(zb.tint[0], zb.tint[1], zb.tint[2]);
+    else if (zIsExploder(zb) && zb.dying <= 0) {            // exploder: pulsing red-hot body, glowing belly (sprite pushed in drawBullets)
+      const pu = 0.5 + 0.5 * Math.sin(t * 9 + zb.ph);
+      tmpC.setRGB(1.35 + 0.8 * pu, 0.55, 0.5);
+      if (nBelly < BELLY_MAX) { bellyX[nBelly] = zb.x; bellyY[nBelly] = 0.95 * zb.s; bellyZ[nBelly] = zb.z + 0.2 * zb.s; bellyP[nBelly] = pu; nBelly++; }
+    } else tmpC.setRGB(zb.tint[0], zb.tint[1], zb.tint[2]);
     zMesh.setColorAt(i, tmpC);
+    if (zIsShield(zb) && zb.dying <= 0 && nShield < SHZ_CAP) {   // riot shield held in front (+z faces the squad)
+      const yaw = Math.atan2(zb.vx, zb.sp) * 0.8;
+      if (zb.fxShFlash > 0) zb.fxShFlash -= renderDt;
+      dummy.position.set(zb.x + Math.sin(yaw) * 0.42 * zb.s, 0, zb.z + Math.cos(yaw) * 0.42 * zb.s + 0.04);
+      dummy.rotation.set(0, yaw, 0); dummy.scale.setScalar(zb.s); dummy.updateMatrix();
+      shZMesh.setMatrixAt(nShield, dummy.matrix);
+      const fl = zb.fxShFlash > 0 ? 3 : 1;
+      shZMesh.instanceColor.array[nShield * 3] = fl; shZMesh.instanceColor.array[nShield * 3 + 1] = fl; shZMesh.instanceColor.array[nShield * 3 + 2] = fl;
+      nShield++;
+    }
     zWalkArr[i * 3] = th0; zWalkArr[i * 3 + 1] = moving && zb.dying <= 0 ? 1 : 0; zWalkArr[i * 3 + 2] = spd;
   }
   dummy.scale.setScalar(1);
@@ -1814,6 +2050,8 @@ function drawZombies(t) {
   zMesh.instanceMatrix.needsUpdate = true;
   zMesh.instanceColor.needsUpdate = true;
   zWalk.needsUpdate = true;
+  shZMesh.count = nShield; shZMesh.visible = nShield > 0;
+  shZMesh.instanceMatrix.needsUpdate = true; shZMesh.instanceColor.needsUpdate = true;
 }
 
 // Soldiers: logic keeps a transform carrier (Object3D) per soldier; this renders them all in one instanced draw call.
@@ -1861,6 +2099,7 @@ function drawSoldiers() {
   gm.count = n;
   gm.instanceMatrix.needsUpdate = true;
   gunMat.emissive.setHex(W.color).multiplyScalar(GLOW[clamp(G.weaponLv, 1, 3) - 1]);
+  gunMat.emissive.r += BUFFV.r * 1.6; gunMat.emissive.g += BUFFV.g * 1.6; gunMat.emissive.b += BUFFV.b * 1.6;
 }
 
 // Blob shadows: one instanced draw call for every soldier, zombie, mech and the boss.
@@ -2076,6 +2315,11 @@ function drawBullets(dt) {
         const t = TRACER[W.id] || TRACER.rifle;
         dummy.position.set(bx[i], 1.25, bz[i]); dummy.rotation.set(0, ang, 0); dummy.scale.set(t[1] * k, t[1] * k, t[0]); dummy.updateMatrix();
         bMesh.setMatrixAt(nt, dummy.matrix); tc[nt * 3] = rgb[0]; tc[nt * 3 + 1] = rgb[1]; tc[nt * 3 + 2] = rgb[2]; nt++;
+        if (BUFFV.split && nt + (nb - i) < MAXB - 1) {       // split buff: a ghost twin beside every tracer
+          const sd = (i & 1) ? 0.24 : -0.24;
+          dummy.position.set(bx[i] + dz * sd, 1.25, bz[i] - dx * sd); dummy.scale.set(t[1] * 0.7, t[1] * 0.7, t[0] * 0.9); dummy.updateMatrix();
+          bMesh.setMatrixAt(nt, dummy.matrix); tc[nt * 3] = 0.3; tc[nt * 3 + 1] = 1; tc[nt * 3 + 2] = 0.85; nt++;
+        }
       }
     }
   }
@@ -2088,6 +2332,7 @@ function drawBullets(dt) {
   };
   fin(bMesh, nt); fin(pelMesh, np_); fin(rkMesh, nr);
   drawBeams(dt);
+  worldSprites();
   fireSys.flush(dt); smokeSys.flush(dt);
   SPR_SCALE.value = renderer.domElement.height * 0.5;
 }
@@ -2197,8 +2442,10 @@ const flashPts = new T.Points(fGeo, new T.PointsMaterial({ size: 1.15, vertexCol
 flashPts.frustumCulled = false;
 scene.add(flashPts);
 let fHead = 0, fLive = 0;
+let flashLifeK = 1;
 function flashAt(x, y, z, life, r, g, b) {
   const i = fHead; fHead = (fHead + 1) % FLASH_MAX;
+  life *= flashLifeK;
   fPos[i * 3] = x; fPos[i * 3 + 1] = y; fPos[i * 3 + 2] = z;
   fLife[i] = fMax[i] = life; fRgb[i * 3] = r; fRgb[i * 3 + 1] = g; fRgb[i * 3 + 2] = b;
   fLive = FLASH_MAX;
@@ -2304,6 +2551,8 @@ function updateGateFx(dt) {
   const draw = gateAcc >= 0.045;
   if (draw) gateAcc = 0;
   for (const e of fxGates) {
+    if (e.fxReveal) updateGateReveal(e, dt);
+    else if (e.fxShow && e.fxRevealed && e.kind !== 'mystery') { e.fxShow = null; e.fxRevealed = false; e.fxDirty = true; }   // the engine now reports the real kind
     if (e.fxFlash > 0) { e.fxFlash = Math.max(0, e.fxFlash - dt); e.fxDirty = true; }
     if (e.fxDirty && draw && e.grp.visible) { e.fxDirty = false; drawGate(e); }
   }
@@ -2498,9 +2747,370 @@ function showBanner(text, hex) {
     : [{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'scale(1.14)', offset: 0.16 }, { opacity: 1, transform: 'scale(1)', offset: 0.7 }, { opacity: 0, transform: 'translateY(-14px)' }],
     { duration: 1400, easing: 'ease-out' });
 }
+// ================================================================ round 3 FX: combo, coins, crits, buffs, world objects, slow motion
+// ---- presentation-only time scaling. frame() multiplies the dt it feeds the accumulator by G.timeScale; here we set it.
+G.timeScale = 1;
+const TSL = [];     // active scalers: { scale, left } (real seconds); the slowest wins
+function timeScaleFx(scale, secs) {
+  if (reduced) return;
+  if (TSL.length < 4) TSL.push({ scale, left: secs });
+}
+function updateTimeScale(realDt) {
+  let k = 1;
+  for (let i = TSL.length - 1; i >= 0; i--) {
+    const q = TSL[i];
+    q.left -= realDt;
+    if (q.left <= 0) { TSL.splice(i, 1); continue; }
+    if (q.scale < k) k = q.scale;
+  }
+  G.timeScale = k;
+}
+
+// ---- banner (milestones, buffs, squad)
+const banner2 = $('#banner2'), b2t = banner2.children[0], b2s = banner2.children[1];
+function showBanner2(text, hex, sub) {
+  b2t.textContent = text; b2s.textContent = sub || '';
+  banner2.style.setProperty('--wc', hex);
+  if (!banner2.animate) return;
+  banner2.getAnimations().forEach(a => a.cancel());
+  banner2.animate(reduced
+    ? [{ opacity: 0 }, { opacity: 1, offset: 0.2 }, { opacity: 1, offset: 0.75 }, { opacity: 0 }]
+    : [{ opacity: 0, transform: 'scale(.55)' }, { opacity: 1, transform: 'scale(1.16)', offset: 0.15 }, { opacity: 1, transform: 'scale(1)', offset: 0.7 }, { opacity: 0, transform: 'translateY(-12px)' }],
+    { duration: 1300, easing: 'ease-out' });
+}
+const hexCss = n => '#' + n.toString(16).padStart(6, '0');
+const rgbCss = (c, a) => 'rgba(' + Math.round(c[0] * 255) + ',' + Math.round(c[1] * 255) + ',' + Math.round(c[2] * 255) + ',' + a + ')';
+
+// ---- combo counter
+const comboEl = $('#combo'), comboNEl = $('#comboN'), comboLbl = $('#comboLbl');
+const CB = { n: 0, shown: -1, tier: -1, on: false, lbl: '', pulseAt: 0, pulse: false, hold: 0, ending: false };
+const tierOf = n => n >= 100 ? 4 : n >= 50 ? 3 : n >= 25 ? 2 : n >= 10 ? 1 : 0;
+bus.on('combo', d => {
+  CB.n = d.n | 0; CB.ending = false;
+  const t = nowMs();
+  if (t - CB.pulseAt > 70) { CB.pulseAt = t; CB.pulse = true; }     // pulse throttled: a volley can fire dozens of kills per second
+  SFX.comboTick(CB.n);
+});
+bus.on('comboEnd', d => {
+  if ((d.n | 0) >= 5) { CB.n = d.n | 0; CB.ending = true; CB.hold = 1.5; } else if (!CB.ending) CB.n = 0;
+});
+function updateCombo(dt) {
+  if (CB.ending) { CB.hold -= dt; if (CB.hold <= 0) { CB.ending = false; CB.n = 0; } }
+  const show = CB.n >= 3;
+  if (CB.n !== CB.shown) {
+    CB.shown = CB.n; comboNEl.textContent = String(CB.n);
+    const t = tierOf(CB.n);
+    if (t !== CB.tier) { CB.tier = t; comboEl.classList.remove('t1', 't2', 't3', 't4'); if (t) comboEl.classList.add('t' + t); }
+  }
+  if (show !== CB.on) { CB.on = show; comboEl.classList.toggle('on', show); }
+  const lbl = CB.ending ? '最高連殺' : '連殺';
+  if (lbl !== CB.lbl) { CB.lbl = lbl; comboLbl.textContent = lbl; }
+  if (CB.pulse) {
+    CB.pulse = false;
+    if (!reduced && show && !CB.ending && comboEl.animate) comboEl.animate([{ transform: 'scale(' + (1.25 + 0.06 * CB.tier) + ')' }, { transform: 'scale(1)' }], { duration: 170, easing: 'ease-out' });
+  }
+}
+const MILESTONE_COL = n => n >= 200 ? 0xffffff : n >= 100 ? 0xc06bff : n >= 50 ? 0xff4048 : n >= 25 ? 0xff9a2a : 0xffe14d;
+bus.on('comboMilestone', d => {
+  const n = d.n | 0, col = MILESTONE_COL(n), rw = d.reward || {};
+  showBanner2(n + ' 連殺！', hexCss(col), rw.coins ? '+' + rw.coins + ' 金幣' : '');
+  shock(G.x, G.z + 0.5, col, 4.6, 0.6); shock(G.x, G.z + 0.5, 0xffffff, 2.4, 0.35);
+  flashScreen(rgbCss([(col >> 16 & 255) / 255, (col >> 8 & 255) / 255, (col & 255) / 255], 1), 0.22, 360);
+  FX.shake = Math.max(FX.shake, 0.18);
+  vibrate([20, 30, 40]);
+  SFX.milestone(tierOf(n));
+});
+bus.on('squadMilestone', d => {
+  const n = d.n | 0;
+  showBanner2('大軍 ×' + n + '！', '#9fd0ff', '');
+  shock(G.x, G.z + 0.5, 0x4d95ff, 5, 0.6); shock(G.x, G.z + 0.5, 0xffffff, 2.6, 0.35);
+  for (let i = 0; i < 3; i++) burst(G.x + rr(-1.6, 1.6), 1.8 + rr(0, 1.6), G.z + rr(0, 2), 26, i % 2 ? [0.4, 0.7, 1] : [1, 0.85, 0.35], 6, 1);
+  flashScreen('rgb(90,150,255)', 0.25, 420);
+  vibrate([20, 30, 40, 30, 60]);
+  SFX.milestone(2);
+});
+
+// ---- coins: sparkle at the world spot, DOM coins fly to the HUD counter, counter counts up as they land
+const flyLayer = $('#flies'), coinChip = $('#coinChip'), hudCoins = $('#hudCoins'), coinIco = coinChip.firstElementChild;
+const FLY_MAX = 14, flyPool = [];
+let flyActive = 0, coinPending = 0, coinShown = 0, coinStreak = 0, coinLastLand = 0, coinTx = 40, coinTy = 60, coinMeasured = 0, lastCoinPop = 0;
+function measureCoin() {
+  const r = coinChip.getBoundingClientRect();
+  if (r.width) { coinTx = r.left + 17; coinTy = r.top + r.height / 2; }
+  coinMeasured = nowMs();
+}
+function coinLand(share) {
+  coinPending = Math.max(0, coinPending - share);
+  const t = nowMs();
+  coinStreak = t - coinLastLand < 240 ? coinStreak + 1 : 0;
+  coinLastLand = t;
+  SFX.coinTick(coinStreak);
+  if (!reduced && coinIco.animate) coinIco.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.5) rotate(-14deg)' }, { transform: 'scale(1)' }], { duration: 200 });
+}
+function spawnFly(sx, sy, share, delay) {
+  if (flyActive >= FLY_MAX) { coinLand(share); return; }
+  const el = flyPool.pop() || (() => { const d = document.createElement('div'); d.className = 'cfly'; return d; })();
+  flyLayer.appendChild(el);
+  flyActive++;
+  const mx = sx + rr(-50, 50), my = sy - rr(40, 90);
+  const a = el.animate([
+    { transform: 'translate(' + sx + 'px,' + sy + 'px) scale(.5)', opacity: 1 },
+    { transform: 'translate(' + mx + 'px,' + my + 'px) scale(1.15)', opacity: 1, offset: 0.3 },
+    { transform: 'translate(' + coinTx + 'px,' + coinTy + 'px) scale(.55)', opacity: 0.95 }],
+    { duration: 720, delay, easing: 'cubic-bezier(.45,.05,.7,.55)', fill: 'backwards' });
+  a.onfinish = () => { el.remove(); flyPool.push(el); flyActive--; coinLand(share); };
+}
+bus.on('coin', d => {
+  const amt = Math.max(1, d.amount | 0), sp = camera.position;
+  burst(d.x, 1.1, d.z, 8, [1, 0.85, 0.3], 3, 0.5);
+  flashAt(d.x, 1.2, d.z, 0.12, 1, 0.85, 0.3);
+  const t = nowMs();
+  if (t - lastCoinPop > 120) { lastCoinPop = t; pop('+' + amt, d.x, 1.7, d.z, 'gold'); }
+  if (reduced || !flyLayer.animate || G.phase === 'menu') return;
+  if (t - coinMeasured > 1500) measureCoin();
+  pv.set(d.x, 1.2, d.z).project(camera);
+  const sx = Math.round((pv.x * 0.5 + 0.5) * vw), sy = Math.round((-pv.y * 0.5 + 0.5) * vh);
+  const n = clamp(Math.ceil(amt / 6), 1, 5);
+  coinPending += amt;
+  for (let k = 0; k < n; k++) spawnFly(sx, sy, amt / n, k * 55);
+});
+function updateCoinCounter(dt) {
+  const target = Math.max(0, G.coins - coinPending);
+  if (reduced || coinShown > target + 0.5) coinShown = target;
+  else coinShown += (target - coinShown) * Math.min(1, dt * 12);
+  if (target - coinShown < 0.5) coinShown = target;
+  const v = Math.floor(coinShown + 0.001);
+  if (hudCoins._v !== v) { hudCoins._v = v; hudCoins.textContent = String(v); }
+}
+
+// ---- crits
+bus.on('crit', d => {
+  pop(String(Math.round(d.dmg)), d.x + rr(-0.3, 0.3), 2.1, d.z, 'crit');
+  burst(d.x, 1.4, d.z, 6, [1, 0.9, 0.3], 3.4, 0.35);
+  flashAt(d.x, 1.4, d.z, 0.1, 1, 0.9, 0.4);
+  SFX.crit();
+});
+
+// ---- buffs: HUD chips with a countdown ring, squad glow, activation banner
+const BUFFS = {
+  frenzy: { name: '狂暴', color: 0xff6a2a, rgb: [1, 0.42, 0.15] },
+  split: { name: '分裂', color: 0x3df0c8, rgb: [0.24, 0.94, 0.78] },
+};
+const buffInfo = id => BUFFS[id] || { name: String(id), color: 0x9fd0ff, rgb: [0.62, 0.82, 1] };
+const buffsEl = $('#buffs'), buffState = {};
+const RING_LEN = 2 * Math.PI * 10;
+bus.on('buffStart', d => {
+  const id = d.id, info = buffInfo(id), secs = d.secs || 8;
+  let b = buffState[id];
+  if (!b) {
+    const el = document.createElement('div');
+    el.className = 'buff'; el.style.setProperty('--bc', hexCss(info.color));
+    el.innerHTML = '<svg viewBox="0 0 26 26" aria-hidden="true"><circle class="bg" cx="13" cy="13" r="10"/><circle class="fg" cx="13" cy="13" r="10" stroke-dasharray="' + RING_LEN.toFixed(1) + '" stroke-dashoffset="0"/></svg><span></span><b></b>';
+    el.children[1].textContent = info.name;
+    buffsEl.appendChild(el);
+    b = buffState[id] = { el, fg: el.querySelector('.fg'), num: el.children[2], t0: 0, secs, off: -1, n: -1 };
+  }
+  b.t0 = G.time; b.secs = secs; b.off = -1;
+  showBanner2(info.name + '！', hexCss(info.color), secs + ' 秒');
+  shock(G.x, G.z + 0.5, info.color, 4, 0.55);
+  flashScreen(rgbCss(info.rgb, 1), 0.26, 400);
+  vibrate([20, 20, 30]);
+  SFX.buffStart();
+});
+function dropBuff(id) {
+  const b = buffState[id];
+  if (!b) return;
+  delete buffState[id];
+  if (!reduced && b.el.animate) { const a = b.el.animate([{ opacity: 1 }, { opacity: 0, transform: 'scale(.6)' }], { duration: 220 }); a.onfinish = () => b.el.remove(); } else b.el.remove();
+  SFX.buffEnd();
+}
+bus.on('buffEnd', d => dropBuff(d.id));
+const BUFFV = { r: 0, g: 0, b: 0, frenzy: false, split: false };
+const auraMesh = new T.Mesh(new T.CircleGeometry(1, 30).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ color: 0xff6a2a, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false }));
+auraMesh.visible = false; auraMesh.frustumCulled = false;
+scene.add(auraMesh);
+function updateBuffs(t) {
+  let r = 0, g = 0, b = 0, any = false;
+  BUFFV.frenzy = BUFFV.split = false;
+  for (const id in buffState) {
+    const st = buffState[id], info = buffInfo(id);
+    const left = typeof G.buffs[id] === 'number' ? G.buffs[id] : st.secs - (G.time - st.t0);
+    const off = Math.round(RING_LEN * (1 - clamp(left / st.secs, 0, 1)) * 10) / 10;
+    if (off !== st.off) { st.off = off; st.fg.setAttribute('stroke-dashoffset', String(off)); }
+    const sec = Math.max(0, Math.ceil(left));
+    if (sec !== st.n) { st.n = sec; st.num.textContent = String(sec); }
+    if (left < -1) { dropBuff(id); continue; }       // safety: logic never sent buffEnd
+    if (id === 'frenzy') BUFFV.frenzy = true;
+    if (id === 'split') BUFFV.split = true;
+    r += info.rgb[0]; g += info.rgb[1]; b += info.rgb[2]; any = true;
+  }
+  const pulse = reduced ? 0.5 : 0.5 + 0.5 * Math.sin(t * 8);
+  BUFFV.r = r * 0.22; BUFFV.g = g * 0.22; BUFFV.b = b * 0.22;
+  sMesh.material.emissive.setRGB(BUFFV.r * (0.7 + 0.3 * pulse), BUFFV.g * (0.7 + 0.3 * pulse), BUFFV.b * (0.7 + 0.3 * pulse));
+  if (any && G.soldiers.length) {
+    const n = G.soldiers.length, rows = Math.ceil(n / perRow(n));
+    auraMesh.visible = true;
+    auraMesh.position.set(G.x, 0.07, G.z + (rows - 1) * SP / 2);
+    auraMesh.scale.setScalar(Math.max(formationHalf(), (rows - 1) * SP / 2) + 1.5 + 0.15 * pulse);
+    auraMesh.material.color.setRGB(Math.min(1, r), Math.min(1, g), Math.min(1, b));
+    auraMesh.material.opacity = 0.2 + 0.1 * pulse;
+  } else auraMesh.visible = false;
+}
+bus.on('powerup', d => {
+  const info = buffInfo(d.id);
+  burst(d.x, 1.2, d.z, 34, info.rgb, 5, 0.8);
+  shock(d.x, d.z, info.color, 3, 0.5);
+  flashAt(d.x, 1.3, d.z, 0.16, info.rgb[0] * 1.3, info.rgb[1] * 1.3, info.rgb[2] * 1.3);
+  pop(info.name + '！', d.x, 2.4, d.z, 'gold');
+  for (const e of worldList) if (e.fxWorld === 'powerup' && e.grp.visible && Math.hypot(e.x - d.x, e.z - d.z) < 1.5) e.grp.visible = false;
+  SFX.powerup();
+});
+
+// ---- world objects the engine creates as plain events: explosive barrels and power-up orbs (visuals built lazily here)
+function cylGeo(parts) {
+  const pos = [], nor = [], col = [], c = new T.Color();
+  for (const p of parts) {
+    const g = new T.CylinderGeometry(p[0], p[1], p[2], 12, 1).toNonIndexed();
+    g.translate(0, p[3], 0);
+    const a = g.attributes.position.array, n = g.attributes.normal.array;
+    c.set(p[4]);
+    for (let i = 0; i < a.length; i++) { pos.push(a[i]); nor.push(n[i]); }
+    for (let i = 0; i < a.length / 3; i++) col.push(c.r, c.g, c.b);
+    g.dispose();
+  }
+  const geo = new T.BufferGeometry();
+  geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new T.Float32BufferAttribute(nor, 3));
+  geo.setAttribute('color', new T.Float32BufferAttribute(col, 3));
+  geo.userData.shared = true;
+  return geo;
+}
+const BARREL_GEO = cylGeo([[0.42, 0.42, 1.0, 0.5, 0xc43a2e], [0.445, 0.445, 0.16, 0.28, 0xf2c230], [0.445, 0.445, 0.16, 0.72, 0xf2c230], [0.36, 0.4, 0.06, 1.01, 0x2a2e34], [0.3, 0.3, 0.05, 1.05, 0x6a6f78]]);
+const ORB_GEO = new T.IcosahedronGeometry(0.42, 0); ORB_GEO.userData.shared = true;
+let worldEv = null, worldList = [], worldN = 0;
+const worldGone = e => !!(e.dead || e.taken || e.done || e.used || e.exploded || e.gone);
+function buildWorldObj(e) {
+  const grp = new T.Group();
+  grp.position.set(e.x, 0, e.z);
+  if (e.type === 'barrel') {
+    const m = new T.Mesh(BARREL_GEO, M.vc);
+    m.scale.setScalar(1.3);
+    grp.add(m); e.fxWorld = 'barrel';
+  } else {
+    const info = buffInfo(e.id || e.pid || e.kind);
+    const mat = new T.MeshLambertMaterial({ color: info.color, emissive: info.color, emissiveIntensity: 0.55 }); mat.userData.own = true;
+    const orb = new T.Mesh(ORB_GEO, mat); orb.position.y = 1.1; grp.add(orb);
+    const pil = new T.Mesh(new T.CylinderGeometry(0.4, 0.4, 3, 12, 1, true), new T.MeshBasicMaterial({ color: info.color, transparent: true, opacity: 0.14, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
+    pil.material.userData.own = true; pil.position.y = 1.5; grp.add(pil);
+    e.fxWorld = 'powerup'; e.fxOrb = orb; e.fxRgb = info.rgb;
+  }
+  levelGroup.add(grp);
+  e.grp = grp;
+}
+function updateWorld(t) {
+  if (worldEv !== G.events || worldN !== G.events.length) { worldEv = G.events; worldN = G.events.length; worldList = G.events.filter(e => e.type === 'barrel' || e.type === 'powerup'); }
+  for (const e of worldList) {
+    if (!e.grp) buildWorldObj(e);
+    if (worldGone(e)) { e.grp.visible = false; continue; }
+    if (e.fxWorld === 'powerup') { e.fxOrb.rotation.y = t * 2.2; e.fxOrb.position.y = 1.1 + Math.sin(t * 3 + e.z) * 0.15; }
+  }
+}
+// sprites for glowing things, pushed into the fire system just before it is flushed
+function worldSprites() {
+  const pu = reduced ? 0.6 : 0.5 + 0.5 * Math.sin(G.time * 7);
+  for (const e of worldList) {
+    if (!e.grp || !e.grp.visible || G.z - e.z < -3 || G.z - e.z > 60) continue;
+    if (e.fxWorld === 'barrel') fireSys.push(e.x, 1.15, e.z, 1, 0.3 + 0.2 * pu, 0.08, 0.3 + 0.25 * pu, 1.0);
+    else fireSys.push(e.x, 1.1, e.z, e.fxRgb[0], e.fxRgb[1], e.fxRgb[2], 0.45 + 0.2 * pu, 1.5);
+  }
+  for (let i = 0; i < nBelly; i++) if (!fireSys.full()) fireSys.push(bellyX[i], bellyY[i], bellyZ[i], 1, 0.15 + 0.1 * bellyP[i], 0.1, 0.35 + 0.4 * bellyP[i], 0.9 + 0.3 * bellyP[i]);
+}
+
+// ---- barrels, exploders, shields
+function blast(x, z, r, big) {
+  const k = r / 1.8, nF = Math.ceil((big ? 11 : 7) * fxScale), nS = Math.ceil((big ? 8 : 5) * fxScale);
+  for (let i = 0; i < nF; i++) {
+    const a = rr(0, 6.283), sp = rr(1.2, 3.8) * k;
+    fireSys.add(x + Math.cos(a) * 0.25 * k, rr(0.6, 1.3), z + Math.sin(a) * 0.25 * k, Math.cos(a) * sp, rr(0.8, 2.6), Math.sin(a) * sp, rr(0.28, 0.5), 0.8 * k, 2.8 * k, [1, 0.92, 0.55], [0.9, 0.22, 0.05], 0.9, 2.2);
+  }
+  for (let i = 0; i < nS; i++) {
+    const a = rr(0, 6.283), sp = rr(0.4, 1.8) * k;
+    smokeSys.add(x + Math.cos(a) * 0.4 * k, rr(0.8, 1.4), z + Math.sin(a) * 0.4 * k, Math.cos(a) * sp, rr(0.6, 1.5), Math.sin(a) * sp, rr(0.9, 1.4), 1.0 * k, 3.4 * k, [0.55, 0.5, 0.46], [0.2, 0.2, 0.22], 0.5, 1.4);
+  }
+  burst(x, 0.9, z, big ? 30 : 16, [1, 0.72, 0.3], 7 * k, 0.55);          // debris
+  flashAt(x, 1.1, z, 0.15, 1.3, 0.85, 0.4); flashAt(x, 1.6, z, 0.1, 1, 1, 0.8);
+  const t = nowMs();
+  if (t - lastBoomRing > 70) {
+    lastBoomRing = t;
+    shock(x, z, 0xffa040, r * 1.5, 0.45); shock(x, z, 0xffffff, r * 0.8, 0.22);
+    FX.shake = Math.max(FX.shake, big ? 0.35 : 0.1);
+    vibrate(big ? [30, 20, 50] : 16);
+    SFX.explode();
+    if (r >= 2.2 || big) timeScaleFx(0.05, 0.04);                          // 40 ms hit-stop on the big ones
+  }
+}
+bus.on('explode', d => blast(d.x, d.z, d.r || 1.8, (d.r || 1.8) >= 2.6));
+bus.on('barrel', d => {            // explode{} fires too: this adds what only a barrel has (staves flying, a scorch mark, a real shake)
+  for (const e of worldList) if (e.fxWorld === 'barrel' && e.grp.visible && Math.hypot(e.x - d.x, e.z - d.z) < 1.2) e.grp.visible = false;
+  burst(d.x, 0.8, d.z, 26, [1, 0.5, 0.15], 8.5, 0.9);
+  burst(d.x, 0.6, d.z, 14, [0.75, 0.2, 0.15], 6, 0.7);
+  splat(d.x, d.z, true);
+  FX.shake = Math.max(FX.shake, 0.5);
+  flashScreen('rgb(255,150,40)', 0.3, 380);
+  vibrate([40, 20, 70]);
+  SFX.boom();
+  timeScaleFx(0.05, 0.05);
+});
+bus.on('chain', d => {
+  pop('連鎖 ×' + (d.n | 0), d.x, 2.5, d.z, 'chain');
+  shock(d.x, d.z, 0xff9a2a, 3, 0.45);
+  SFX.crit();
+});
+let lastShBlock = 0;
+bus.on('shieldBlock', d => {       // assumed event: plain bullets bounced off a shield zombie
+  const t = nowMs();
+  if (t - lastShBlock < 30) return;
+  lastShBlock = t;
+  let best = null, bd = 2.2;
+  for (let i = 0; i < Z.length; i++) { const zb = Z[i]; if (!zIsShield(zb)) continue; const q = (zb.x - d.x) ** 2 + (zb.z - d.z) ** 2; if (q < bd) { bd = q; best = zb; } }
+  if (best) { best.fxShFlash = 0.12; burst(best.x, 1.0, best.z + 0.5, 3, [0.7, 0.9, 1], 2.4, 0.2); SFX.ping(); }
+});
+
+// ---- gate reveal: '?' shuffles through faces like a slot machine, then lands on what it is
+const SHUFFLE_FACES = [{ kind: 'add', val: 3 }, { kind: 'add', val: -2 }, { kind: 'mul', val: 2 }, { kind: 'rate', val: 1 }, { kind: 'level', val: 1 }, { kind: 'add', val: 5 }, { kind: 'add', val: -1 }];
+bus.on('gateReveal', d => {
+  const e = d.e;
+  if (!e) return;
+  const final = { kind: d.kind != null ? d.kind : e.kind, val: d.val != null ? d.val : e.val };
+  if (reduced) { e.fxShow = final; e.fxRevealed = true; e.fxDirty = true; return; }
+  e.fxReveal = { t: 0, tick: 0, final };
+  e.fxShow = { kind: 'mystery', val: 0 };
+  e.fxDirty = true;
+});
+function updateGateReveal(e, dt) {
+  const r = e.fxReveal;
+  r.t += dt; r.tick += dt;
+  if (r.t >= 0.95) {
+    e.fxShow = r.final; e.fxReveal = null; e.fxRevealed = true; e.fxFlash = 0.3; e.fxDirty = true;
+    shock(e.x, e.z, 0xffffff, 2.6, 0.4); flashAt(e.x, 2, e.z, 0.2, 1, 1, 1);
+    SFX.reveal();
+    return;
+  }
+  if (r.tick > 0.075) {
+    r.tick = 0;
+    e.fxShow = SHUFFLE_FACES[(Math.random() * SHUFFLE_FACES.length) | 0];
+    e.fxDirty = true;
+    SFX.shuffle();
+  }
+}
+
 let lastBoomRing = 0;
 // ---- event wiring
 bus.on('shot', d => {
+  flashLifeK = BUFFV.frenzy ? 0.55 : 1;      // frenzy: shorter, hotter muzzle flashes
+  try { shotFx(d); } finally { flashLifeK = 1; }
+});
+function shotFx(d) {
   const w = d.w >= 0 && d.w < WEAPONS.length ? d.w : G.weapon, W = WEAPONS[w], c = WRGB[w];
   const x = d.x + 0.14, z = d.z + MUZZLE[w], gl = 1 + 0.25 * ((d.lv || 1) - 1);
   switch (W.fx) {
@@ -2521,28 +3131,7 @@ bus.on('shot', d => {
     default:
       flashAt(x, 1.28, z, W.id === 'gatling' ? 0.06 : 0.075, 0.5 + c[0] * 0.5 * gl, 0.5 + c[1] * 0.4 * gl, 0.3 + c[2] * 0.2);
   }
-});
-bus.on('explode', d => {
-  const r = d.r || 1.8, k = r / 1.8, nF = Math.ceil(7 * fxScale), nS = Math.ceil(5 * fxScale);
-  for (let i = 0; i < nF; i++) {
-    const a = rr(0, 6.283), sp = rr(1.2, 3.8) * k;
-    fireSys.add(d.x + Math.cos(a) * 0.25 * k, rr(0.6, 1.3), d.z + Math.sin(a) * 0.25 * k, Math.cos(a) * sp, rr(0.8, 2.6), Math.sin(a) * sp, rr(0.28, 0.5), 0.8 * k, 2.8 * k, [1, 0.92, 0.55], [0.9, 0.22, 0.05], 0.9, 2.2);
-  }
-  for (let i = 0; i < nS; i++) {
-    const a = rr(0, 6.283), sp = rr(0.4, 1.8) * k;
-    smokeSys.add(d.x + Math.cos(a) * 0.4 * k, rr(0.8, 1.4), d.z + Math.sin(a) * 0.4 * k, Math.cos(a) * sp, rr(0.6, 1.5), Math.sin(a) * sp, rr(0.9, 1.4), 1.0 * k, 3.4 * k, [0.55, 0.5, 0.46], [0.2, 0.2, 0.22], 0.5, 1.4);
-  }
-  burst(d.x, 0.9, d.z, 16, [1, 0.72, 0.3], 7 * k, 0.55);          // debris
-  flashAt(d.x, 1.1, d.z, 0.15, 1.3, 0.85, 0.4); flashAt(d.x, 1.6, d.z, 0.1, 1, 1, 0.8);
-  const t = nowMs();
-  if (t - lastBoomRing > 70) {
-    lastBoomRing = t;
-    shock(d.x, d.z, 0xffa040, r * 1.5, 0.45); shock(d.x, d.z, 0xffffff, r * 0.8, 0.22);
-    FX.shake = Math.max(FX.shake, 0.1);
-    vibrate(16);
-    SFX.explode();
-  }
-});
+}
 bus.on('zombieDied', d => {
   splat(d.x, d.z, d.big);
   const n = d.big ? 26 : 6;
@@ -2592,6 +3181,7 @@ bus.on('bossHit', () => {
   if (!reduced && bossFillEl.animate) bossFillEl.animate([{ filter: 'brightness(2.6) saturate(1.5)' }, { filter: 'none' }], { duration: 170 });
 });
 bus.on('bossDied', d => {
+  timeScaleFx(0.25, 0.6);                      // the kill moment: ~0.6 s at quarter speed (not with reduced motion)
   shock(d.x, d.z, 0xffffff, 7, 0.9);
   shock(d.x, d.z, 0xffb020, 5, 0.7);
   flashScreen('rgb(255,255,255)', 0.6, 650);
@@ -2614,6 +3204,12 @@ function fxReset() {
   for (const k of rings) { k.on = false; k.mesh.visible = false; }
   FX.shake = 0; sqPrev = null; progQ = -1; wSig = null; fireSys.clear(); smokeSys.clear(); for (const b of beams) b.t = 99; ghostW = 1; ghostQ = -1;
   for (const t of TIPS) if (t.on) showTip(t, false);
+  // round 3 state
+  CB.n = 0; CB.shown = -1; CB.ending = false; CB.pulse = false;
+  coinPending = 0; coinShown = G.coins | 0; hudCoins._v = null; flyLayer.textContent = ''; flyActive = 0;
+  for (const id in buffState) { buffState[id].el.remove(); delete buffState[id]; }
+  TSL.length = 0; G.timeScale = 1; auraMesh.visible = false;
+  if (RS.on && G.phase !== 'win' && G.phase !== 'over') hideResult();
 }
 function fxUpdate(dt) {
   if (G.time < fxLastTime - 0.01) fxReset();
@@ -2625,6 +3221,8 @@ function fxUpdate(dt) {
   updateGateFx(dt);
   updateHolo(G.time);
   updateBossBar(dt);
+  updateWorld(G.time);
+  updateBuffs(G.time);
 }
 
 // ---- adaptive resolution: start at min(dpr, 2); step 2 -> 1.5 -> 1 when frames stay slow, then trim particle counts
@@ -2644,7 +3242,10 @@ function perfTick() {
 const pauseBtn = $('#pause');
 let pauseShown = true;
 function render(dt) {
-  const rdt = G.paused ? 0 : dt;
+  if (!G.paused) updateTimeScale(dt);
+  const rdt = G.paused ? 0 : dt * G.timeScale;      // particles and effects slow down with the simulation (slow-mo / hit-stop)
+  renderDt = rdt;
+  updateCombo(dt); updateCoinCounter(dt); updateResult(dt);
   const playing = G.phase === 'run' || G.phase === 'boss';
   if (playing) updateHud();
   if (playing !== pauseShown) { pauseShown = playing; pauseBtn.hidden = !playing; }
@@ -2752,10 +3353,14 @@ function goMenu() {
   prepare(G.level);
   $('#hud').hidden = true;
   for (const id of ['over', 'win']) $('#' + id).hidden = true;
+  hideResult(); shopEl.hidden = true;
   $('#menu').hidden = false;
   syncMenu();
 }
 function syncMenu() {
+  $('#menuCoins').textContent = String(SAVE.coins | 0);
+  const sv = SAVE.stages && SAVE.stages[G.level], entry = sv && sv.entry ? sv.entry : TUNE.startSquad, stars = clamp(sv && sv.stars | 0, 0, 3);
+  $('#entryLine').innerHTML = '起始兵力 ×' + entry + '　<span class="st">' + '★'.repeat(stars) + '<i>' + '★'.repeat(3 - stars) + '</i></span>';
   const multi = best > 1;
   const prev = $('#stagePrev'), next = $('#stageNext');
   prev.hidden = next.hidden = !multi;
@@ -2783,6 +3388,167 @@ window.addEventListener('keydown', e => {
   if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') setPaused(!G.paused);
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden) setPaused(true); });
+
+// ================================================================ result screen (driven by stageResult) and shop
+const resEl = $('#result'), resCard = resEl.firstElementChild;
+const RS = { on: false, clock: 0, queue: [], anims: [], pending: null, reason: '', won: false, data: null, timer: 0 };
+const $r = id => document.getElementById(id);
+function rsAt(t, fn) { RS.queue.push({ t: reduced ? 0 : t, fn }); }
+function rsCount(el, from, to, dur, fmt) {
+  if (reduced || dur <= 0) { el.textContent = (fmt || String)(to); return; }
+  RS.anims.push({ el, from, to, t: 0, dur, fmt: fmt || String, last: null });
+}
+function rsTicks(t0, n, step) { for (let i = 0; i < n; i++) rsAt(t0 + i * step, () => SFX.coinTick(i)); }
+function updateResult(dt) {
+  if (!RS.on) return;
+  RS.clock += dt;
+  for (let i = 0; i < RS.queue.length;) {
+    if (RS.queue[i].t <= RS.clock) RS.queue.splice(i, 1)[0].fn(); else i++;
+  }
+  for (let i = RS.anims.length - 1; i >= 0; i--) {
+    const a = RS.anims[i];
+    a.t += dt;
+    const k = clamp(a.t / a.dur, 0, 1), v = Math.round(a.from + (a.to - a.from) * (1 - (1 - k) * (1 - k)));
+    if (v !== a.last) { a.last = v; a.el.textContent = a.fmt(v); }
+    if (k >= 1) RS.anims.splice(i, 1);
+  }
+}
+function skipResult() {            // tap on the card background: finish every pending step now
+  RS.clock = 1e6; updateResult(0);
+  for (const a of RS.anims) a.el.textContent = a.fmt(a.to);
+  RS.anims.length = 0;
+}
+function normResult(r, won) {
+  r = r || {};
+  const pick = (v, d) => v != null ? v : d;
+  return {
+    stage: pick(r.stage, G.level), stars: pick(r.stars, won ? 1 : 0), survivors: pick(r.survivors, G.squad), entry: pick(r.entry, G.entrySquad),
+    kills: pick(r.kills, G.kills), coins: pick(r.coins, G.coins), bonus: r.bonus | 0, comboBest: pick(r.comboBest, G.comboBest), newBest: !!r.newBest,
+  };
+}
+function showResult(won) {
+  const r = RS.data = normResult(RS.pending || G.result, won);
+  RS.pending = null; RS.won = won;
+  RS.on = true; RS.clock = 0; RS.queue.length = 0; RS.anims.length = 0;
+  const stars = won ? clamp(r.stars | 0, 0, 3) : 0;
+  $r('resEyebrow').textContent = won ? 'STAGE ' + r.stage + ' CLEAR' : 'STAGE ' + r.stage;
+  $r('resTitle').textContent = won ? '成功過橋' : '全軍覆沒';
+  $r('resLede').textContent = won ? (stars >= 3 ? '完美！一個人都沒有白白犧牲。' : '巨屍倒下了。') : (RS.reason || '屍潮把你們淹沒了。');
+  const starsEl = $r('resStars');
+  starsEl.classList.toggle('none', !won);
+  [...starsEl.children].forEach(s => s.classList.remove('on'));
+  $r('resNew').hidden = true;
+  const carry = $r('resCarry'); carry.hidden = true;
+  for (const id of ['resKills', 'resCombo', 'resCoins']) $r(id).textContent = '0';
+  $r('resBonus').textContent = '+0';
+  $r('resBonusRow').classList.remove('on');
+  const chest = $r('resChest'); chest.classList.remove('open', 'shake');
+  const gain = r.coins + (stars > 0 ? r.bonus : 0), wallet0 = Math.max(0, (SAVE.coins | 0) - gain);
+  $r('resWallet').textContent = String(wallet0);
+  $r('resMain').textContent = won ? '下一關' : '再試一次';
+  $r('resSub').textContent = won ? '' : '以 ×' + r.entry + ' 名隊員重新挑戰　·　獲得 50% 金幣';
+  $r('resSub').hidden = won;
+  resEl.hidden = false;
+  resCard.classList.remove('go'); void resCard.offsetWidth; resCard.classList.add('go');
+  resEl.scrollTop = 0;
+  // timeline
+  let t = 0.45;
+  for (let i = 0; i < stars; i++) { const el = starsEl.children[i]; rsAt(t, () => { el.classList.add('on'); SFX.star(i); }); t += 0.5; }
+  if (won) {
+    rsAt(t, () => { carry.innerHTML = '→ 帶到下一關 <b>×' + r.survivors + '</b>'; carry.hidden = false; SFX.good(); });
+    t += 0.35;
+    if (r.newBest) { rsAt(t, () => { $r('resNew').hidden = false; SFX.milestone(2); }); t += 0.35; }
+  }
+  rsAt(t, () => rsCount($r('resKills'), 0, r.kills, 0.7)); t += 0.2;
+  rsAt(t, () => rsCount($r('resCombo'), 0, r.comboBest, 0.7)); t += 0.2;
+  rsAt(t, () => { rsCount($r('resCoins'), 0, r.coins, 0.9); rsTicks(0, 9, 0.1); }); t += 1.0;
+  let w = wallet0 + r.coins;
+  rsAt(t - 0.1, () => rsCount($r('resWallet'), wallet0, w, 0.5));
+  if (stars > 0 && r.bonus > 0) {
+    rsAt(t, () => { $r('resBonusRow').classList.add('on'); chest.classList.add('shake'); SFX.chestShake(); });
+    t += 0.55;
+    rsAt(t, () => {
+      chest.classList.remove('shake'); chest.classList.add('open'); SFX.chestOpen();
+      rsCount($r('resBonus'), 0, r.bonus, 0.8, v => '+' + v);
+      rsTicks(0.05, 8, 0.1);
+      rsCount($r('resWallet'), w, w + r.bonus, 0.8);
+      const rc = chest.getBoundingClientRect();
+      for (let i = 0; i < 6; i++) spawnUiCoin(rc.left + rc.width / 2, rc.top + 6, i);
+    });
+  }
+  if (!won) rsAt(t, () => SFX.bad());
+}
+// a few DOM coins popping out of a UI element (chest, shop button)
+function spawnUiCoin(x, y, i) {
+  if (reduced || !flyLayer.animate || flyActive >= FLY_MAX + 8) return;
+  const el = document.createElement('div');
+  el.className = 'cfly'; flyLayer.appendChild(el); flyActive++;
+  const dx = rr(-70, 70), up = rr(40, 110);
+  const a = el.animate([{ transform: 'translate(' + x + 'px,' + y + 'px) scale(.5)', opacity: 1 }, { transform: 'translate(' + (x + dx) + 'px,' + (y - up) + 'px) scale(1.1)', opacity: 1, offset: 0.55 }, { transform: 'translate(' + (x + dx * 1.3) + 'px,' + (y + 30) + 'px) scale(.7)', opacity: 0 }], { duration: 650, delay: i * 40, easing: 'ease-out', fill: 'backwards' });
+  a.onfinish = () => { el.remove(); flyActive--; };
+}
+function hideResult() { RS.on = false; resEl.hidden = true; clearTimeout(RS.timer); RS.queue.length = 0; RS.anims.length = 0; }
+bus.on('stageResult', d => { RS.pending = d; });
+bus.on('win', () => { clearTimeout(RS.timer); RS.timer = setTimeout(() => { if (G.phase === 'win') showResult(true); }, 350); });
+bus.on('gameOver', d => { RS.reason = d.reason || ''; clearTimeout(RS.timer); RS.timer = setTimeout(() => { if (G.phase === 'over') showResult(false); }, 800); });
+resEl.addEventListener('click', e => { if (!e.target.closest('button')) skipResult(); });
+$r('resMain').addEventListener('click', () => { hideResult(); prepare(RS.won ? G.level + 1 : G.level); startRun(); });
+$r('resMenu').addEventListener('click', () => { hideResult(); goMenu(); });
+$r('resShop').addEventListener('click', () => openShop('result'));
+
+// ---- shop
+const shopEl = $r('shop'), shopList = $r('shopList');
+let shopFrom = null, shopBought = false;
+const upLv = id => (SAVE.upgrades && SAVE.upgrades[id]) | 0;
+const upCost = (u, lv) => Math.round(u.base * Math.pow(u.grow, lv));
+const COIN_ICON = '<svg class="cico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="#ffd34d" stroke="#a86a00" stroke-width="2"/><circle cx="12" cy="12" r="6.2" fill="none" stroke="#c98a00" stroke-width="2"/></svg>';
+function renderShop(fresh) {
+  const coins = SAVE.coins | 0;
+  $r('shopCoins').textContent = String(coins);
+  shopList.textContent = '';
+  for (const u of UPGRADES) {
+    const lv = upLv(u.id), maxed = lv >= u.max, cost = maxed ? 0 : upCost(u, lv), can = !maxed && coins >= cost;
+    const li = document.createElement('li'); li.className = 'upi'; li.dataset.id = u.id;
+    const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = u.name;
+    const em = document.createElement('em'); em.textContent = 'Lv ' + lv + '/' + u.max; nm.appendChild(em);
+    const ds = document.createElement('div'); ds.className = 'ds'; ds.textContent = u.desc;
+    const pp = document.createElement('div'); pp.className = 'pp';
+    for (let i = 0; i < u.max; i++) { const p = document.createElement('i'); if (i < lv) p.className = 'on' + (fresh === u.id && i === lv - 1 ? ' fresh' : ''); pp.appendChild(p); }
+    const bt = document.createElement('button'); bt.type = 'button'; bt.className = 'buy' + (maxed ? ' maxed' : '');
+    if (maxed) bt.textContent = '已滿級'; else bt.innerHTML = COIN_ICON + '<span>' + cost + '</span>';
+    bt.disabled = !can;
+    bt.setAttribute('aria-label', u.name + (maxed ? ' 已滿級' : ' 升級，需要 ' + cost + ' 金幣'));
+    bt.addEventListener('click', () => buy(u.id, bt));
+    li.append(nm, ds, pp, bt);
+    shopList.appendChild(li);
+  }
+}
+function buy(id, btn) {
+  shopBought = false;
+  if (typeof buyUpgrade === 'function') { try { buyUpgrade(id); } catch (e) {} }   // engine-owned; a no-op until it exists
+  if (!shopBought) renderShop();
+}
+bus.on('upgradeBought', d => {
+  shopBought = true;
+  SFX.buy();
+  renderShop(d.id);
+  syncMenu();
+  if (!shopEl.hidden) {
+    const b = shopList.querySelector('[data-id="' + d.id + '"] .buy');
+    if (b) { const r = b.getBoundingClientRect(); for (let i = 0; i < 8; i++) spawnUiCoin(r.left + r.width / 2, r.top + r.height / 2, i); if (!reduced && b.animate) b.animate([{ transform: 'scale(1.15)' }, { transform: 'scale(1)' }], { duration: 240 }); }
+  }
+});
+function openShop(from) {
+  shopFrom = from;
+  renderShop();
+  shopEl.hidden = false;
+  shopEl.scrollTop = 0;
+  try { $r('shopBack').focus({ preventScroll: true }); } catch (e) {}
+}
+function closeShop() { shopEl.hidden = true; if (shopFrom === 'menu') syncMenu(); }
+$r('shopBack').addEventListener('click', closeShop);
+$r('btnShop').addEventListener('click', () => openShop('menu'));
+window.addEventListener('pointerdown', () => SFX.init());   // menus, shop and result make sound too, so unlock audio on any tap
 
 const MUTE_KEY = 'zombie-bridge-mute';
 function syncMute() {
@@ -2861,7 +3627,7 @@ function frame(now) {
   last = now;
   if (!(dt > 0)) dt = 0;
   if (dt > 0.25) dt = 0.25;                                    // tab was throttled / debugger pause: treat as one long frame
-  acc += dt;
+  acc += dt * G.timeScale;                                     // [frontend] slow-mo / hit-stop scale (1 normally)
   let n = 0;
   if (G.paused) acc = 0;                                       // pause menu: render only, simulation frozen
   while (acc >= STEP && n < MAX_STEPS) { step(STEP); acc -= STEP; n++; }
@@ -2880,7 +3646,7 @@ if (document.fonts && document.fonts.load) {
 requestAnimationFrame(frame);
 
 // handle for automated play-tests
-window.__zb = { renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
+window.__zb = { SAVE, UPGRADES, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
   stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0), bw: Array.from(bw.subarray(0, nb)), bl: Array.from(bl.subarray(0, nb)) }),
   perf: () => ({ pr: PR_STEPS[prIdx], steps: PR_STEPS, avg: Perf.avg, fxScale }) };
 })();
