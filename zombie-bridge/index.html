@@ -221,30 +221,40 @@ const STEP = 1 / 60, MAX_STEPS = 4;   // fixed simulation step and the catch-up 
 
 // Every balance number lives here (read at use time, so tests can override them through __zb.TUNE before prepare()).
 const TUNE = {
-  startSquad: 1,
+  startSquad: 3,
   run: 4.6,                       // forward speed (units/s)
-  hordeGrow: 0.32,                // horde size +32 % per stage
-  rampPow: 2, ramp: 0, hpRamp: 0, bruteRamp: 0,   // extra size / hp / brute count at the far end of the bridge (x (1 + ramp))
-  hpPerStage: 0.5,                // mean extra hp of an ordinary zombie per stage (fractions are rolled per zombie)
-  spawnAhead: 58,                 // a horde is released when the squad is this far from its start line
-  openingGap: 16,                 // empty bridge between the opening cluster and the first pattern event
-  hordeGap: [8, 12],              // empty bridge after a horde (plus the horde's depth)
-  count: { open: 16, wall: 50, blob: 30, line: 20 },
+  // --- how the hordes grow. A horde's size/hp = base x stage factor x position factor.
+  hordeGrow: 0.38,                // size +38 % at stage 2 ...
+  hpPerStage: 0.4,                // ... ordinary zombies +0.4 hp (fractions are rolled per zombie) ...
+  stagePow: 0.5,                  // ... and later stages grow by (stage-1)^stagePow steps (concave: stage 3 is not twice stage 2)
+  rampPow: 2, ramp: 4.7, hpRamp: 5, bruteRamp: 3,   // along the bridge (position p = 0..1): size x (1 + ramp*p^rampPow), hp x (1 + hpRamp*p^rampPow), brute count likewise
+  count: { open: 8, wall: 50, blob: 30, line: 20 },
   bruteBase: 2, brutePerStage: 1, bruteHp: 10, bruteHpPerStage: 4,
-  openGatePf: 1,                  // the opening red gate costs this fraction of the usual bullets per point
-  gatePer: 2, gatePerStage: 1, gatePerSquad: 0,   // bullets needed for +1 on a gate = per + perStage*n + perSquad*squad
-  battNeed: 14, battNeedPerStage: 8,
+  // --- layout spacing (units of empty bridge)
+  spawnAhead: 58,                 // a horde is released when the squad is this far from its start line
+  openingGap: 24,                 // between the opening cluster and the first pattern event
+  hordeGap: [5, 8],               // after a horde (plus the horde's depth)
+  gateGap: 12, weaponGap: 10,     // after a gate pair / a weapon pickup
+  // --- gates and the opening cluster
+  openGatePf: 0.47,               // the opening red gate costs this fraction of the usual bullets per point
+  gatePer: 2, gatePerStage: 1, gatePerSquad: 5.3, // bullets for +1 on a gate = (per + perStage*stage + perSquad*min(squad,40)) -> a gate is worth about +5 whatever the squad size
+  battNeed: 36, battNeedPerStage: 10,
   shieldSecs: 4,
-  splashR2: 3.4, splashDmg: 0.6,   // mech shells: blast radius squared and damage fraction
-  mechDmg: 4, mechDmgPerStage: 2, mechCd: 0.62,
-  bossHp: 220, bossDpsSecs: 6, bossSpeed: 1.1, bossSpeedPerStage: 0.08,
+  maxSquad: 60, mulChance: 0.3,   // squad size cap; chance that a good gate (after the first few) is a x2 gate
+  // --- mech
+  splashR2: 3.4, splashDmg: 0.6,  // shells: blast radius squared and damage fraction
+  mechDmg: 2.5, mechDmgPerStage: 1, mechCd: 0.62,
+  // --- boss: hp = bossHp*stage + bossDpsSecs * (squad damage per second that can land on it)
+  bossHp: 220, bossDpsSecs: 7, bossSpeed: 1.1, bossSpeedPerStage: 0.08,
+  bossFocus: 0.5,                 // share of the squad that shoots the boss while minions are around
   bossMinions: 6, bossMinionsPerStage: 2, bossMinionEvery: 3.4,
 };
 const WEAPONS = [
-  { name: '手槍',   rate: 4,   pellets: 1, spread: 0.04, dmg: 1 },
-  { name: '步槍',   rate: 6.5, pellets: 1, spread: 0.05, dmg: 1 },
-  { name: '散彈槍', rate: 2.4, pellets: 4, spread: 0.16, dmg: 1 },
-  { name: '加特林', rate: 12,  pellets: 1, spread: 0.08, dmg: 1 },
+  // bossEff: how much of the nominal damage actually lands on the boss (pellets spread out); it sizes the boss's hp
+  { name: '手槍',   rate: 4,   pellets: 1, spread: 0.04, dmg: 1, bossEff: 1 },
+  { name: '步槍',   rate: 10,  pellets: 1, spread: 0.05, dmg: 1, bossEff: 1 },
+  { name: '散彈槍', rate: 3.2, pellets: 4, spread: 0.16, dmg: 1, bossEff: 0.68 },
+  { name: '加特林', rate: 17,  pellets: 1, spread: 0.08, dmg: 1, bossEff: 1 },
 ];
 
 let best = 1;
@@ -521,15 +531,16 @@ function buildLevel(n) {
 // p = how far along the bridge the horde stands (0..1): later hordes are bigger and tougher because the squad is, too.
 function hordeSpec(kind, n, side, p) {
   p = Math.pow(p || 0, TUNE.rampPow);
-  const f = (1 + (n - 1) * TUNE.hordeGrow) * (1 + TUNE.ramp * p);
-  const hp = (1 + (n - 1) * TUNE.hpPerStage) * (1 + TUNE.hpRamp * p);
+  const sd = Math.pow(n - 1, TUNE.stagePow);      // stage steps: concave when stagePow < 1 (later stages grow more slowly)
+  const f = (1 + sd * TUNE.hordeGrow) * (1 + TUNE.ramp * p);
+  const hp = (1 + sd * TUNE.hpPerStage) * (1 + TUNE.hpRamp * p);
   const C = TUNE.count;
   switch (kind) {
     case 'wall':   return { kind, cx: side * 2.1, w: 3.4, d: 14, count: Math.round(C.wall * f), hp };
     case 'blob':   return { kind, cx: rnd(-1.6, 1.6), w: 3.6, d: 6, count: Math.round(C.blob * f), hp };
     case 'line':   return { kind, cx: 0, w: 7.4, d: 2.6, count: Math.round(C.line * f), hp };
     case 'brutes': return { kind, cx: 0, w: 6.4, d: 4, count: Math.round((TUNE.bruteBase + TUNE.brutePerStage * n) * (1 + TUNE.bruteRamp * p)), hp: Math.round((TUNE.bruteHp + n * TUNE.bruteHpPerStage) * (1 + TUNE.hpRamp * p)), big: true };
-    default:       return { kind: 'open', cx: -1.8, w: 3.6, d: 6, count: Math.round(C.open * (1 + (n - 1) * TUNE.hordeGrow)), hp: 1 + (n - 1) * TUNE.hpPerStage };
+    default:       return { kind: 'open', cx: -1.8, w: 3.6, d: 6, count: Math.round(C.open * (1 + sd * TUNE.hordeGrow)), hp: 1 + sd * TUNE.hpPerStage };
   }
 }
 
@@ -554,15 +565,15 @@ function makeEvents(n, L) {
     if (t === 'gates') {
       const pid = E.length;
       const s = R() < 0.5 ? -1 : 1;
-      const good = R() < 0.3 && i > 3
+      const good = R() < TUNE.mulChance && i > 3
         ? makeGate(z, s, 2, 'mul', n)
         : makeGate(z, s, rint(1, 3) + Math.floor(n / 2), 'add', n);
       const bad = makeGate(z, -s, -rint(1, 3) - Math.floor(n / 3), 'add', n);
       good.pair = bad.pair = pid;
       E.push(good, bad);
-      z -= 14;
+      z -= TUNE.gateGap;
     } else if (t === 'weapon') {
-      if (tier < WEAPONS.length) { E.push(makeWeapon(z, rnd(-2.2, 2.2), tier++)); z -= 10; }
+      if (tier < WEAPONS.length) { E.push(makeWeapon(z, rnd(-2.2, 2.2), tier++)); z -= TUNE.weaponGap; }
     } else {
       const spec = hordeSpec(t, n, R() < 0.5 ? -1 : 1, Math.min(1, -z / L));
       E.push({ type: 'horde', z, spec });
@@ -966,7 +977,7 @@ function updateEvents(dt) {
           G.weapon = e.tier;
           pop(WEAPONS[e.tier].name + '！', e.x, 2.4, e.z, 'gold');
         } else {
-          G.squad += 2; syncSoldiers();
+          G.squad = Math.min(G.squad + 2, TUNE.maxSquad); syncSoldiers();
           pop('+2', e.x, 2.4, e.z, 'good');
         }
         SFX.good();
@@ -1011,6 +1022,7 @@ function passGate(e) {
   const before = G.squad;
   if (e.kind === 'mul') G.squad = Math.round(G.squad * e.val);
   else G.squad += e.val;
+  if (G.squad > TUNE.maxSquad) G.squad = TUNE.maxSquad;
   const diff = G.squad - before;
   const cz = G.z + 0.5;
   bus.emit('gatePass', { e, diff });
@@ -1031,6 +1043,7 @@ function updateSquad(dt) {
   const n = G.soldiers.length, per = perRow(n);
   const W = WEAPONS[G.weapon];
   findTargets();
+  const bossOn = !!(G.boss && G.boss.alive && G.z - G.boss.z < 24);
   const running = G.phase === 'run';
   for (let i = 0; i < n; i++) {
     const s = G.soldiers[i];
@@ -1040,7 +1053,8 @@ function updateSquad(dt) {
     s.z += (tz - s.z) * Math.min(1, dt * 10);
     let dx = 0, dz = -1;
     if (nT > 0) {
-      const k = i % nT;
+      // with the boss in range, a fixed share of the squad (spread evenly by a golden-ratio stride) keeps firing at it
+      const k = bossOn && nT > 1 ? ((i * 0.618034) % 1 < TUNE.bossFocus ? 0 : 1 + i % (nT - 1)) : i % nT;
       dx = tgX[k] - s.x; dz = tgZ[k] - s.z;
       const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
       if (dz > -0.2) { dx = 0; dz = -1; }
@@ -1232,7 +1246,7 @@ scene.add(bossMesh);
 function startBoss() {
   G.phase = 'boss';
   const W = WEAPONS[G.weapon];
-  const dps = G.squad * W.rate * W.pellets * W.dmg + (G.mech ? 2 * (TUNE.mechDmg + G.level * TUNE.mechDmgPerStage) / TUNE.mechCd : 0);
+  const dps = G.squad * W.rate * W.pellets * W.dmg * W.bossEff + (G.mech ? 2 * (TUNE.mechDmg + G.level * TUNE.mechDmgPerStage) / TUNE.mechCd : 0);
   const hp = Math.round(TUNE.bossHp * G.level + dps * TUNE.bossDpsSecs);
   G.boss = { x: 0, z: G.z - 30, hp, max: hp, sp: TUNE.bossSpeed + G.level * TUNE.bossSpeedPerStage, flash: 0, alive: true, deadT: 0, spawnT: 2.5, hitT: 0 };
   bossMesh.visible = true;

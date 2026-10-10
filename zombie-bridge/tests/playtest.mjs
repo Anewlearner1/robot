@@ -31,6 +31,7 @@ const opt = {
   maxSeconds: Number(args.max || 240),             // game seconds before an attempt is declared a timeout
   dodge: args.dodge !== undefined ? Number(args.dodge) : 1,   // bot dodge strength (0 = never dodge)
   tune: args.tune ? JSON.parse(String(args.tune)) : {},   // e.g. --tune '{"gatePerSquad":1.5,"count.open":8}' overrides __zb.TUNE (dotted keys reach nested objects)
+  noise: args.noise !== undefined ? Number(args.noise) : 1,   // human imperfection: 0 = perfect bot, 1 = decent human, 2 = sloppy
   line: !!args.line,                                 // one-line summary per row instead of the table (for sweeps)
   quiet: !!args.quiet,
   trace: !!args.trace,                               // print a coarse timeline for the first attempts of each row
@@ -68,6 +69,32 @@ function botRun(cfg) {
   const LOG = window.__log;
   for (const k of Object.keys(LOG)) delete LOG[k];
 
+  // ---- a "decent human": slower reactions, a personal feel for how good each gate is, jittery hands, occasional lapses
+  const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
+  const gauss = () => { let u = 0; for (let i = 0; i < 6; i++) u += Math.random(); return (u - 3) / 0.7071; };
+  const NZ = cfg.noise;
+  const persona = {
+    dodge: cfg.dodge * clampN(1 + 0.35 * NZ * gauss(), 0.3, 1.9),
+    react: 0.12 + 0.12 * NZ * Math.abs(gauss()),          // seconds between decisions
+    jitter: 0.28 * NZ,                                      // sd of the aiming error in x
+    lapse: 0.04 * NZ,                                       // chance per decision of zoning out for half a second
+  };
+  const opinions = new Map();
+  // how much this particular attempt cares about an event: a personal exaggeration, plus now and then a plain mistake
+  // (misreads a gate, never notices the battery, does not bother with a weapon)
+  const opinion = e => {
+    let o = opinions.get(e);
+    if (o === undefined) {
+      o = clampN(1 + 0.3 * NZ * gauss(), 0.35, 1.8);
+      const r = Math.random();
+      if (e.type === 'gate' && r < 0.07 * NZ) o = -0.6;
+      else if (e.type === 'hero' && r < 0.15 * NZ) o = 0.05;
+      else if (e.type === 'weapon' && r < 0.08 * NZ) o = 0.1;
+      opinions.set(e, o);
+    }
+    return o;
+  };
+
   const popLayer = document.getElementById('pops');
   zb.prepare(cfg.stage);
   zb.start();
@@ -99,7 +126,7 @@ function botRun(cfg) {
     const lim = Math.max(0, ROAD - 0.45 - h);
     // zombie lane danger histogram
     dang.fill(0);
-    if (cfg.dodge > 0) {
+    if (persona.dodge > 0) {
       for (let i = 0; i < Z.length; i++) {
         const q = Z[i];
         if (q.dying > 0) continue;
@@ -137,11 +164,12 @@ function botRun(cfg) {
           const inLane = Math.max(0, 1 - Math.abs(x - e.x) / (1.85 + h));
           const noShoot = mode !== 'auto' && opening.has(e) && mode !== 'gate';
           const t = Math.min(5, Math.max(0, (dz - 1)) / RUN);
-          const extra = noShoot ? 0 : hps * t * 0.55 * inLane / e.per;
-          v = e.val + Math.floor((e.hits + extra * e.per) / e.per);
+          const perEff = (e.per + zb.TUNE.gatePerSquad * Math.min(G.squad, 40)) * e.pf;
+          const extra = noShoot ? 0 : hps * t * 0.55 * inLane / perEff;
+          v = e.val + Math.floor((e.hits / perEff) + extra);
         }
         if (opening.has(e) && v > 0 && mode !== 'auto' && mode !== 'gate') v = 0;   // not our plan
-        c -= wt * v * 1.2;
+        c -= wt * v * 1.2 * opinion(e);
       }
       for (const e of others) {
         const dz = G.z - e.z;
@@ -150,7 +178,7 @@ function botRun(cfg) {
         if (e.type === 'weapon') {
           if (skip && (mode === 'gate' || mode === 'battery')) continue;
           const val = e.tier > G.weapon ? 14 : 1.5;
-          if (Math.abs(x - e.x) < 1.4 + h - 0.15) c -= wt * val;
+          if (Math.abs(x - e.x) < 1.4 + h - 0.15) c -= wt * val * opinion(e);
         } else {
           if (skip && mode !== 'battery') continue;
           // battery: expected charge while the squad stays in front of it
@@ -160,15 +188,15 @@ function botRun(cfg) {
           const overlap = Math.max(0, Math.min(hi, e.x + 0.95) - Math.max(lo, e.x - 0.95)) / Math.max(0.5, hi - lo);
           const exp = e.charge + hps * t * 0.5 * overlap;
           const p = Math.min(1, exp / e.need);
-          c -= wt * 16 * p * p;
+          c -= wt * 16 * p * p * opinion(e);
         }
       }
       // zombies
-      if (cfg.dodge > 0) {
+      if (persona.dodge > 0) {
         const b0 = Math.round((x + ROAD) / GRID);
         let dsum = 0;
         for (let b = b0 - reach; b <= b0 + reach; b++) if (b >= 0 && b < BINS) dsum += dang[b];
-        c += dsum * 0.09 * cfg.dodge;
+        c += dsum * 0.09 * persona.dodge;
       }
       c += Math.abs(x - tx) * 0.04;                    // hysteresis: do not twitch
       if (c < bestC - 1e-9) { bestC = c; bestX = x; }
@@ -179,9 +207,11 @@ function botRun(cfg) {
   let steps = 0;
   while (steps < maxSteps && G.phase !== 'over' && G.phase !== 'win') {
     if (steps >= nextDecide) {
-      const target = G.phase === 'boss' ? Math.max(-3, Math.min(3, decideBoss())) : decide();
-      tx = target;
-      nextDecide = steps + 2;
+      if (Math.random() < persona.lapse) nextDecide = steps + 30;                      // zoned out: keeps the old target
+      else {
+        tx = clampN(decide() + persona.jitter * gauss(), -3.55, 3.55);
+        nextDecide = steps + Math.max(1, Math.round(persona.react * 60 * (0.7 + 0.6 * Math.random())));
+      }
     }
     // finite drag speed (like keyboard play): 9 units/s
     const want = tx, cur = G.tx, mx = 9 * dtStep;
@@ -191,7 +221,6 @@ function botRun(cfg) {
     if (cfg.trace && steps % 60 === 0) trace.push(`${(steps / 60) | 0}s z=${G.z.toFixed(0)} sq=${G.squad} w=${G.weapon} x=${G.x.toFixed(1)} Z=${Z.length}${G.mech ? ' mech' : ''}${G.shield > 0 ? ' shld' : ''}`);
     if ((steps & 127) === 0) { popLayer.textContent = ''; zb.pops.length = 0; }
   }
-  function decideBoss() { return decide(); }
 
   const timeout = G.phase !== 'over' && G.phase !== 'win';
   const won = G.phase === 'win';
@@ -262,7 +291,7 @@ const t0 = Date.now();
 for (const stage of opt.stages) {
   for (const opening of openings) {
     const jobs = [];
-    for (let i = 0; i < opt.n; i++) jobs.push({ trace: opt.trace && i < 3, stage, opening, seed: opt.seed * 100003 + stage * 1009 + i * 7919 + 1, maxSeconds: opt.maxSeconds, dodge: opt.dodge });
+    for (let i = 0; i < opt.n; i++) jobs.push({ noise: opt.noise, trace: opt.trace && i < 3, stage, opening, seed: opt.seed * 100003 + stage * 1009 + i * 7919 + 1, maxSeconds: opt.maxSeconds, dodge: opt.dodge });
     const res = await runJobs(jobs);
     if (opt.trace) for (const r of res) if (r.trace) { console.log(`--- stage ${stage} ${opening} won=${r.won} cause=${r.cause} gates=${r.gateDiffs.join(',')}`); console.log(r.trace.join('\n')); }
     if (opt.dump) fs.appendFileSync(opt.dump, res.map((r, i) => JSON.stringify({ stage, opening, seed: jobs[i].seed, ...r })).join('\n') + '\n');
