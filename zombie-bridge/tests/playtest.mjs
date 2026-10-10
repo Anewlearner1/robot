@@ -30,6 +30,8 @@ const opt = {
   dump: args.dump ? String(args.dump) : null,        // write every attempt's raw result here
   maxSeconds: Number(args.max || 240),             // game seconds before an attempt is declared a timeout
   dodge: args.dodge !== undefined ? Number(args.dodge) : 1,   // bot dodge strength (0 = never dodge)
+  tune: args.tune ? JSON.parse(String(args.tune)) : {},   // e.g. --tune '{"gatePerSquad":1.5,"count.open":8}' overrides __zb.TUNE (dotted keys reach nested objects)
+  line: !!args.line,                                 // one-line summary per row instead of the table (for sweeps)
   quiet: !!args.quiet,
   trace: !!args.trace,                               // print a coarse timeline for the first attempts of each row
 };
@@ -57,7 +59,7 @@ function botRun(cfg) {
     window.__log = {};
     zb.bus.on('bossSpawn', () => { const L = window.__log; L.bossT = G.time; L.bossSquad = G.squad; L.bossWeapon = G.weapon; L.bossMech = !!G.mech; L.bossProg = true; });
     zb.bus.on('bossDied', () => { window.__log.bossDeadT = G.time; });
-    zb.bus.on('gameOver', d => { const L = window.__log; L.reason = d.reason; L.cause = d.cause; L.overT = G.time; L.overPhase = d.phase; });
+    zb.bus.on('gameOver', d => { const L = window.__log; L.reason = d.reason; L.cause = d.cause; L.kind = d.kind; L.overT = G.time; L.overPhase = d.phase; });
     zb.bus.on('win', () => { window.__log.won = true; });
     zb.bus.on('heroActivated', () => { window.__log.hero = true; });
     zb.bus.on('weaponPickup', d => { const L = window.__log; L.pickups = (L.pickups || 0) + 1; L.tier = Math.max(L.tier || 0, d.tier); });
@@ -196,6 +198,7 @@ function botRun(cfg) {
   const prog = won ? 1 : Math.max(0, Math.min(1, -G.z / G.L));
   let cause = 'win';
   if (!won) cause = timeout ? 'timeout' : (LOG.cause || (LOG.reason && LOG.reason.indexOf('數字門') >= 0 ? 'gate' : (G.boss ? 'boss' : 'horde')));
+  if (!won && !timeout && LOG.kind) cause += '/' + LOG.kind;
   const res = {
     won, prog, cause, time: G.time, squad: G.squad, kills: G.kills,
     reachedBoss: !!LOG.bossProg, bossSquad: LOG.bossSquad, bossWeapon: LOG.bossWeapon, bossMech: LOG.bossMech,
@@ -222,6 +225,14 @@ async function newPage() {
   await page.goto('file://' + opt.html);
   await page.waitForFunction(() => window.__zb);
   await page.evaluate(() => document.getElementById('mute').click());   // SFX off: no WebAudio nodes while fast-forwarding
+  await page.evaluate(tune => {
+    for (const [k, v] of Object.entries(tune)) {
+      const parts = k.split('.'); let o = parts[0] === 'WEAPONS' ? window.__zb : window.__zb.TUNE;   // e.g. WEAPONS.1.rate
+      for (let i = 0; i < parts.length - 1; i++) o = o[parts[i]];
+      if (!(parts[parts.length - 1] in o)) throw new Error('unknown TUNE key ' + k);
+      o[parts[parts.length - 1]] = v;
+    }
+  }, opt.tune);
   return page;
 }
 
@@ -277,6 +288,11 @@ for (const stage of opt.stages) {
 }
 
 // ------------------------------------------------------------------ report
+if (opt.line) {
+  console.log(rows.map(r => `S${r.stage}${r.opening === 'auto' ? '' : '/' + r.opening} ${(r.win * 100).toFixed(0)}% sq${r.squadBoss.toFixed(0)} boss${r.bossSecsWin.toFixed(0)}s`).join(' | ') + (errors.length ? '  ERRORS ' + errors.length : ''));
+  await browser.close();
+  process.exit(errors.length ? 1 : 0);
+}
 const hdr = ['stage', 'open', 'n', 'win', 'prog%', 'atBoss', 'squad@boss', 'wpn@boss', 'mech@boss', 'boss s (win)', 'boss s (all)', 'cause of death'];
 const lines = rows.map(r => [
   r.stage, r.opening, r.n, pct(r.win * r.n, r.n), f1(r.prog), pct(r.reached * r.n, r.n), f1(r.squadBoss), f1(r.weaponBoss),

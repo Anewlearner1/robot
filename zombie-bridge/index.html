@@ -215,9 +215,31 @@ const rint = (a, b) => Math.floor(rnd(a, b + 1));
 
 // ---------------------------------------------------------------- constants
 const ROAD = 4;          // half width of the deck
-const RUN = 4.6;         // forward speed (units/s)
 const BULLET_SPEED = 42;
 const MAXZ = 900, MAXB = 700, MAXP = 1400, MAXVIS = 40, SP = 0.62;
+const STEP = 1 / 60, MAX_STEPS = 4;   // fixed simulation step and the catch-up cap per rendered frame
+
+// Every balance number lives here (read at use time, so tests can override them through __zb.TUNE before prepare()).
+const TUNE = {
+  startSquad: 1,
+  run: 4.6,                       // forward speed (units/s)
+  hordeGrow: 0.32,                // horde size +32 % per stage
+  rampPow: 2, ramp: 0, hpRamp: 0, bruteRamp: 0,   // extra size / hp / brute count at the far end of the bridge (x (1 + ramp))
+  hpPerStage: 0.5,                // mean extra hp of an ordinary zombie per stage (fractions are rolled per zombie)
+  spawnAhead: 58,                 // a horde is released when the squad is this far from its start line
+  openingGap: 16,                 // empty bridge between the opening cluster and the first pattern event
+  hordeGap: [8, 12],              // empty bridge after a horde (plus the horde's depth)
+  count: { open: 16, wall: 50, blob: 30, line: 20 },
+  bruteBase: 2, brutePerStage: 1, bruteHp: 10, bruteHpPerStage: 4,
+  openGatePf: 1,                  // the opening red gate costs this fraction of the usual bullets per point
+  gatePer: 2, gatePerStage: 1, gatePerSquad: 0,   // bullets needed for +1 on a gate = per + perStage*n + perSquad*squad
+  battNeed: 14, battNeedPerStage: 8,
+  shieldSecs: 4,
+  splashR2: 3.4, splashDmg: 0.6,   // mech shells: blast radius squared and damage fraction
+  mechDmg: 4, mechDmgPerStage: 2, mechCd: 0.62,
+  bossHp: 220, bossDpsSecs: 6, bossSpeed: 1.1, bossSpeedPerStage: 0.08,
+  bossMinions: 6, bossMinionsPerStage: 2, bossMinionEvery: 3.4,
+};
 const WEAPONS = [
   { name: '手槍',   rate: 4,   pellets: 1, spread: 0.04, dmg: 1 },
   { name: '步槍',   rate: 6.5, pellets: 1, spread: 0.05, dmg: 1 },
@@ -230,14 +252,16 @@ try { best = Math.max(1, parseInt(localStorage.getItem('zombie-bridge-best'), 10
 
 const G = {
   level: best, phase: 'menu', x: 0, tx: 0, z: 0, L: 200, squad: 1, weapon: 0, kills: 0, time: 0,
-  events: [], soldiers: [], shield: 0, mech: null, boss: null, shake: 0, dmgMul: 1,
+  events: [], soldiers: [], shield: 0, mech: null, boss: null, shake: 0, dmgMul: 1, safe: false,
 };
 
 // ---------------------------------------------------------------- event bus
 // Contract between game logic (emits) and presentation (listens). Logic never reaches into FX/HUD directly
 // for new effects; it emits one of these and presentation code subscribes with bus.on(name, fn).
 // Events: shot{x,z} soldierDied{x,z} zombieDied{x,z,big} gateHit{e} gatePass{e,diff}
-//         weaponPickup{e,tier} heroActivated{e} bossSpawn{} bossHit{} bossDied{x,z} soldierContact{} gameOver{reason} win{}
+//         weaponPickup{e,tier} heroActivated{e} bossSpawn{} bossHit{} bossDied{x,z} soldierContact{} gameOver{reason,cause,kind,phase} win{}
+// gameOver.cause is 'horde' | 'boss' | 'gate'; kind is the horde kind of the zombie that landed the last blow (or '').
+// Payloads are fresh objects; handlers may keep them.
 const bus = {
   map: {},
   on(name, fn) { (this.map[name] || (this.map[name] = [])).push(fn); },
@@ -494,15 +518,18 @@ function buildLevel(n) {
   makeEvents(n, L);
 }
 
-function hordeSpec(kind, n, side) {
-  const f = 1 + (n - 1) * 0.32;
-  const hp = 1 + Math.floor((n - 1) / 2);
+// p = how far along the bridge the horde stands (0..1): later hordes are bigger and tougher because the squad is, too.
+function hordeSpec(kind, n, side, p) {
+  p = Math.pow(p || 0, TUNE.rampPow);
+  const f = (1 + (n - 1) * TUNE.hordeGrow) * (1 + TUNE.ramp * p);
+  const hp = (1 + (n - 1) * TUNE.hpPerStage) * (1 + TUNE.hpRamp * p);
+  const C = TUNE.count;
   switch (kind) {
-    case 'wall':   return { cx: side * 2.1, w: 3.4, d: 14, count: Math.round(50 * f), hp };
-    case 'blob':   return { cx: rnd(-1.6, 1.6), w: 3.6, d: 6, count: Math.round(30 * f), hp };
-    case 'line':   return { cx: 0, w: 7.4, d: 2.6, count: Math.round(20 * f), hp };
-    case 'brutes': return { cx: 0, w: 6.4, d: 4, count: 2 + n, hp: 10 + n * 4, big: true };
-    default:       return { cx: -1.8, w: 3.6, d: 6, count: Math.round(16 * f), hp };
+    case 'wall':   return { kind, cx: side * 2.1, w: 3.4, d: 14, count: Math.round(C.wall * f), hp };
+    case 'blob':   return { kind, cx: rnd(-1.6, 1.6), w: 3.6, d: 6, count: Math.round(C.blob * f), hp };
+    case 'line':   return { kind, cx: 0, w: 7.4, d: 2.6, count: Math.round(C.line * f), hp };
+    case 'brutes': return { kind, cx: 0, w: 6.4, d: 4, count: Math.round((TUNE.bruteBase + TUNE.brutePerStage * n) * (1 + TUNE.bruteRamp * p)), hp: Math.round((TUNE.bruteHp + n * TUNE.bruteHpPerStage) * (1 + TUNE.hpRamp * p)), big: true };
+    default:       return { kind: 'open', cx: -1.8, w: 3.6, d: 6, count: Math.round(C.open * (1 + (n - 1) * TUNE.hordeGrow)), hp: 1 + (n - 1) * TUNE.hpPerStage };
   }
 }
 
@@ -514,9 +541,11 @@ function makeEvents(n, L) {
   z -= 18;
   const heroSide = R() < 0.5 ? -1 : 1;
   E.push(makeWeapon(z + 7, 0, 1));
-  E.push(makeGate(z, -heroSide, -rint(2, 3), 'add', n));
+  const redGate = makeGate(z, -heroSide, -rint(2, 3), 'add', n);
+  redGate.pf = TUNE.openGatePf;
+  E.push(redGate);
   E.push(makeHero(z + 0.5, heroSide, n));
-  z -= 16;
+  z -= TUNE.openingGap;
 
   const pattern = ['wall', 'gates', 'line', 'blob', 'weapon', 'gates', 'brutes', 'wall', 'gates', 'line', 'weapon', 'blob', 'gates', 'brutes'];
   let i = 0, tier = 2;
@@ -535,9 +564,9 @@ function makeEvents(n, L) {
     } else if (t === 'weapon') {
       if (tier < WEAPONS.length) { E.push(makeWeapon(z, rnd(-2.2, 2.2), tier++)); z -= 10; }
     } else {
-      const spec = hordeSpec(t, n, R() < 0.5 ? -1 : 1);
+      const spec = hordeSpec(t, n, R() < 0.5 ? -1 : 1, Math.min(1, -z / L));
       E.push({ type: 'horde', z, spec });
-      z -= spec.d + rnd(8, 12);
+      z -= spec.d + rnd(TUNE.hordeGap[0], TUNE.hordeGap[1]);
     }
   }
 }
@@ -555,7 +584,7 @@ function makeGate(z, side, val, kind, n) {
     grp.add(post);
   }
   levelGroup.add(grp);
-  const e = { type: 'gate', z, x: side * 1.95, side, val, kind, per: 2 + n, hits: 0, used: false, bump: 0, fade: 0, grp, p };
+  const e = { type: 'gate', z, x: side * 1.95, side, val, kind, per: TUNE.gatePer + TUNE.gatePerStage * n, pf: 1, hits: 0, used: false, bump: 0, fade: 0, grp, p };
   e.draw = () => drawGate(e);
   e.draw();
   return e;
@@ -630,7 +659,7 @@ function makeHero(z, side, n) {
   label.mesh.position.set(0, 3.1, 0.4);
   grp.add(label.mesh);
   levelGroup.add(grp);
-  const e = { type: 'hero', z, x, side, bz: z + 1.35, charge: 0, need: 14 + n * 8, done: false, missed: false, grp, holo, batt, label, lastPct: -1 };
+  const e = { type: 'hero', z, x, side, bz: z + 1.35, charge: 0, need: TUNE.battNeed + n * TUNE.battNeedPerStage, done: false, missed: false, grp, holo, batt, label, lastPct: -1 };
   e.draw = () => {
     const pct = Math.min(100, Math.floor(e.charge / e.need * 100));
     const c = label.ctx; c.clearRect(0, 0, 256, 80);
@@ -649,13 +678,15 @@ function makeHero(z, side, n) {
 // ---------------------------------------------------------------- spawning
 const TINTS = [[1, 1, 1], [1.15, 0.95, 0.85], [0.85, 0.92, 1.06], [1.08, 1.06, 0.8], [0.82, 0.82, 0.84], [1.1, 0.85, 0.9]];
 function spawnHorde(spec, z0) {
-  for (let i = 0; i < spec.count && Z.length < MAXZ; i++) {
+  // pool full: spawn what fits (the horde just gets thinner) instead of failing or overrunning the instance buffer
+  const n = Math.min(spec.count, MAXZ - Z.length);
+  for (let i = 0; i < n; i++) {
     const big = !!spec.big;
     Z.push({
       x: clamp(spec.cx + (Math.random() - 0.5) * spec.w, -ROAD + 0.35, ROAD - 0.35),
       z: z0 - Math.random() * spec.d,
       sp: big ? rr(0.7, 0.85) : rr(1, 1.7),
-      hp: spec.hp, s: big ? 1.65 : rr(0.92, 1.08), flash: 0, dying: 0, ph: Math.random() * 6.28, vx: 0,
+      hp: Math.floor(spec.hp) + (Math.random() < spec.hp % 1 ? 1 : 0), kind: spec.kind || '', s: big ? 1.65 : rr(0.92, 1.08), flash: 0, dying: 0, ph: Math.random() * 6.28, vx: 0,
       tint: big ? [1.25, 0.6, 0.55] : TINTS[(Math.random() * TINTS.length) | 0], big,
     });
   }
@@ -677,7 +708,10 @@ function syncSoldiers() {
 function perRow(n) { return n <= 2 ? Math.max(1, n) : Math.min(5, Math.ceil(Math.sqrt(n * 1.5))); }
 function formationHalf() { return (perRow(G.soldiers.length) - 1) / 2 * SP; }
 
-function killSoldier(i) {
+// src: horde kind of the zombie (or 'boss') that caused the death. Safe to call while iterating Z or G.soldiers as long as the
+// caller stops iterating G.soldiers afterwards (the array is spliced / refilled by syncSoldiers).
+function killSoldier(i, src) {
+  if (G.safe || G.phase === 'over' || G.phase === 'win') return;
   const s = G.soldiers[i];
   if (!s) return;
   burst(s.x, 1, s.z, 14, [0.9, 0.2, 0.2], 3.5, 0.6);
@@ -688,7 +722,7 @@ function killSoldier(i) {
   G.shake = Math.max(G.shake, 0.25);
   SFX.thud();
   syncSoldiers();
-  if (G.squad <= 0) gameOver('屍潮把最後一名隊員也拖下去了。');
+  if (G.squad <= 0) gameOver('屍潮把最後一名隊員也拖下去了。', src === 'boss' ? 'boss' : 'horde', src);
 }
 
 // ---------------------------------------------------------------- popups
@@ -761,6 +795,13 @@ const SFX = {
 const BN = 56;
 const buckets = Array.from({ length: BN }, () => []);
 const bIdx = z => Math.floor(G.z + 10 - z);
+function fillBuckets() {
+  for (let k = 0; k < BN; k++) buckets[k].length = 0;
+  for (let i = 0; i < Z.length; i++) {
+    const k = bIdx(Z[i].z);
+    if (k >= 0 && k < BN) buckets[k].push(i);
+  }
+}
 
 function spawnBullet(x, z, dx, dz, dmg, kind) {
   if (nb >= MAXB) return;
@@ -793,7 +834,7 @@ function splash(x, z, dmg) {
     if (k < 0 || k >= BN) continue;
     for (const zi of buckets[k]) {
       const zb = Z[zi];
-      if ((zb.x - x) ** 2 + (zb.z - z) ** 2 < 3.4) hitZombie(zb, dmg * 0.6);
+      if ((zb.x - x) ** 2 + (zb.z - z) ** 2 < TUNE.splashR2) hitZombie(zb, dmg * TUNE.splashDmg);
     }
   }
 }
@@ -803,6 +844,7 @@ function hitBoss(dmg) {
   bus.emit('bossHit');
   if (b.hp <= 0 && b.alive) {
     b.alive = false; b.deadT = 0;
+    G.safe = true;
     G.kills++;
     burst(b.x, 3, b.z, 120, [0.45, 1, 0.3], 7, 0.9);
     burst(b.x, 3, b.z, 60, [1, 0.6, 0.2], 6, 0.7);
@@ -817,7 +859,8 @@ function gateHit(e, dmg) {
   if (e.kind === 'mul') return;
   e.hits += dmg;
   let changed = false;
-  while (e.hits >= e.per) { e.hits -= e.per; e.val++; changed = true; }
+  const per = (e.per + TUNE.gatePerSquad * Math.min(G.squad, MAXVIS)) * e.pf;
+  while (e.hits >= per) { e.hits -= per; e.val++; changed = true; }
   if (changed) {
     e.draw(); e.bump = 1;
     SFX.gate(e.val);
@@ -846,7 +889,7 @@ function activateHero(e) {
   scene.add(mesh);
   if (G.mech) scene.remove(G.mech.mesh);
   G.mech = { mesh, x: wp.x, z: wp.z, cd: 0.4, side: e.side };
-  G.shield = 4;
+  G.shield = TUNE.shieldSecs;
   SFX.hero();
   bus.emit('heroActivated', { e });
   pop('機甲加入！', wp.x, 3.4, wp.z, 'holo');
@@ -858,18 +901,30 @@ function findTargets() {
   nT = 0;
   const b = G.boss;
   if (b && b.alive && G.z - b.z < 24) { tgX[0] = b.x; tgZ[0] = b.z; tgS[0] = 0; nT = 1; }
-  for (let i = 0; i < Z.length; i++) {
-    const zb = Z[i];
-    if (zb.dying > 0) continue;
-    const d = G.z - zb.z;
-    if (d < 0.3 || d > 16) continue;
-    const ax = Math.abs(zb.x - G.x);
-    if (ax > d * 0.9 + 1.5) continue;
-    const sc = d + ax * 0.6;
-    if (nT < 6) { tgX[nT] = zb.x; tgZ[nT] = zb.z; tgS[nT] = sc; nT++; continue; }
-    let worst = 0;
-    for (let k = 1; k < 6; k++) if (tgS[k] > tgS[worst]) worst = k;
-    if (sc < tgS[worst]) { tgX[worst] = zb.x; tgZ[worst] = zb.z; tgS[worst] = sc; }
+  // Zombies 0.3..16 ahead sit in buckets 10..26 (bIdx = floor(G.z + 10 - z)); pad by one on each side because the squad has
+  // moved a little since the buckets were filled. Nearest first, so we can stop once nothing left can beat the worst pick.
+  let worst = 0;
+  for (let k = 9; k <= 27; k++) {
+    if (nT === 6 && k - 11 >= tgS[worst]) break;
+    const arr = buckets[k];
+    for (let a = 0; a < arr.length; a++) {
+      const zb = Z[arr[a]];
+      if (zb.dying > 0) continue;
+      const d = G.z - zb.z;
+      if (d < 0.3 || d > 16) continue;
+      const ax = Math.abs(zb.x - G.x);
+      if (ax > d * 0.9 + 1.5) continue;
+      const sc = d + ax * 0.6;
+      if (nT < 6) {
+        tgX[nT] = zb.x; tgZ[nT] = zb.z; tgS[nT] = sc; nT++;
+        if (nT === 6) { worst = 0; for (let j = 1; j < 6; j++) if (tgS[j] > tgS[worst]) worst = j; }
+        continue;
+      }
+      if (sc < tgS[worst]) {
+        tgX[worst] = zb.x; tgZ[worst] = zb.z; tgS[worst] = sc;
+        worst = 0; for (let j = 1; j < 6; j++) if (tgS[j] > tgS[worst]) worst = j;
+      }
+    }
   }
 }
 
@@ -877,16 +932,18 @@ function findTargets() {
 function updateEvents(dt) {
   for (const e of G.events) {
     if (e.type === 'horde') {
-      if (!e.spawned && e.z > G.z - 58) { e.spawned = true; spawnHorde(e.spec, e.z); }
+      if (!e.spawned && e.z > G.z - TUNE.spawnAhead) { e.spawned = true; spawnHorde(e.spec, e.z); }
       continue;
     }
     if (e.type === 'gate') {
       if (e.bump > 0) { e.bump = Math.max(0, e.bump - dt * 5); }
       if (!e.used && G.z <= e.z) {
         e.used = true;
-        if (e.pair !== undefined) for (const o of G.events) if (o !== e && o.pair === e.pair) { o.used = true; o.fade = o.fade || 0.001; }
+        let mate = null;
+        if (e.pair !== undefined) for (const o of G.events) if (o !== e && o.pair === e.pair) { mate = o; o.used = true; o.fade = o.fade || 0.001; }
         e.fade = 0.001;
-        if (G.x * e.side > 0.05) passGate(e);
+        const hit = pickGate(e, mate);
+        if (hit) passGate(hit);
       }
       const sc = 1 + e.bump * 0.12 + e.fade * 0.5;
       e.grp.scale.set(sc, sc, sc);
@@ -930,6 +987,26 @@ function updateEvents(dt) {
   }
 }
 
+// Which side of the deck the squad is on when it crosses a gate line: by the mean x of the soldiers actually on the deck
+// (not the drag target). Inside the +-0.05 dead zone around the centre line the side holding more soldiers wins; on an
+// exact tie it returns 0 and pickGate hands out the worse gate, so parking on the line is never a free way to skip a penalty.
+function squadSide() {
+  const n = G.soldiers.length;
+  let sx = 0, l = 0, r = 0;
+  for (let i = 0; i < n; i++) { const x = G.soldiers[i].x; sx += x; if (x < -0.01) l++; else if (x > 0.01) r++; }
+  const c = n ? sx / n : G.x;
+  if (c > 0.05) return 1;
+  if (c < -0.05) return -1;
+  return r > l ? 1 : l > r ? -1 : 0;
+}
+function gateDelta(e) { return e.kind === 'mul' ? G.squad * (e.val - 1) : e.val; }
+function pickGate(e, mate) {
+  const side = squadSide();
+  if (side !== 0) return e.side === side ? e : (mate && mate.side === side ? mate : null);
+  if (!mate) return gateDelta(e) < 0 ? e : null;           // lone gate: only a penalty sticks
+  return gateDelta(e) <= gateDelta(mate) ? e : mate;
+}
+
 function passGate(e) {
   const before = G.squad;
   if (e.kind === 'mul') G.squad = Math.round(G.squad * e.val);
@@ -941,7 +1018,7 @@ function passGate(e) {
   else if (diff < 0) { pop(String(diff), G.x, 2.6, cz, 'bad'); SFX.bad(); G.shake = 0.3; }
   if (G.squad <= 0) {
     G.squad = 0; syncSoldiers();
-    gameOver('紅色數字門把整支小隊扣光了。下次先把它打成正數。');
+    gameOver('紅色數字門把整支小隊扣光了。下次先把它打成正數。', 'gate', '');
     return;
   }
   syncSoldiers();
@@ -1016,8 +1093,8 @@ function updateMech(dt) {
   if (nT > 0) { dx = tgX[0] - m.x; dz = tgZ[0] - m.z; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l; if (dz > -0.2) { dx = 0; dz = -1; } }
   m.mesh.rotation.y = Math.atan2(-dx, -dz);
   if (m.cd <= 0) {
-    m.cd = 0.62;
-    const dmg = 4 + G.level * 2;
+    m.cd = TUNE.mechCd;
+    const dmg = TUNE.mechDmg + G.level * TUNE.mechDmgPerStage;
     spawnBullet(m.x - 0.7, m.z - 0.8, dx, dz, dmg, 1);
     spawnBullet(m.x + 0.7, m.z - 0.8, dx, dz, dmg, 1);
     burst(m.x, 1.6, m.z - 1, 6, [1, 0.6, 0.2], 2, 0.2);
@@ -1046,11 +1123,7 @@ function updateZombies(dt) {
     if (zb.z > G.z + 7) { Z[i] = Z[Z.length - 1]; Z.pop(); }
   }
   // buckets + light separation so the horde spreads instead of stacking
-  for (let k = 0; k < BN; k++) buckets[k].length = 0;
-  for (let i = 0; i < Z.length; i++) {
-    const k = bIdx(Z[i].z);
-    if (k >= 0 && k < BN) buckets[k].push(i);
-  }
+  fillBuckets();
   if (moving) {
     for (let k = 0; k < BN; k++) {
       const arr = buckets[k];
@@ -1069,33 +1142,40 @@ function updateZombies(dt) {
         }
       }
     }
-    // contact with the squad
+    // contact with the squad / mech: only the buckets around the squad (z within -0.7 .. +rows*SP+0.5 of G.z, mech at G.z+0.6)
     const rows = Math.ceil(G.soldiers.length / Math.max(1, perRow(G.soldiers.length)));
     const zmin = G.z - 0.7, zmax = G.z + rows * SP + 0.5;
-    for (let i = 0; i < Z.length && G.phase !== 'over'; i++) {
-      const zb = Z[i];
-      if (zb.dying > 0) continue;
-      const m = G.mech;
-      if (m && Math.abs(zb.x - m.x) < 0.9 && Math.abs(zb.z - m.z) < 0.8) { hitZombie(zb, 999); continue; }
-      if (zb.z < zmin || zb.z > zmax) continue;
-      const r = 0.38 * zb.s + 0.12;
-      for (let s = 0; s < G.soldiers.length; s++) {
-        const so = G.soldiers[s];
-        if (Math.abs(so.x - zb.x) < r && Math.abs(so.z - zb.z) < r) {
-          hitZombie(zb, 999);
-          if (G.shield <= 0) killSoldier(s);
-          break;
+    const m = G.mech;
+    const kLo = Math.max(0, Math.floor(G.z + 10 - zmax) - 1), kHi = Math.min(BN - 1, Math.floor(G.z + 10 - zmin) + 1);
+    for (let k = kLo; k <= kHi && G.phase !== 'over'; k++) {
+      const arr = buckets[k];
+      for (let a = 0; a < arr.length && G.phase !== 'over'; a++) {
+        const zb = Z[arr[a]];
+        if (zb.dying > 0) continue;
+        if (m && Math.abs(zb.x - m.x) < 0.9 && Math.abs(zb.z - m.z) < 0.8) { hitZombie(zb, 999); continue; }
+        if (zb.z < zmin || zb.z > zmax) continue;
+        const r = 0.38 * zb.s + 0.12;
+        for (let s = 0; s < G.soldiers.length; s++) {
+          const so = G.soldiers[s];
+          if (Math.abs(so.x - zb.x) < r && Math.abs(so.z - zb.z) < r) {
+            hitZombie(zb, 999);
+            bus.emit('soldierContact', { x: so.x, z: so.z, shielded: G.shield > 0 || G.safe });
+            if (G.shield <= 0) killSoldier(s, zb.kind);   // killSoldier splices G.soldiers: we leave the soldier loop right away
+            break;
+          }
         }
       }
     }
   }
 }
 
+const activeE = [];   // gates / batteries a bullet can hit this step (reused, no per-step allocation)
 function updateBullets(dt) {
-  const active = [];
-  for (const e of G.events) {
+  let na = 0;
+  for (let i = 0; i < G.events.length; i++) {
+    const e = G.events[i];
     if ((e.type === 'gate' && !e.used) || (e.type === 'hero' && !e.done && !e.missed)) {
-      if (e.z < G.z + 2 && e.z > G.z - 30) active.push(e);
+      if (e.z < G.z + 2 && e.z > G.z - 30) activeE[na++] = e;
     }
   }
   const b = G.boss;
@@ -1128,7 +1208,8 @@ function updateBullets(dt) {
         }
       }
       if (hit) break;
-      for (const e of active) {
+      for (let q = 0; q < na; q++) {
+        const e = activeE[q];
         if (e.type === 'gate') {
           if (!e.used && oz > e.z && z <= e.z && Math.abs(x - e.x) < 1.85) { bxHit = x; gateHit(e, dmg); hit = true; break; }
         } else if (!e.done && oz > e.bz && z <= e.bz && Math.abs(x - e.x) < 0.95) {
@@ -1151,9 +1232,9 @@ scene.add(bossMesh);
 function startBoss() {
   G.phase = 'boss';
   const W = WEAPONS[G.weapon];
-  const dps = G.squad * W.rate * W.pellets * W.dmg + (G.mech ? 2 * (4 + G.level * 2) / 0.62 : 0);
-  const hp = Math.round(220 * G.level + dps * 6);
-  G.boss = { x: 0, z: G.z - 30, hp, max: hp, sp: 1.1 + G.level * 0.08, flash: 0, alive: true, deadT: 0, spawnT: 2.5, hitT: 0 };
+  const dps = G.squad * W.rate * W.pellets * W.dmg + (G.mech ? 2 * (TUNE.mechDmg + G.level * TUNE.mechDmgPerStage) / TUNE.mechCd : 0);
+  const hp = Math.round(TUNE.bossHp * G.level + dps * TUNE.bossDpsSecs);
+  G.boss = { x: 0, z: G.z - 30, hp, max: hp, sp: TUNE.bossSpeed + G.level * TUNE.bossSpeedPerStage, flash: 0, alive: true, deadT: 0, spawnT: 2.5, hitT: 0 };
   bossMesh.visible = true;
   bossMesh.rotation.set(0, 0, 0);
   $('#bossbar').hidden = false;
@@ -1175,13 +1256,13 @@ function updateBoss(dt) {
     bossMesh.rotation.z = Math.sin(G.time * 3) * 0.06;
     b.spawnT -= dt;
     if (b.spawnT <= 0) {
-      b.spawnT = 3.4;
-      spawnHorde({ cx: 0, w: 7.4, d: 3, count: 6 + G.level * 2, hp: 1 + Math.floor((G.level - 1) / 2) }, b.z - 2);
+      b.spawnT = TUNE.bossMinionEvery;
+      spawnHorde({ kind: 'minion', cx: 0, w: 7.4, d: 3, count: TUNE.bossMinions + G.level * TUNE.bossMinionsPerStage, hp: 1 + (G.level - 1) * TUNE.hpPerStage }, b.z - 2);
     }
     if (b.z > G.z - 1.6 && b.hitT <= 0) {
       b.hitT = 0.6;
       if (G.shield <= 0) {
-        for (let k = 0; k < 2 && G.soldiers.length && G.phase === 'boss'; k++) killSoldier(0);
+        for (let k = 0; k < 2 && G.soldiers.length && G.phase === 'boss'; k++) killSoldier(0, 'boss');
       }
       b.z -= 4.5;
       G.shake = 0.6;
@@ -1264,14 +1345,17 @@ function updateHud() {
 // ---------------------------------------------------------------- flow
 const hintEl = $('#hint');
 function resetWorld() {
-  Z.length = 0; nb = 0; np = 0;
+  Z.length = 0; nb = 0; np = 0; nT = 0;
+  for (let k = 0; k < BN; k++) buckets[k].length = 0;
   for (const s of G.soldiers) scene.remove(s.mesh);
   G.soldiers = [];
   if (G.mech) { scene.remove(G.mech.mesh); G.mech = null; }
   G.boss = null; bossMesh.visible = false; $('#bossbar').hidden = true;
+  shieldMesh.visible = false;
   for (const p of pops) p.el.remove();
   pops.length = 0;
-  Object.assign(G, { x: 0, tx: 0, z: 0, squad: 1, weapon: 0, kills: 0, shield: 0, shake: 0, time: 0 });
+  acc = 0;
+  Object.assign(G, { x: 0, tx: 0, z: 0, squad: TUNE.startSquad, weapon: 0, kills: 0, shield: 0, shake: 0, time: 0, safe: false, dmgMul: 1 });
 }
 function prepare(level) {
   G.level = level;
@@ -1280,6 +1364,7 @@ function prepare(level) {
   buildLevel(level);
   syncSoldiers();
   updateEvents(0);
+  fillBuckets();
   for (const id of ['menuLevel', 'overLevel']) $('#' + id).textContent = 'STAGE ' + level;
   $('#bestLine').textContent = best > 1 ? '最佳紀錄：第 ' + best + ' 關' : '';
 }
@@ -1292,17 +1377,20 @@ function startRun() {
   setTimeout(() => { hintEl.style.opacity = '0'; }, 3500);
   G.phase = 'run';
 }
-function gameOver(reason) {
-  if (G.phase === 'over' || G.phase === 'win') return;
+function gameOver(reason, cause, kind) {
+  if (G.phase !== 'run' && G.phase !== 'boss') return;   // only the first death of a run counts (never twice, never after a win)
+  const was = G.phase;
   G.phase = 'over';
+  nb = 0;
   SFX.bad();
-  bus.emit('gameOver', { reason });
+  bus.emit('gameOver', { reason, cause: cause || 'horde', kind: kind || '', phase: was });
   $('#overReason').textContent = reason;
   $('#overKills').textContent = String(G.kills);
   $('#overDist').textContent = Math.round(clamp(-G.z / G.L, 0, 1) * 100) + '%';
   setTimeout(() => { if (G.phase === 'over') $('#over').hidden = false; }, 700);
 }
 function win() {
+  if (G.phase !== 'boss') return;
   G.phase = 'win';
   nb = 0;
   bus.emit('win');
@@ -1360,13 +1448,14 @@ function step(dt) {
     if (keys.l) G.tx -= dt * 9;
     if (keys.r) G.tx += dt * 9;
     if (G.phase === 'run') {
-      G.z -= RUN * dt;
+      G.z -= TUNE.run * dt;
       if (G.z <= -G.L) { G.z = -G.L; startBoss(); }
     }
     updateEvents(dt);
     updateSquad(dt);
     updateMech(dt);
     updateZombies(dt);
+    if (G.phase === 'over') return;       // the last soldier fell during this step: nothing else may act on it
     updateBullets(dt);
     updateBoss(dt);
   } else {
@@ -1391,13 +1480,24 @@ function render(dt) {
   renderer.render(scene, camera);
 }
 
+// Fixed-timestep loop: the simulation always advances in STEP (1/60 s) slices, so game speed does not depend on the display
+// refresh rate or on how fast the device renders. At most MAX_STEPS slices are run per frame; if a frame takes longer than that
+// the surplus is dropped (the game slows down rather than freezing in a catch-up spiral).
+let acc = 0;
 function frame(now) {
-  const dt = Math.min(0.033, (now - last) / 1000);
-  last = now;
-  step(dt);
-  render(dt);
   requestAnimationFrame(frame);
+  if (document.hidden) { last = now; acc = 0; return; }       // paused: nothing runs, and no time jump on return
+  let dt = (now - last) / 1000;
+  last = now;
+  if (!(dt > 0)) dt = 0;
+  if (dt > 0.25) dt = 0.25;                                    // tab was throttled / debugger pause: treat as one long frame
+  acc += dt;
+  let n = 0;
+  while (acc >= STEP && n < MAX_STEPS) { step(STEP); acc -= STEP; n++; }
+  if (acc > STEP) acc = STEP;                                  // could not keep up: drop the backlog
+  render(Math.min(dt, 0.05));
 }
+document.addEventListener('visibilitychange', () => { last = performance.now(); acc = 0; });
 
 prepare(G.level);
 if (document.fonts && document.fonts.load) {
@@ -1408,7 +1508,7 @@ if (document.fonts && document.fonts.load) {
 requestAnimationFrame(frame);
 
 // handle for automated play-tests
-window.__zb = { G, Z, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, bus };
+window.__zb = { G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0) }), bus };
 })();
 </script>
 </body>
