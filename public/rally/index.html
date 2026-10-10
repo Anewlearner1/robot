@@ -1762,6 +1762,7 @@ async function analyzeVideo(vid, opts, onProgress, isCancelled){
   // the net was trained on ~25-30 fps footage: at 50/60 fps it sees every 2nd frame (same look, half the work)
   const S = opts.net && fpsV > 40 ? 2 : 1, dtS = dt*S;
   const f0 = Math.ceil(opts.start*fpsV - 1e-6), f1 = Math.floor(opts.end*fpsV - 1e-6);
+  const fFirst = Math.max(0, Math.ceil((opts.first || 0)*fpsV - 1e-6));   // first frame with a picture: never seek before it
   let N = Math.min(f1 - f0 + 1, 3600);
   if (N < 15) return {error:'分析範圍太短，至少要半秒以上。'};
   // region of interest: the court plus a margin, up to 7 m high
@@ -1954,7 +1955,7 @@ async function analyzeVideo(vid, opts, onProgress, isCancelled){
       return seeks;
     };
     try {
-      for (const k of [-2*S, -S]){ await seekVideo(vid, (Math.max(0, f0 + k) + 0.5)/fpsV); capture(k); }
+      for (const k of [-2*S, -S]){ await seekVideo(vid, (Math.max(fFirst, f0 + k) + 0.5)/fpsV); capture(k); }
       await seekVideo(vid, (f0 + 0.5)/fpsV);
       capture(0);
       launch();
@@ -2431,7 +2432,10 @@ function setPlaying(v){
 const videoStart = () => rally.video?.start ?? 0;
 const videoFactor = () => rally.video?.factor ?? VS.factor;
 // some files have sound for seconds before the first picture (VS.firstFrame): never seek into that gap
-const seekVid = x => { vid.currentTime = Math.max(x, VS.firstFrame); };
+// land a hair inside the first picture, not on the boundary of the empty edit (WebKit would show its black frame there)
+const ffEps = () => Math.min(0.003, 0.5/(VS.fps || 30));
+const firstSeek = () => VS.firstFrame > 0 ? VS.firstFrame + ffEps() : 0;
+const seekVid = x => { vid.currentTime = Math.max(x, firstSeek()); };
 const picDur = () => VS.dur - VS.firstFrame;      // length of the part that has a picture
 function setTime(x){
   t = clamp(x, 0, TL.total);
@@ -2508,6 +2512,105 @@ $('fixType').onchange = e => {
    Video workflow: load → calibrate → range → analyse
    ===================================================================== */
 const SNAP = [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 90, 100, 119.88, 120, 240];
+/* ---------- container probe: when does the picture start? ----------
+   MP4/MOV files cut from streams often carry sound for seconds before the first picture. The container says so in an edit
+   list ('edts/elst') on the video track: leading "empty edits" (media_time -1) delay the picture. Reading the bytes is the same
+   in every browser, unlike the first-frame time a <video> reports (WebKit shows black for the empty edit and may report 0). */
+const MP4_TOP = new Set(['ftyp','moov','mdat','free','skip','wide','pnot','styp','junk','uuid','pdin','sidx','moof','meta']);
+async function readBytes(file, a, b){
+  const blob = file.slice(a, b);
+  if (blob.arrayBuffer) return new Uint8Array(await blob.arrayBuffer());
+  return await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(new Uint8Array(r.result)); r.onerror = () => rej(r.error); r.readAsArrayBuffer(blob); });
+}
+function mp4Boxes(u8, a, b){            // child boxes of u8[a..b): [{type, start, body, end}]
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), out = [];
+  let p = a;
+  while (p + 8 <= b){
+    let size = dv.getUint32(p), hdr = 8;
+    const type = String.fromCharCode(u8[p+4], u8[p+5], u8[p+6], u8[p+7]);
+    if (size === 1){ if (p + 16 > b) break; size = dv.getUint32(p+8)*4294967296 + dv.getUint32(p+12); hdr = 16; }
+    else if (size === 0) size = b - p;
+    if (size < hdr || p + size > b) break;
+    out.push({type, start:p, body:p + hdr, end:p + size});
+    p += size;
+  }
+  return out;
+}
+function mp4Parse(moov){                // moov payload (Uint8Array) -> {mvTs, tracks:[{kind, id, w, h, ts, edits, samples, cts0}]}
+  const dv = new DataView(moov.buffer, moov.byteOffset, moov.byteLength);
+  const u32 = o => dv.getUint32(o), i32 = o => dv.getInt32(o);
+  const u64 = o => dv.getUint32(o)*4294967296 + dv.getUint32(o+4), i64 = o => dv.getInt32(o)*4294967296 + dv.getUint32(o+4);
+  const kids = (b, t) => mp4Boxes(moov, b.body, b.end).filter(x => x.type === t);
+  const kid = (b, t) => kids(b, t)[0];
+  const root = {body:0, end:moov.length};
+  const mvhd = kid(root, 'mvhd'); if (!mvhd) return null;
+  const mvTs = u32(mvhd.body + (u32(mvhd.body) >>> 24 === 1 ? 20 : 12));
+  const tracks = [];
+  for (const trak of kids(root, 'trak')){
+    const T = {kind:'', id:0, w:0, h:0, ts:0, edits:[], samples:0, cts0:null};
+    const tkhd = kid(trak, 'tkhd');
+    if (tkhd){ const v1 = (u32(tkhd.body) >>> 24) === 1; T.id = u32(tkhd.body + (v1 ? 20 : 12)); const e = tkhd.end; T.w = u32(e - 8) / 65536; T.h = u32(e - 4) / 65536; }
+    const mdia = kid(trak, 'mdia'); if (!mdia) continue;
+    const hdlr = kid(mdia, 'hdlr');
+    if (hdlr) T.kind = String.fromCharCode(moov[hdlr.body+8], moov[hdlr.body+9], moov[hdlr.body+10], moov[hdlr.body+11]);
+    const mdhd = kid(mdia, 'mdhd');
+    if (mdhd) T.ts = u32(mdhd.body + ((u32(mdhd.body) >>> 24) === 1 ? 20 : 12));
+    const edts = kid(trak, 'edts'), elst = edts && kid(edts, 'elst');
+    if (elst){
+      const v1 = (u32(elst.body) >>> 24) === 1, n = u32(elst.body + 4);
+      let o = elst.body + 8;
+      for (let i = 0; i < n; i++){
+        if (v1){ if (o + 20 > elst.end) break; T.edits.push({dur:u64(o), mt:i64(o+8), rate:dv.getInt16(o+16) + dv.getUint16(o+18)/65536}); o += 20; }
+        else { if (o + 12 > elst.end) break; T.edits.push({dur:u32(o), mt:i32(o+4), rate:dv.getInt16(o+8) + dv.getUint16(o+10)/65536}); o += 12; }
+      }
+    }
+    const minf = kid(mdia, 'minf'), stbl = minf && kid(minf, 'stbl');
+    if (stbl){
+      const stsz = kid(stbl, 'stsz'); if (stsz) T.samples = u32(stsz.body + 8);
+      const ctts = kid(stbl, 'ctts');   // composition offset of the first sample (= its presentation time, decode time starts at 0)
+      if (ctts && u32(ctts.body + 4) > 0 && ctts.body + 16 <= ctts.end) T.cts0 = i32(ctts.body + 12);   // v0 is unsigned by the book but QuickTime writes negatives there too
+    }
+    tracks.push(T);
+  }
+  return {mvTs, tracks};
+}
+/* -> {delay, empty, shift, ts, name} (seconds) for the video track, or null if the file is not an MP4/MOV or anything looks wrong.
+   delay = leading empty edits + (only when sure) first sample's composition time beyond the first media edit's start. */
+async function mp4VideoInfo(file){
+  try {
+    if (!file || !file.size || file.size < 16) return null;
+    const head = await readBytes(file, 0, 8);
+    if (!MP4_TOP.has(String.fromCharCode(head[4], head[5], head[6], head[7]))) return null;
+    let pos = 0, moov = null;
+    for (let n = 0; n < 512 && pos + 8 <= file.size && !moov; n++){
+      const h = await readBytes(file, pos, Math.min(pos + 16, file.size)), dv = new DataView(h.buffer, h.byteOffset, h.byteLength);
+      let size = dv.getUint32(0), hdr = 8;
+      const type = String.fromCharCode(h[4], h[5], h[6], h[7]);
+      if (!/^[\x20-\x7e\xa9]{4}$/.test(type)) return null;
+      if (size === 1){ if (h.length < 16) return null; size = dv.getUint32(8)*4294967296 + dv.getUint32(12); hdr = 16; }
+      else if (size === 0) size = file.size - pos;
+      if (size < hdr || pos + size > file.size) return null;
+      if (type === 'moov'){
+        if (size - hdr > 64*1048576) return null;
+        moov = await readBytes(file, pos + hdr, pos + size);
+      }
+      pos += size;
+    }
+    if (!moov) return null;
+    const m = mp4Parse(moov); if (!m || !m.mvTs) return null;
+    const vids = m.tracks.filter(t => t.kind === 'vide' && t.ts > 0);
+    if (!vids.length) return null;
+    const T = vids.reduce((a, t) => t.samples > a.samples ? t : a, vids[0]);   // cover-art tracks have one sample
+    let empty = 0, i = 0;
+    while (i < T.edits.length && T.edits[i].mt === -1){ empty += T.edits[i].dur / m.mvTs; i++; }
+    let shift = 0;
+    const e = T.edits[i];                       // first real edit: the picture can start later than its media_time (B-frame offset)
+    if (e && e.mt >= 0 && e.rate === 1 && T.cts0 !== null && T.cts0 > e.mt) shift = (T.cts0 - e.mt) / T.ts;
+    if (!isFinite(empty + shift) || empty < 0 || empty + shift > 24*3600) return null;
+    return {delay:empty + shift, empty, shift, ts:T.ts, edits:T.edits.length};
+  } catch (err) { return null; }
+}
+const containerDelay = async file => { const r = await mp4VideoInfo(file); return r ? r.delay : null; };
 async function firstFrameTime(){
   // the picture of some files starts seconds after time 0: seek to the very beginning and see which frame is shown
   if (!('requestVideoFrameCallback' in HTMLVideoElement.prototype)) return 0;
@@ -2542,10 +2645,18 @@ async function stepBySeeking(t0){
   // timestamps are often stored in whole milliseconds (60 fps: 16, 17, 17 ms ...): average them
   return ok.length >= 4 ? ok.length/ok.reduce((a, x) => a + x, 0) : null;
 }
+// the first picture: the container's word (same in every browser) over what this browser's <video> reports. A container that
+// shows no empty edit (0) cannot rule out other offsets, so a clearly positive measurement still counts then.
+function pickFirstFrame(container, measured){
+  if (container === null || container === undefined) return measured;
+  if (Math.abs(container - measured) > 0.1) console.warn(`first picture: container says ${container.toFixed(3)} s, the browser reports ${measured.toFixed(3)} s`);
+  return container === 0 && measured > 0.2 ? measured : container;
+}
 async function detectFps(){
-  if (!('requestVideoFrameCallback' in HTMLVideoElement.prototype)) return null;
+  const cDelay = await (containerProbe || Promise.resolve(null));
+  if (!('requestVideoFrameCallback' in HTMLVideoElement.prototype)){ if (cDelay > 0) VS.firstFrame = cDelay; return null; }
   vid.pause();
-  const ff = await firstFrameTime();
+  const ff = pickFirstFrame(cDelay, await firstFrameTime());
   {
     let fs = null;
     for (const off of [0.5, 1.5, 3]){                 // a busy machine can spoil one try: take another spot
@@ -2671,15 +2782,16 @@ async function onVideoReady(){
   t = 0; commit(); refreshSteps();
   $('vInfo').textContent = `${VS.w}×${VS.h} · ${fmt(picDur(),1)} s · ${fps ? `${VS.fps} fps` : '無法偵測幀率，請自行填寫'}` + (gap ? `（影片前 ${fmt(VS.firstFrame,1)} 秒沒有畫面，已略過）` : '');
   if (gap){  // show the first picture right away
-    await new Promise(res => { vid.addEventListener('seeked', res, {once:true}); setTimeout(res, 2000); vid.currentTime = VS.firstFrame; });
+    await new Promise(res => { vid.addEventListener('seeked', res, {once:true}); setTimeout(res, 2000); vid.currentTime = firstSeek(); });
   } else vid.currentTime = VS.range[0];
   setCalibActive(true);
   $('result').hidden = true;
 }
-let fileUrl = null, triedDataUrl = false, currentFile = null;
+let fileUrl = null, triedDataUrl = false, currentFile = null, containerProbe = null;
 $('file').onchange = e => {
   const file = e.target.files?.[0]; if (!file) return;
   currentFile = file; triedDataUrl = false; VS.loaded = false;
+  containerProbe = containerDelay(file);         // starts now, in parallel with the browser loading the video; never rejects
   if (fileUrl) URL.revokeObjectURL(fileUrl);
   fileUrl = URL.createObjectURL(file);
   VS.name = file.name;
@@ -2712,7 +2824,7 @@ $('bAnalyze').onclick = async () => {
     catch (err){ modelNote = `AI 模型無法使用（${err.message || err}），改用顏色偵測。`; }
   }
   try {
-    out = await analyzeVideo(vid, {H:VS.calib.H, fps:VS.fps, factor:VS.factor, start:VS.range[0], end:VS.range[1], hands, net},
+    out = await analyzeVideo(vid, {H:VS.calib.H, fps:VS.fps, factor:VS.factor, start:VS.range[0], end:VS.range[1], first:VS.firstFrame, hands, net},
       (p, txt) => { $('prog').value = p; $('progTxt').textContent = txt; }, () => VS.cancel);
   } catch (err) {
     out = {error:`分析時發生錯誤：${err.message || err}`};
@@ -2723,7 +2835,7 @@ $('bAnalyze').onclick = async () => {
   if (out.error){
     res.className = 'result err';
     res.textContent = out.error + (out.coverage != null ? `（球偵測率 ${Math.round(out.coverage*100)}%）` : '');
-    vid.currentTime = VS.range[0]; refreshSteps(); return;
+    seekVid(VS.range[0]); refreshSteps(); return;
   }
   const players = rally.players;
   rally = {
@@ -2842,5 +2954,6 @@ resize();
 if (document.fonts) document.fonts.ready.then(() => { dirty = true; });
 requestAnimationFrame(frame);
 window.__rallyLab = {get rally(){ return rally; }};
+window.__rallyLab.mp4VideoInfo = mp4VideoInfo; window.__rallyLab.containerDelay = containerDelay;   // for tests
 })();
 </script>
