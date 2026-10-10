@@ -610,6 +610,7 @@ bMesh.count = 0;
 scene.add(bMesh);
 const bx = new Float32Array(MAXB), bz = new Float32Array(MAXB), bdx = new Float32Array(MAXB), bdz = new Float32Array(MAXB);
 const bl = new Float32Array(MAXB), bd = new Float32Array(MAXB), bk = new Uint8Array(MAXB);
+const bw = new Uint8Array(MAXB);   // WEAPONS index that fired the bullet (meaningful when bk === 0; bk 1 = mech shell)
 let nb = 0;
 
 function dotTexture() {
@@ -874,7 +875,7 @@ function makeWeapon(z, x, tier) {
   label.mesh.position.y = 1.65;
   grp.add(label.mesh);
   levelGroup.add(grp);
-  const e = { type: 'weapon', z, x, tier, taken: false, grp, gun, ring, label };
+  const e = { type: 'weapon', z, x, tier, w: tier, taken: false, grp, gun, ring, label };
   e.draw = () => {
     const c = label.ctx; c.clearRect(0, 0, 256, 80);
     rrect(c, 4, 8, 248, 64, 32); c.fillStyle = 'rgba(16,21,27,.8)'; c.fill();
@@ -1062,8 +1063,9 @@ function fillBuckets() {
   }
 }
 
-function spawnBullet(x, z, dx, dz, dmg, kind) {
+function spawnBullet(x, z, dx, dz, dmg, kind, w) {
   if (nb >= MAXB) return;
+  bw[nb] = w || 0;
   bx[nb] = x; bz[nb] = z; bdx[nb] = dx; bdz[nb] = dz; bl[nb] = kind ? 0.75 : 0.56; bd[nb] = dmg; bk[nb] = kind;
   bMesh.setColorAt(nb, kind ? tmpC.setRGB(1, 0.5, 0.15) : tmpC.setRGB(1, 0.88, 0.45));
   nb++;
@@ -1071,6 +1073,7 @@ function spawnBullet(x, z, dx, dz, dmg, kind) {
 function removeBullet(i) {
   const j = --nb;
   if (i === j) return;
+  bw[i] = bw[j];
   bx[i] = bx[j]; bz[i] = bz[j]; bdx[i] = bdx[j]; bdz[i] = bdz[j]; bl[i] = bl[j]; bd[i] = bd[j]; bk[i] = bk[j];
   bMesh.setColorAt(i, bk[i] ? tmpC.setRGB(1, 0.5, 0.15) : tmpC.setRGB(1, 0.88, 0.45));
 }
@@ -1229,7 +1232,7 @@ function updateEvents(dt) {
           pop('+2', e.x, 2.4, e.z, 'good');
         }
         SFX.good();
-        bus.emit('weaponPickup', { e, tier: e.tier });
+        bus.emit('weaponPickup', { e, w: e.w, lv: G.weaponLv, upgrade: false });
       } else if (G.z < e.z - 3) {
         e.taken = true; e.grp.visible = false;
       }
@@ -1316,10 +1319,10 @@ function updateSquad(dt) {
         const a = (Math.random() - 0.5) * W.spread * 2 + (W.pellets > 1 ? (p - (W.pellets - 1) / 2) * W.spread * 0.7 : 0);
         const ca = Math.cos(a), sa = Math.sin(a);
         const rx = dx * ca - dz * sa, rz = dx * sa + dz * ca;
-        spawnBullet(s.x + rx * 0.5 + 0.14, s.z + rz * 0.5, rx, rz, W.dmg * G.dmgMul, 0);
+        spawnBullet(s.x + rx * 0.5 + 0.14, s.z + rz * 0.5, rx, rz, W.dmg * G.dmgMul, 0, G.weapon);
       }
       SFX.shot();
-      bus.emit('shot', { x: s.x, z: s.z });
+      bus.emit('shot', { x: s.x, z: s.z, w: G.weapon, lv: G.weaponLv });
     }
   }
   // shield bubble
