@@ -71,7 +71,7 @@ body {
 .squad { display: grid; gap: 2px; }
 .squad .k { font-size: 12px; letter-spacing: .12em; color: var(--muted); text-shadow: 0 1px 2px #000; }
 .squad .v { display: inline-block; transform-origin: 0 100%; font-family: var(--display); font-size: 40px; line-height: 1; text-shadow: 0 2px 0 var(--ink), 0 0 12px rgba(47,123,255,.6); font-variant-numeric: tabular-nums; }
-.weapon { text-align: right; display: grid; gap: 2px; }
+.weapon { text-align: right; display: grid; gap: 2px; transform-origin: 100% 100%; }
 .weapon .v { font-weight: 900; font-size: 20px; text-shadow: 0 2px 0 var(--ink); }
 .weapon .k { font-size: 12px; letter-spacing: .12em; color: var(--muted); text-shadow: 0 1px 2px #000; }
 #hint {
@@ -138,6 +138,33 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 .tip.below span { transform: translateY(14px); animation-name: tipbob2; }
 .tip.below span::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: var(--hazard); }
 @keyframes tipbob2 { 50% { transform: translateY(20px); } }
+
+/* ---- weapon UI ---- */
+.weapon .pips { display: flex; justify-content: flex-end; gap: 4px; height: 10px; }
+.weapon .pips i { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,.22); box-shadow: inset 0 0 0 1px rgba(0,0,0,.4); }
+.weapon .pips i.on { background: var(--wc, var(--hazard)); box-shadow: 0 0 8px var(--wc, var(--hazard)), inset 0 0 0 1px rgba(0,0,0,.35); }
+#cards { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.wcard {
+  position: absolute; left: 0; top: 0; width: 132px; height: 102px; box-sizing: border-box; padding: 8px 10px 9px; border-radius: 12px;
+  background: rgba(16,21,27,.88); box-shadow: 0 0 0 2px var(--wc), 0 6px 16px rgba(0,0,0,.4); opacity: 0; will-change: transform, opacity;
+  display: grid; gap: 4px; text-align: left;
+}
+.wcard::after { content: ''; position: absolute; top: 100%; left: calc(50% + var(--ax, 0px)); margin-left: -7px; border: 7px solid transparent; border-top-color: var(--wc); }
+.wcard .n { font: 900 17px/1.1 var(--body); color: var(--wc); letter-spacing: .06em; }
+.wcard .d { font: 500 11px/1.3 var(--body); color: var(--muted); }
+.wcard .bars { display: grid; gap: 3px; margin-top: 2px; }
+.wcard .row2 { display: grid; grid-template-columns: 26px 1fr; align-items: center; gap: 6px; font: 900 10px var(--body); color: var(--paper); letter-spacing: .04em; }
+.wcard .seg { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; }
+.wcard .seg i { height: 6px; border-radius: 2px; background: rgba(255,255,255,.16); }
+.wcard .seg i.on { background: var(--wc); }
+.wcard .up { display: none; font: 900 15px/1.2 var(--body); color: var(--ink); background: var(--wc); border-radius: 8px; padding: 5px 6px; text-align: center; letter-spacing: .06em; }
+.wcard.same .bars { display: none; }
+.wcard.same .up { display: block; }
+#banner { position: fixed; left: 0; right: 0; top: 24%; display: grid; place-items: center; pointer-events: none; opacity: 0; }
+#banner b {
+  font: 900 clamp(36px, 12vw, 54px)/1.1 var(--body); letter-spacing: .06em; color: var(--wc, #fff); text-align: center; padding: 0 12px;
+  text-shadow: 0 3px 0 var(--ink), 0 0 22px var(--wc, #fff), 0 0 3px #000;
+}
 
 /* ---- HUD extras ---- */
 .row .push { margin-left: auto; }
@@ -206,11 +233,13 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
   <div id="hint">按住左右拖曳移動 · 小隊自動開火</div>
   <div class="hud-bottom">
     <div class="squad"><span class="k">小隊</span><span class="v" id="hudSquad">×1</span></div>
-    <div class="weapon"><span class="k">武器</span><span class="v" id="hudWeapon">手槍</span></div>
+    <div class="weapon"><span class="k">武器</span><span class="v" id="hudWeapon">手槍</span><span class="pips" id="hudPips" aria-hidden="true"></span></div>
   </div>
 </div>
 <div id="pops"></div>
 <div id="tips" aria-hidden="true"></div>
+<div id="cards" aria-hidden="true"></div>
+<div id="banner" aria-live="polite"><b></b></div>
 <div id="vignette"></div>
 <div id="flash"></div>
 
@@ -226,7 +255,8 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
     <ul class="rules">
       <li><span><strong>左右拖曳</strong>移動，小隊會自動朝前方開火。</span></li>
       <li style="--c: var(--ally)"><span><strong>射擊數字門</strong>讓數字變大，穿過去就能補兵。紅色負數會扣人。</span></li>
-      <li style="--c: var(--holo)"><span><strong>打滿電池</strong>召喚機甲；<strong>撿起槍</strong>升級火力。</span></li>
+      <li style="--c: var(--holo)"><span><strong>打滿電池</strong>召喚機甲。</span></li>
+      <li style="--c: var(--hazard)"><span><strong>走過去撿槍</strong>換武器，共 <span id="ruleGuns">7</span> 種。撿到手上同一把就<strong>升級</strong>，最高 Lv<span id="ruleLv">3</span>。</span></li>
       <li style="--c: var(--blood)"><span>在橋尾<strong>擊倒巨屍</strong>才算過關。</span></li>
     </ul>
     <button class="btn" id="btnStart" type="button">出發</button>
@@ -449,7 +479,6 @@ const SGEO = boxes([
   [0.56, 0.4, 0.36, 0, 1.18, 0, 0x22314d],
   [0.3, 0.3, 0.3, 0, 1.56, 0, 0xd7a982],
   [0.36, 0.14, 0.38, 0, 1.75, 0, 0x1d2733],
-  [0.1, 0.12, 0.78, 0.14, 1.25, -0.4, 0x15181c],
   [0.12, 0.12, 0.42, -0.27, 1.2, -0.18, 0x2f5fd0],
   [0.12, 0.12, 0.42, 0.29, 1.2, -0.18, 0x2f5fd0],
 ]);
@@ -466,14 +495,54 @@ const MGEO = boxes([
   [0.2, 0.2, 0.2, -1.0, 2.1, -1.1, 0xffb020],
   [0.2, 0.2, 0.2, 1.0, 2.1, -1.1, 0xffb020],
 ]);
-// Rifle pickup, barrel along +x.
-const GUNGEO = boxes([
-  [1.1, 0.18, 0.14, 0.1, 0, 0, 0x2a2622],
-  [0.55, 0.22, 0.15, -0.65, -0.03, 0, 0xb5652b],
-  [0.14, 0.38, 0.12, 0.2, -0.24, 0, 0x2a2622],
-  [0.5, 0.07, 0.07, 0.85, 0.03, 0, 0x2a2622],
-  [0.12, 0.26, 0.12, -0.15, -0.2, 0, 0xb5652b],
-]);
+// Gun models: every weapon is a handful of boxes, built once per WEAPONS entry and tinted with its `color`.
+// Authored aiming -z with the grip at the origin. Two geometries per gun: HELD (in the soldier's hands, rendered by one
+// instanced mesh per weapon) and PICK (bigger, barrel along +x, for the floating pickup).
+const GD = 0x23272d, GM = 0x8a929c, GW = 0x7a4a26;
+function gunParts(id, A) {
+  switch (id) {
+    case 'pistol': return [
+      [0.08, 0.12, 0.3, 0, 0, -0.12, GD], [0.075, 0.05, 0.3, 0, 0.085, -0.13, A], [0.07, 0.2, 0.09, 0, -0.14, 0.02, GD]];
+    case 'rifle': return [
+      [0.09, 0.13, 0.62, 0, 0, -0.2, GD], [0.045, 0.045, 0.42, 0, 0.02, -0.72, GM], [0.08, 0.15, 0.3, 0, -0.02, 0.26, GW],
+      [0.07, 0.22, 0.1, 0, -0.16, -0.18, A], [0.05, 0.05, 0.42, 0, 0.1, -0.2, GM]];
+    case 'shotgun': return [
+      [0.1, 0.11, 0.95, 0, 0.03, -0.42, GM], [0.14, 0.1, 0.26, 0, -0.05, -0.42, GW], [0.1, 0.15, 0.32, 0, 0, 0, GD],
+      [0.09, 0.15, 0.36, 0, -0.02, 0.3, GW], [0.13, 0.13, 0.08, 0, 0.03, -0.88, A]];
+    case 'gatling': return [
+      [0.24, 0.24, 0.36, 0, 0, -0.08, GD], [0.045, 0.045, 0.7, 0.07, 0.07, -0.65, GM], [0.045, 0.045, 0.7, -0.07, 0.07, -0.65, GM],
+      [0.045, 0.045, 0.7, 0, -0.07, -0.65, GM], [0.22, 0.22, 0.06, 0, 0, -0.95, GM], [0.18, 0.2, 0.26, 0.2, -0.12, 0.05, A],
+      [0.05, 0.12, 0.2, 0, 0.18, -0.1, GM]];
+    case 'sniper': return [
+      [0.08, 0.11, 0.9, 0, 0, -0.35, GD], [0.04, 0.04, 0.75, 0, 0.01, -1.2, GM], [0.075, 0.075, 0.34, 0, 0.13, -0.3, A],
+      [0.08, 0.16, 0.4, 0, -0.03, 0.3, GD], [0.07, 0.07, 0.1, 0, 0.01, -1.6, GM], [0.03, 0.14, 0.03, 0.05, -0.12, -0.8, GM], [0.03, 0.14, 0.03, -0.05, -0.12, -0.8, GM]];
+    case 'flamer': return [
+      [0.06, 0.06, 0.62, 0, 0.01, -0.4, GM], [0.13, 0.14, 0.42, 0, 0, 0, GD], [0.22, 0.22, 0.46, 0, 0.2, 0.12, A],
+      [0.09, 0.09, 0.06, 0, 0.01, -0.74, 0xffe070], [0.04, 0.04, 0.3, 0, 0.08, -0.2, GM]];
+    default: return [   // rocket
+      [0.2, 0.2, 1.0, 0, 0.06, -0.28, GD], [0.26, 0.26, 0.1, 0, 0.06, -0.82, A], [0.25, 0.25, 0.12, 0, 0.06, 0.25, GM],
+      [0.22, 0.22, 0.06, 0, 0.06, -0.3, GM], [0.04, 0.1, 0.12, 0, 0.22, -0.2, GM], [0.06, 0.16, 0.07, 0, -0.1, -0.15, GD]];
+  }
+}
+const HAND = { x: 0.14, y: 1.3, z: -0.15 }, HELD_K = 1.3;   // held guns are drawn 30 % oversize so they read from the camera behind the squad   // where the grip sits on the soldier
+const HELD_GEO = [], PICK_GEO = [], MUZZLE = [];
+WEAPONS.forEach((W, w) => {
+  const parts = gunParts(W.id, W.color);
+  let minZ = 0;
+  for (const q of parts) minZ = Math.min(minZ, q[5] - q[2] / 2);
+  MUZZLE[w] = HAND.z + minZ * HELD_K;                           // z of the muzzle in soldier space (negative = forward)
+  const lift = W.id === 'rocket' ? 0.1 : 0, K = W.id === 'pistol' ? 1.8 : HELD_K;
+  HELD_GEO[w] = boxes(parts.map(q => [q[0] * K, q[1] * K, q[2] * K, q[3] * K + HAND.x, q[4] * K + HAND.y + lift, q[5] * K + HAND.z, q[6]]));
+  const g = boxes(parts);
+  g.computeBoundingBox();
+  const bb = g.boundingBox, c = bb.getCenter(new T.Vector3()), len = bb.max.z - bb.min.z;
+  g.translate(-c.x, -c.y, -c.z);
+  g.rotateY(-Math.PI / 2);
+  const k = clamp(2.4 / len, 1.4, 3.2);
+  g.scale(k, k, k);
+  PICK_GEO[w] = g;
+  HELD_GEO[w].userData.shared = PICK_GEO[w].userData.shared = true;
+});
 // Per-vertex tag for the shader walk cycle (36 vertices per box): +-1 = leg swinging about the hip, 2 = arm bob, 0 = rigid.
 function tagParts(geo, tags) {
   const a = new Float32Array(geo.attributes.position.count);
@@ -481,7 +550,7 @@ function tagParts(geo, tags) {
   geo.setAttribute('aAnim', new T.BufferAttribute(a, 1));
 }
 tagParts(ZGEO, [1, -1, 0, 0, 2, 2]);
-tagParts(SGEO, [1, -1, 0, 0, 0, 0, 0, 0, 0]);
+tagParts(SGEO, [1, -1, 0, 0, 0, 0, 0, 0]);
 // Tracer: white-hot core plus a dim wide halo; drawn additively so overlapping volleys bloom instead of z-fighting.
 const BULLET_GEO = boxes([
   [0.07, 0.07, 1.3, 0, 0, 0, 0xffffff],
@@ -517,7 +586,7 @@ const M = {
 
 function disposeTree(o) {
   o.traverse(n => {
-    if (n.geometry && ![ZGEO, SGEO, MGEO, GUNGEO, GATEBASE].includes(n.geometry)) n.geometry.dispose();
+    if (n.geometry && !n.geometry.userData.shared && ![ZGEO, SGEO, MGEO, GATEBASE].includes(n.geometry)) n.geometry.dispose();
     if (n.material && (n.material.map || n.material.userData.own)) {
       if (n.material.map) n.material.map.dispose();
       n.material.dispose();
@@ -862,28 +931,24 @@ function drawGate(e) {
 }
 
 function makeWeapon(z, x, tier) {
+  const W = WEAPONS[tier];
   const grp = new T.Group();
   grp.position.set(x, 0, z);
-  const ring = new T.Mesh(new T.RingGeometry(0.55, 0.9, 32).rotateX(-Math.PI / 2), M.ring);
+  const own = (m) => { m.userData.own = true; return m; };   // per-pickup materials (tinted with the gun's colour) are disposed with the level
+  const ring = new T.Mesh(new T.RingGeometry(0.55, 0.95, 32).rotateX(-Math.PI / 2), own(new T.MeshBasicMaterial({ color: W.color, transparent: true, opacity: 0.8, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide })));
   ring.position.y = 0.03;
   grp.add(ring);
-  const gun = new T.Mesh(GUNGEO, M.vc);
-  gun.position.y = 0.75;
-  gun.scale.setScalar(tier >= 3 ? 1.35 : 1.15);
+  const gun = new T.Mesh(PICK_GEO[tier], M.vc);
+  gun.position.y = 0.95;
   grp.add(gun);
-  const label = canvasSprite(1.8, 0.56, 256, 80);
-  label.mesh.position.y = 1.65;
-  grp.add(label.mesh);
+  // faint light pillar so a pickup reads from the far end of the bridge
+  const pillar = new T.Mesh(new T.CylinderGeometry(0.45, 0.45, 3.2, 14, 1, true), own(new T.MeshBasicMaterial({ color: W.color, transparent: true, opacity: 0.13, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide })));
+  pillar.position.y = 1.6;
+  grp.add(pillar);
   levelGroup.add(grp);
-  const e = { type: 'weapon', z, x, tier, w: tier, taken: false, grp, gun, ring, label };
-  e.draw = () => {
-    const c = label.ctx; c.clearRect(0, 0, 256, 80);
-    rrect(c, 4, 8, 248, 64, 32); c.fillStyle = 'rgba(16,21,27,.8)'; c.fill();
-    c.font = '900 40px "Noto Sans TC", sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillStyle = '#ffb020'; c.fillText(WEAPONS[tier].name, 128, 42);
-    label.tex.needsUpdate = true;
-  };
-  e.draw();
+  // The stat card is DOM (see updateCards), so the old 3D label is gone.
+  const e = { type: 'weapon', z, x, tier, w: tier, taken: false, grp, gun, ring, label: null };
+  e.draw = () => { e.fxSig = null; };   // fonts finished loading: repaint the card
   return e;
 }
 
@@ -1018,7 +1083,7 @@ const SFX = {
     try {
       const C = window.AudioContext || window.webkitAudioContext;
       this.ctx = new C();
-      const sr = this.ctx.sampleRate, buf = this.ctx.createBuffer(1, Math.floor(sr * 0.15), sr), d = buf.getChannelData(0);
+      const sr = this.ctx.sampleRate, buf = this.ctx.createBuffer(1, Math.floor(sr * 0.5), sr), d = buf.getChannelData(0);
       for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
       this.noise = buf;
       this.master = this.ctx.createGain();
@@ -1026,14 +1091,56 @@ const SFX = {
       this.master.connect(this.ctx.destination);
     } catch (e) { this.ctx = null; }
   },
+  noiseHit(t0, type, freq, q, vol, dur) {
+    const c = this.ctx;
+    const src = c.createBufferSource(); src.buffer = this.noise; src.loop = true;
+    const f = c.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+    const g = c.createGain(); g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    src.connect(f); f.connect(g); g.connect(this.master); src.start(t0); src.stop(t0 + dur + 0.02);
+  },
+  // Each fx sounds different: bullets are short pops (pistol / rifle / gatling differ in pitch), pellets a low blast,
+  // rail a high crack + zap, rocket a thump + whoosh, flame a throttled looping whoosh (see flameOn / tick).
   shot() {
     const c = this.ctx; if (!c || !this.on) return;
-    const now = c.currentTime; if (now - this.last < 0.055) return; this.last = now;
-    const s = c.createBufferSource(); s.buffer = this.noise;
-    const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = rr(1200, 2000); f.Q.value = 0.9;
-    const g = c.createGain(); g.gain.setValueAtTime(0.13, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
-    s.connect(f); f.connect(g); g.connect(this.master); s.start(now); s.stop(now + 0.08);
+    const W = WEAPONS[G.weapon] || WEAPONS[0], now = c.currentTime, vol = 1 + 0.12 * (G.weaponLv - 1);
+    if (W.fx === 'flame') { this.flameUntil = now + 0.16; this.flameOn(); return; }
+    const gap = W.fx === 'bullet' ? (W.id === 'gatling' ? 0.045 : 0.055) : W.fx === 'rail' ? 0.1 : 0.08;
+    if (now - this.last < gap) return; this.last = now;
+    switch (W.fx) {
+      case 'pellet': this.noiseHit(now, 'lowpass', 1100, 0.9, 0.3 * vol, 0.16); this.tone(150, 0.14, 'sine', 0.12 * vol, -90); break;
+      case 'rail': this.noiseHit(now, 'highpass', 2600, 0.7, 0.2 * vol, 0.1); this.tone(1900, 0.22, 'sine', 0.07 * vol, -1500); break;
+      case 'rocket': this.tone(130, 0.3, 'sine', 0.2 * vol, -85); this.noiseHit(now, 'bandpass', 500, 0.6, 0.12 * vol, 0.35); break;
+      default: {
+        const f = W.id === 'pistol' ? rr(1800, 2400) : W.id === 'gatling' ? rr(700, 1200) : rr(1100, 1700);
+        this.noiseHit(now, 'bandpass', f, 0.9, (W.id === 'gatling' ? 0.1 : 0.13) * vol, W.id === 'rifle' ? 0.08 : 0.07);
+      }
+    }
   },
+  flameOn() {
+    const c = this.ctx;
+    if (this.flameSrc) return;
+    const s = c.createBufferSource(); s.buffer = this.noise; s.loop = true;
+    const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 650; f.Q.value = 0.45;
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, c.currentTime); g.gain.linearRampToValueAtTime(0.1, c.currentTime + 0.07);
+    s.connect(f); f.connect(g); g.connect(this.master); s.start();
+    this.flameSrc = s; this.flameGain = g;
+  },
+  tick() {          // called every frame: ends the flame loop shortly after the last flame shot
+    const c = this.ctx;
+    if (!c || !this.flameSrc) return;
+    if (c.currentTime > this.flameUntil || !this.on) {
+      const t = c.currentTime;
+      this.flameGain.gain.cancelScheduledValues(t); this.flameGain.gain.setTargetAtTime(0, t, 0.05);
+      try { this.flameSrc.stop(t + 0.3); } catch (e) {}
+      this.flameSrc = null;
+    }
+  },
+  explode() {
+    const c = this.ctx; if (!c || !this.on) return;
+    const now = c.currentTime; if (now - (this.lastBoom || 0) < 0.07) return; this.lastBoom = now;
+    this.noiseHit(now, 'lowpass', 520, 0.7, 0.34, 0.42); this.tone(78, 0.4, 'sine', 0.26, -48);
+  },
+  levelUp() { [659, 784, 988, 1318].forEach((f, i) => this.tone(f, 0.13, 'triangle', 0.1, 0, 0.12 + i * 0.06)); },
   tone(freq, dur, type, vol, slide, delay) {
     const c = this.ctx; if (!c || !this.on) return;
     const t0 = c.currentTime + (delay || 0);
@@ -1090,6 +1197,7 @@ function hitZombie(zb, dmg) {
   }
 }
 function splash(x, z, dmg) {
+  bus.emit('explode', { x, z, r: Math.sqrt(TUNE.splashR2) });   // [frontend] one line: explosion FX hook
   burst(x, 1, z, 16, [1, 0.55, 0.15], 4.5, 0.4);
   const k0 = bIdx(z);
   for (let k = k0 - 2; k <= k0 + 2; k++) {
@@ -1586,19 +1694,41 @@ sMesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
 sMesh.frustumCulled = false;
 sMesh.count = 0;
 scene.add(sMesh);
+// Held guns: one instanced mesh per weapon type (the squad all carries the same gun, so exactly one is visible = one draw call).
+// Level-ups raise the gun's emissive glow; firing kicks it back a little.
+const gunMat = new T.MeshLambertMaterial({ vertexColors: true });
+const gunMeshes = HELD_GEO.map(g => {
+  const m = new T.InstancedMesh(g, gunMat, SOLDIER_CAP);
+  m.instanceMatrix.setUsage(T.DynamicDrawUsage);
+  m.frustumCulled = false; m.visible = false; m.count = 0;
+  scene.add(m);
+  return m;
+});
+const KICK = { bullet: 0.05, pellet: 0.12, rail: 0.16, flame: 0.02, rocket: 0.2 };
+const GLOW = [0, 0.16, 0.34];
 function drawSoldiers() {
   const n = Math.min(G.soldiers.length, SOLDIER_CAP), stepping = G.phase === 'run' ? 1 : 0;
+  const w = G.weapon, W = WEAPONS[w], gm = gunMeshes[w], kmax = KICK[W.fx] || 0.05, per = 1 / W.rate;
   for (let i = 0; i < n; i++) {
-    const m = G.soldiers[i].mesh;
+    const so = G.soldiers[i], m = so.mesh, ry = m.rotation.y;
     dummy.position.copy(m.position);
-    dummy.rotation.set(0, m.rotation.y, 0);
+    dummy.rotation.set(0, ry, 0);
     dummy.updateMatrix();
     sMesh.setMatrixAt(i, dummy.matrix);
     sWalk.array[i * 3] = i * 0.5 - 0.785; sWalk.array[i * 3 + 1] = stepping; sWalk.array[i * 3 + 2] = 1;
+    const since = per - so.cd;                                   // time since this soldier last fired
+    const kick = since >= 0 && since < 0.07 ? (1 - since / 0.07) * kmax : 0;
+    dummy.position.x += Math.sin(ry) * kick; dummy.position.z += Math.cos(ry) * kick;
+    dummy.updateMatrix();
+    gm.setMatrixAt(i, dummy.matrix);
   }
   sMesh.count = n;
   sMesh.instanceMatrix.needsUpdate = true;
   sWalk.needsUpdate = true;
+  for (let k = 0; k < gunMeshes.length; k++) gunMeshes[k].visible = k === w && n > 0;
+  gm.count = n;
+  gm.instanceMatrix.needsUpdate = true;
+  gunMat.emissive.setHex(W.color).multiplyScalar(GLOW[clamp(G.weaponLv, 1, 3) - 1]);
 }
 
 // Blob shadows: one instanced draw call for every soldier, zombie, mech and the boss.
@@ -1636,17 +1766,198 @@ function drawShadows() {
   shMesh.instanceMatrix.needsUpdate = true;
 }
 
-function drawBullets() {
-  for (let i = 0; i < nb; i++) {
-    dummy.position.set(bx[i], bk[i] ? 2.0 : 1.25, bz[i]);
-    dummy.rotation.set(0, Math.atan2(bdx[i], bdz[i]), 0);
-    dummy.scale.setScalar(bk[i] ? 2.6 : 1);
+// ---- sprite systems: soft round sprites with their own size/colour/alpha each (flames, smoke, rocket trails, explosions).
+// Each system is one Points draw call. Per frame it takes "transient" sprites (derived from live bullets, push()) plus a
+// small ring buffer of timed puffs (add()), so everything is capped by construction.
+const SOFT_TEX = dotTexture();
+const SPR_SCALE = { value: 400 };
+function spriteSys(transientCap, puffCap, additive) {
+  const cap = transientCap + puffCap, STR = 18;
+  const pos = new Float32Array(cap * 3), col = new Float32Array(cap * 4), siz = new Float32Array(cap);
+  const geo = new T.BufferGeometry();
+  geo.setAttribute('position', new T.BufferAttribute(pos, 3).setUsage(T.DynamicDrawUsage));
+  geo.setAttribute('aCol', new T.BufferAttribute(col, 4).setUsage(T.DynamicDrawUsage));
+  geo.setAttribute('aSize', new T.BufferAttribute(siz, 1).setUsage(T.DynamicDrawUsage));
+  const mat = new T.ShaderMaterial({
+    uniforms: { map: { value: SOFT_TEX }, uScale: SPR_SCALE },
+    vertexShader: 'attribute vec4 aCol; attribute float aSize; uniform float uScale; varying vec4 vCol;\n' +
+      'void main() { vCol = aCol; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = min(aSize * uScale / -mv.z, 160.0); gl_Position = projectionMatrix * mv; }',
+    fragmentShader: 'uniform sampler2D map; varying vec4 vCol;\n' +
+      'void main() { gl_FragColor = vec4(vCol.rgb, texture2D(map, gl_PointCoord).a * vCol.a); }',
+    transparent: true, depthWrite: false, blending: additive ? T.AdditiveBlending : T.NormalBlending,
+  });
+  const pts = new T.Points(geo, mat);
+  pts.frustumCulled = false; pts.visible = false;
+  scene.add(pts);
+  const P = new Float32Array(puffCap * STR);
+  for (let i = 0; i < puffCap; i++) P[i * STR] = P[i * STR + 1] = 1;   // age >= life: dead
+  let head = 0, n = 0;
+  const sys = {
+    pts,
+    reset() { n = 0; },
+    full() { return n >= transientCap; },
+    push(x, y, z, r, g, b, a, size) {
+      if (n >= cap) return;
+      const o = n * 3, c = n * 4;
+      pos[o] = x; pos[o + 1] = y; pos[o + 2] = z;
+      col[c] = r; col[c + 1] = g; col[c + 2] = b; col[c + 3] = a; siz[n] = size; n++;
+    },
+    // puff: moves with velocity (drag per second), grows s0 -> s1, colour c0 -> c1, alpha a0 -> 0 over `life` seconds
+    add(x, y, z, vx, vy, vz, life, s0, s1, c0, c1, a0, drag) {
+      const o = head * STR; head = (head + 1) % puffCap;
+      P[o] = 0; P[o + 1] = life; P[o + 2] = x; P[o + 3] = y; P[o + 4] = z; P[o + 5] = vx; P[o + 6] = vy; P[o + 7] = vz;
+      P[o + 8] = s0; P[o + 9] = s1; P[o + 10] = c0[0]; P[o + 11] = c0[1]; P[o + 12] = c0[2];
+      P[o + 13] = c1[0]; P[o + 14] = c1[1]; P[o + 15] = c1[2]; P[o + 16] = a0; P[o + 17] = drag || 0;
+    },
+    flush(dt) {
+      for (let i = 0; i < puffCap; i++) {
+        const o = i * STR;
+        if (P[o] >= P[o + 1]) continue;
+        P[o] += dt;
+        if (P[o] >= P[o + 1]) continue;
+        const t = P[o] / P[o + 1], k = Math.max(0, 1 - P[o + 17] * dt);
+        P[o + 5] *= k; P[o + 6] *= k; P[o + 7] *= k;
+        P[o + 2] += P[o + 5] * dt; P[o + 3] += P[o + 6] * dt; P[o + 4] += P[o + 7] * dt;
+        const q = 1 - t;
+        sys.push(P[o + 2], P[o + 3], P[o + 4],
+          P[o + 10] + (P[o + 13] - P[o + 10]) * t, P[o + 11] + (P[o + 14] - P[o + 11]) * t, P[o + 12] + (P[o + 15] - P[o + 12]) * t,
+          P[o + 16] * q * q, P[o + 8] + (P[o + 9] - P[o + 8]) * t);
+      }
+      pts.visible = n > 0;
+      geo.setDrawRange(0, n);
+      geo.attributes.position.needsUpdate = true; geo.attributes.aCol.needsUpdate = true; geo.attributes.aSize.needsUpdate = true;
+    },
+    clear() { for (let i = 0; i < puffCap; i++) P[i * STR] = P[i * STR + 1] = 1; n = 0; pts.visible = false; },
+  };
+  return sys;
+}
+const fireSys = spriteSys(MAXB, 240, true);     // flames, rocket tails, explosion fireballs
+const smokeSys = spriteSys(MAXB, 320, false);   // flame smoke, rocket trails, explosion smoke
+smokeSys.pts.renderOrder = 1; fireSys.pts.renderOrder = 2;
+
+// ---- projectile meshes (instanced), picked per WEAPONS[w].fx
+function projMesh(geo, mat) {
+  const m = new T.InstancedMesh(geo, mat, MAXB);
+  m.instanceMatrix.setUsage(T.DynamicDrawUsage);
+  m.frustumCulled = false;
+  m.setColorAt(0, tmpC.setRGB(1, 1, 1));
+  m.instanceColor.setUsage(T.DynamicDrawUsage);
+  m.count = 0;
+  scene.add(m);
+  return m;
+}
+const pelMesh = projMesh(boxes([[0.17, 0.17, 0.36, 0, 0, 0, 0xffffff]]),
+  new T.MeshBasicMaterial({ vertexColors: true, fog: false, transparent: true, blending: T.AdditiveBlending, depthWrite: false }));
+const rkMesh = projMesh(boxes([
+  [0.17, 0.17, 0.62, 0, 0, 0, 0x4a5058], [0.19, 0.19, 0.16, 0, 0, -0.38, 0xff7a2a],
+  [0.4, 0.04, 0.2, 0, 0, 0.26, 0x7a8088], [0.04, 0.4, 0.2, 0, 0, 0.26, 0x7a8088]]),
+  new T.MeshBasicMaterial({ vertexColors: true }));
+// Rail beams: instant bright lines along the shot, fading over BEAM_LIFE.
+const BEAM_MAX = 24, BEAM_LIFE = 0.22;
+const beamMesh = new T.InstancedMesh(boxes([[0.12, 0.12, 1, 0, 0, 0.5, 0xffffff], [0.5, 0.08, 1, 0, 0, 0.5, 0x3a5560], [0.08, 0.5, 1, 0, 0, 0.5, 0x3a5560]]),
+  new T.MeshBasicMaterial({ vertexColors: true, fog: false, transparent: true, blending: T.AdditiveBlending, depthWrite: false }), BEAM_MAX);
+beamMesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
+beamMesh.frustumCulled = false;
+beamMesh.setColorAt(0, tmpC.setRGB(0, 0, 0));
+beamMesh.count = 0;
+scene.add(beamMesh);
+const beams = Array.from({ length: BEAM_MAX }, () => ({ t: 99, x: 0, z: 0, dx: 0, dz: -1, len: 1, c: [1, 1, 1] }));
+let beamHead = 0;
+function addBeam(x, z, dx, dz, len, rgb) {
+  const b = beams[beamHead]; beamHead = (beamHead + 1) % BEAM_MAX;
+  b.t = 0; b.x = x; b.z = z; b.dx = dx; b.dz = dz; b.len = len; b.c = rgb;
+}
+function drawBeams(dt) {
+  let n = 0;
+  const ca = beamMesh.instanceColor.array;
+  for (const b of beams) {
+    if (b.t >= BEAM_LIFE) continue;
+    b.t += dt;
+    if (b.t >= BEAM_LIFE) continue;
+    const f = 1 - b.t / BEAM_LIFE, wid = 0.5 + 0.9 * f;
+    dummy.position.set(b.x, 1.25, b.z);
+    dummy.rotation.set(0, Math.atan2(b.dx, b.dz), 0);
+    dummy.scale.set(wid, wid, b.len);
     dummy.updateMatrix();
-    bMesh.setMatrixAt(i, dummy.matrix);
+    beamMesh.setMatrixAt(n, dummy.matrix);
+    ca[n * 3] = b.c[0] * f; ca[n * 3 + 1] = b.c[1] * f; ca[n * 3 + 2] = b.c[2] * f;
+    n++;
   }
-  bMesh.count = nb;
-  bMesh.instanceMatrix.needsUpdate = true;
-  if (bMesh.instanceColor) bMesh.instanceColor.needsUpdate = true;
+  dummy.scale.setScalar(1);
+  beamMesh.count = n;
+  beamMesh.visible = n > 0;
+  beamMesh.instanceMatrix.needsUpdate = true;
+  beamMesh.instanceColor.needsUpdate = true;
+}
+
+const WRGB = WEAPONS.map(W => { const c = new T.Color(W.color); return [c.r, c.g, c.b]; });
+const TRACER = { pistol: [0.8, 0.8], rifle: [1.0, 1.0], gatling: [0.85, 0.75] };   // [length, width] multipliers
+let bFrame = 0, lastFlames = 0;
+// One pass over the live bullets: each is drawn by its weapon's fx. Counts are capped by MAXB; sprite output by the sprite systems.
+function drawBullets(dt) {
+  bFrame++;
+  let nt = 0, np_ = 0, nr = 0, nf = 0;
+  const tc = bMesh.instanceColor.array, pc = pelMesh.instanceColor.array, rc = rkMesh.instanceColor.array;
+  fireSys.reset(); smokeSys.reset();
+  const flameA = 0.6 * clamp(110 / (lastFlames + 1), 0.12, 1);
+  const lvK = 1 + 0.2 * (G.weaponLv - 1);
+  for (let i = 0; i < nb; i++) {
+    const dx = bdx[i], dz = bdz[i], ang = Math.atan2(dx, dz);
+    if (bk[i]) {      // mech shell
+      dummy.position.set(bx[i], 2.0, bz[i]); dummy.rotation.set(0, ang, 0); dummy.scale.setScalar(2.6); dummy.updateMatrix();
+      bMesh.setMatrixAt(nt, dummy.matrix); tc[nt * 3] = 1; tc[nt * 3 + 1] = 0.5; tc[nt * 3 + 2] = 0.15; nt++;
+      continue;
+    }
+    const w = bw[i] < WEAPONS.length ? bw[i] : 0, W = WEAPONS[w], rgb = WRGB[w], k = w === G.weapon ? lvK : 1;
+    switch (W.fx) {
+      case 'pellet': {
+        const f = clamp(bl[i] / W.range, 0, 1);        // fades fast: bright near the muzzle, gone by the end of range
+        dummy.position.set(bx[i], 1.25, bz[i]); dummy.rotation.set(0, ang, 0); dummy.scale.setScalar(k * (0.6 + 0.5 * f)); dummy.updateMatrix();
+        pelMesh.setMatrixAt(np_, dummy.matrix);
+        const g = Math.pow(f, 0.7); pc[np_ * 3] = rgb[0] * g; pc[np_ * 3 + 1] = rgb[1] * g; pc[np_ * 3 + 2] = rgb[2] * g; np_++;
+        if (!fireSys.full()) fireSys.push(bx[i], 1.25, bz[i], rgb[0], rgb[1] * 0.8, rgb[2] * 0.5, 0.55 * g, 0.85 * k);
+        break;
+      }
+      case 'rail': {
+        dummy.position.set(bx[i], 1.25, bz[i]); dummy.rotation.set(0, ang, 0); dummy.scale.set(1.5 * k, 1.5 * k, 3); dummy.updateMatrix();
+        bMesh.setMatrixAt(nt, dummy.matrix); tc[nt * 3] = 0.9; tc[nt * 3 + 1] = 1; tc[nt * 3 + 2] = 1; nt++;
+        break;
+      }
+      case 'flame': {
+        nf++;
+        const age = clamp(1 - bl[i] / W.range, 0, 1);
+        const wob = Math.sin(i * 12.9898 + G.time * 18) * 0.16 * age;
+        const x = bx[i] + dz * wob, z = bz[i] - dx * wob, y = 1.05 + age * 0.45;
+        const hot = Math.max(0, 1 - age * 2.6), mid = clamp(1.6 - age * 1.7, 0, 1);
+        if (!fireSys.full()) fireSys.push(x, y, z, 1, 0.32 + 0.55 * hot + 0.1 * mid, 0.05 + 0.3 * hot, flameA * (age > 0.7 ? (1 - age) / 0.3 : 1), (0.32 + age * 1.15) * k);
+        if (age > 0.4 && !smokeSys.full()) smokeSys.push(x, y + 0.25 + (age - 0.4) * 0.8, z, 0.2, 0.2, 0.22, 0.17 * Math.sin(Math.PI * (age - 0.4) / 0.6), 0.6 + age * 1.0);
+        break;
+      }
+      case 'rocket': {
+        dummy.position.set(bx[i], 1.25, bz[i]); dummy.rotation.set(0, ang, 0); dummy.scale.setScalar(1 + 0.6 * (k - 1)); dummy.updateMatrix();
+        rkMesh.setMatrixAt(nr, dummy.matrix); rc[nr * 3] = rc[nr * 3 + 1] = rc[nr * 3 + 2] = 1; nr++;
+        if (!fireSys.full()) fireSys.push(bx[i] - dx * 0.5, 1.25, bz[i] - dz * 0.5, 1, 0.62, 0.2, 0.95, 0.85);
+        if (dt > 0 && ((bFrame + i) & 1) === 0) smokeSys.add(bx[i] - dx * 0.6, 1.25, bz[i] - dz * 0.6, rr(-0.25, 0.25), rr(0.2, 0.6), rr(-0.25, 0.25), 0.6, 0.5, 1.7, [0.8, 0.78, 0.74], [0.3, 0.3, 0.32], 0.5, 1.2);
+        break;
+      }
+      default: {
+        const t = TRACER[W.id] || TRACER.rifle;
+        dummy.position.set(bx[i], 1.25, bz[i]); dummy.rotation.set(0, ang, 0); dummy.scale.set(t[1] * k, t[1] * k, t[0]); dummy.updateMatrix();
+        bMesh.setMatrixAt(nt, dummy.matrix); tc[nt * 3] = rgb[0]; tc[nt * 3 + 1] = rgb[1]; tc[nt * 3 + 2] = rgb[2]; nt++;
+      }
+    }
+  }
+  dummy.scale.setScalar(1);
+  lastFlames = nf;
+  const fin = (m, n) => {
+    m.count = n; m.visible = n > 0;
+    m.instanceMatrix.needsUpdate = true; m.instanceMatrix.updateRange.offset = 0; m.instanceMatrix.updateRange.count = n * 16;
+    m.instanceColor.needsUpdate = true; m.instanceColor.updateRange.offset = 0; m.instanceColor.updateRange.count = n * 3;
+  };
+  fin(bMesh, nt); fin(pelMesh, np_); fin(rkMesh, nr);
+  drawBeams(dt);
+  fireSys.flush(dt); smokeSys.flush(dt);
+  SPR_SCALE.value = renderer.domElement.height * 0.5;
 }
 function drawParticles(dt) {
   for (let i = 0; i < np; i++) {
@@ -1669,15 +1980,27 @@ function drawParticles(dt) {
 }
 
 
-const hud = { lvl: $('#hudLevel'), prog: $('#hudProg'), kills: $('#hudKills'), squad: $('#hudSquad'), weapon: $('#hudWeapon') };
+const hud = { pips: $('#hudPips'), lvl: $('#hudLevel'), prog: $('#hudProg'), kills: $('#hudKills'), squad: $('#hudSquad'), weapon: $('#hudWeapon') };
 const hudCache = {};
 function setText(key, el, v) { if (hudCache[key] !== v) { hudCache[key] = v; el.textContent = v; } }
-let sqPrev = null, progQ = -1;
+let sqPrev = null, progQ = -1, wSig = null;
+const cssHex = c => '#' + c.toString(16).padStart(6, '0');
 function updateHud() {
   setText('lvl', hud.lvl, String(G.level));
   setText('kills', hud.kills, String(G.kills));
   setText('squad', hud.squad, '×' + G.squad);
   setText('weapon', hud.weapon, WEAPONS[G.weapon].name + (G.mech ? ' + 機甲' : ''));
+  const wsig = G.weapon * 10 + G.weaponLv;
+  if (wsig !== wSig) {
+    const first = wSig === null; wSig = wsig;
+    const W = WEAPONS[G.weapon];
+    hud.weapon.parentNode.style.setProperty('--wc', cssHex(W.color));
+    hud.weapon.style.color = cssHex(W.color);
+    let h = '';
+    for (let i = 1; i <= W.maxLv; i++) h += '<i' + (i <= G.weaponLv ? ' class="on"' : '') + '></i>';
+    hud.pips.innerHTML = h;
+    if (!first && !reduced && hud.weapon.parentNode.animate) hud.weapon.parentNode.animate([{ transform: 'scale(1.3)' }, { transform: 'scale(1)' }], { duration: 320, easing: 'cubic-bezier(.2,1.3,.4,1)' });
+  }
   if (G.squad !== sqPrev) { if (sqPrev !== null) bumpSquad(G.squad > sqPrev); sqPrev = G.squad; }
   const pq = Math.round(clamp(-G.z / G.L, 0, 1) * 500);   // transform only: no layout per frame
   if (pq !== progQ) { progQ = pq; hud.prog.style.transform = 'scaleX(' + pq / 500 + ')'; }
@@ -1874,7 +2197,6 @@ function markTip(id) {
   try { localStorage.setItem(TIP_KEY, JSON.stringify(tipSeen)); } catch (e) {}
 }
 const TIPS = [
-  { id: 'weapon', text: '走過去撿槍', type: 'weapon', y: 2.5, ax: e => e.x, az: e => e.z, done: e => e.taken },
   { id: 'gate', text: '射它！', type: 'gate', y: 3.4, ax: e => e.x, az: e => e.z, done: e => e.used || e.fxHit },
   { id: 'hero', text: '射電池召喚機甲', type: 'hero', y: 0.45, below: true, ax: e => e.grp.position.x - e.side * 0.2, az: e => e.bz, done: e => e.done || e.missed || e.charge > 0 },
 ];
@@ -1915,8 +2237,119 @@ function updateTips() {
   }
 }
 
+// ---- pickup stat cards: DOM projected from the 3D pickup (crisp at any distance), kept apart so a left/right pair never overlaps
+const cardLayer = $('#cards');
+const CARD_W = 132, CARD_H = 102, CARD_GAP = 8, CARD_RANGE = 16;
+let wEvents = null, wList = [];
+function buildCard(e) {
+  const W = WEAPONS[e.w];
+  const el = document.createElement('div');
+  el.className = 'wcard';
+  el.style.setProperty('--wc', cssHex(W.color));
+  const rows = [['威力', W.ui.power], ['射速', W.ui.rate], ['射程', W.ui.range]].map(([k, v]) =>
+    '<div class="row2"><span>' + k + '</span><span class="seg">' + [1, 2, 3, 4, 5].map(i => '<i' + (i <= v ? ' class="on"' : '') + '></i>').join('') + '</span></div>').join('');
+  el.innerHTML = '<div class="n"></div><div class="d"></div><div class="bars">' + rows + '</div><div class="up"></div>';
+  el.children[0].textContent = W.name;
+  el.children[1].textContent = W.desc;
+  cardLayer.appendChild(el);
+  return el;
+}
+function updateCards() {
+  if (wEvents !== G.events) { wEvents = G.events; wList = G.events.filter(e => e.type === 'weapon'); cardLayer.textContent = ''; }
+  const vis = [], playing = G.phase === 'run' && !G.paused;
+  if (playing) for (const e of wList) { const d = G.z - e.z; if (!e.taken && d > -0.5 && d < CARD_RANGE) vis.push(e); }
+  for (const e of wList) if (e.fxOn && vis.indexOf(e) < 0) { e.fxOn = false; e.fxEl.style.opacity = '0'; }
+  if (!vis.length) return;
+  const sig = G.weapon + ':' + G.weaponLv;
+  for (const e of vis) {
+    if (!e.fxEl) e.fxEl = buildCard(e);
+    pv.set(e.x, 2.0, e.z).project(camera);
+    e.fxSx = (pv.x * 0.5 + 0.5) * vw; e.fxSy = (-pv.y * 0.5 + 0.5) * vh; e.fxOn = true;
+    if (e.fxSig !== sig) {      // the gun in hand changed (or fonts loaded): same gun -> upgrade call-out instead of bars
+      e.fxSig = sig;
+      const W = WEAPONS[e.w], same = e.w === G.weapon;
+      e.fxEl.classList.toggle('same', same);
+      e.fxEl.children[3].textContent = same ? (G.weaponLv >= W.maxLv ? '滿級' : '升級 Lv' + (G.weaponLv + 1)) : '';
+    }
+  }
+  // spread horizontally: left-to-right pass, then clamp to the screen from the right
+  vis.sort((a, b) => a.fxSx - b.fxSx);
+  const lo = CARD_W / 2 + 8, hi = vw - CARD_W / 2 - 8, near = (a, b) => Math.abs(a.fxSy - b.fxSy) < CARD_H + 6;
+  for (let i = 0; i < vis.length; i++) {
+    let x = Math.max(vis[i].fxSx, lo);
+    for (let j = 0; j < i; j++) if (near(vis[j], vis[i])) x = Math.max(x, vis[j].fxCx + CARD_W + CARD_GAP);
+    vis[i].fxCx = x;
+  }
+  for (let i = vis.length - 1; i >= 0; i--) {
+    let x = Math.min(vis[i].fxCx, hi);
+    for (let j = i + 1; j < vis.length; j++) if (near(vis[i], vis[j])) x = Math.min(x, vis[j].fxCx - CARD_W - CARD_GAP);
+    vis[i].fxCx = x;
+  }
+  for (const e of vis) {
+    const d = G.z - e.z, top = Math.max(e.fxSy - CARD_H - 14, 58);
+    const ax = Math.round(clamp(e.fxSx - e.fxCx, -CARD_W / 2 + 16, CARD_W / 2 - 16));
+    if (e.fxAx !== ax) { e.fxAx = ax; e.fxEl.style.setProperty('--ax', ax + 'px'); }
+    e.fxEl.style.transform = 'translate(' + (e.fxCx - CARD_W / 2).toFixed(1) + 'px, ' + top.toFixed(1) + 'px)';
+    e.fxEl.style.opacity = clamp((CARD_RANGE - d) / 2, 0, 1).toFixed(2);
+  }
+}
+// ---- pickup banner
+const bannerEl = $('#banner'), bannerTxt = bannerEl.firstElementChild;
+function showBanner(text, hex) {
+  bannerTxt.textContent = text;
+  bannerEl.style.setProperty('--wc', hex);
+  if (!bannerEl.animate) return;
+  bannerEl.getAnimations().forEach(a => a.cancel());
+  bannerEl.animate(reduced
+    ? [{ opacity: 0 }, { opacity: 1, offset: 0.2 }, { opacity: 1, offset: 0.75 }, { opacity: 0 }]
+    : [{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'scale(1.14)', offset: 0.16 }, { opacity: 1, transform: 'scale(1)', offset: 0.7 }, { opacity: 0, transform: 'translateY(-14px)' }],
+    { duration: 1400, easing: 'ease-out' });
+}
+let lastBoomRing = 0;
 // ---- event wiring
-bus.on('shot', d => flashAt(d.x + 0.14, 1.28, d.z - 0.55, 0.075, 1, 0.85, 0.5));
+bus.on('shot', d => {
+  const w = d.w >= 0 && d.w < WEAPONS.length ? d.w : G.weapon, W = WEAPONS[w], c = WRGB[w];
+  const x = d.x + 0.14, z = d.z + MUZZLE[w], gl = 1 + 0.25 * ((d.lv || 1) - 1);
+  switch (W.fx) {
+    case 'pellet':
+      flashAt(x - 0.06, 1.28, z, 0.1, 1.2 * gl, 0.75 * gl, 0.4); flashAt(x + 0.06, 1.28, z - 0.1, 0.08, 1, 0.6, 0.3);
+      break;
+    case 'rail': {
+      const L = nb - 1, ok = L >= 0 && bw[L] === w && !bk[L];
+      addBeam(ok ? bx[L] : x, ok ? bz[L] : z, ok ? bdx[L] : 0, ok ? bdz[L] : -1, W.range * W.speed, [c[0] * 0.5 + 0.5, c[1] * 0.5 + 0.5, c[2] * 0.5 + 0.5]);
+      flashAt(x, 1.28, z, 0.16, 0.7 * gl, 1.2 * gl, 1.3 * gl); flashAt(x, 1.28, z - 0.3, 0.1, 1, 1, 1);
+      break;
+    }
+    case 'flame': break;            // the stream itself is the effect (drawBullets)
+    case 'rocket':
+      flashAt(x, 1.3, z, 0.14, 1.3 * gl, 0.8 * gl, 0.4); flashAt(x, 1.3, z - 0.2, 0.1, 1, 1, 0.8);
+      smokeSys.add(x, 1.0, d.z + 0.5, rr(-0.4, 0.4), 0.3, rr(0.6, 1.4), 0.7, 0.5, 1.8, [0.85, 0.82, 0.78], [0.35, 0.35, 0.37], 0.5, 1.5);
+      break;
+    default:
+      flashAt(x, 1.28, z, W.id === 'gatling' ? 0.06 : 0.075, 0.5 + c[0] * 0.5 * gl, 0.5 + c[1] * 0.4 * gl, 0.3 + c[2] * 0.2);
+  }
+});
+bus.on('explode', d => {
+  const r = d.r || 1.8, k = r / 1.8, nF = Math.ceil(7 * fxScale), nS = Math.ceil(5 * fxScale);
+  for (let i = 0; i < nF; i++) {
+    const a = rr(0, 6.283), sp = rr(1.2, 3.8) * k;
+    fireSys.add(d.x + Math.cos(a) * 0.25 * k, rr(0.6, 1.3), d.z + Math.sin(a) * 0.25 * k, Math.cos(a) * sp, rr(0.8, 2.6), Math.sin(a) * sp, rr(0.28, 0.5), 0.8 * k, 2.8 * k, [1, 0.92, 0.55], [0.9, 0.22, 0.05], 0.9, 2.2);
+  }
+  for (let i = 0; i < nS; i++) {
+    const a = rr(0, 6.283), sp = rr(0.4, 1.8) * k;
+    smokeSys.add(d.x + Math.cos(a) * 0.4 * k, rr(0.8, 1.4), d.z + Math.sin(a) * 0.4 * k, Math.cos(a) * sp, rr(0.6, 1.5), Math.sin(a) * sp, rr(0.9, 1.4), 1.0 * k, 3.4 * k, [0.55, 0.5, 0.46], [0.2, 0.2, 0.22], 0.5, 1.4);
+  }
+  burst(d.x, 0.9, d.z, 16, [1, 0.72, 0.3], 7 * k, 0.55);          // debris
+  flashAt(d.x, 1.1, d.z, 0.15, 1.3, 0.85, 0.4); flashAt(d.x, 1.6, d.z, 0.1, 1, 1, 0.8);
+  const t = nowMs();
+  if (t - lastBoomRing > 70) {
+    lastBoomRing = t;
+    shock(d.x, d.z, 0xffa040, r * 1.5, 0.45); shock(d.x, d.z, 0xffffff, r * 0.8, 0.22);
+    FX.shake = Math.max(FX.shake, 0.1);
+    vibrate(16);
+    SFX.explode();
+  }
+});
 bus.on('zombieDied', d => {
   splat(d.x, d.z, d.big);
   const n = d.big ? 26 : 6;
@@ -1941,9 +2374,15 @@ bus.on('gatePass', d => {
   if (!up) FX.shake = Math.max(FX.shake, 0.25);
 });
 bus.on('weaponPickup', d => {
-  shock(d.e.x, d.e.z, 0xffb020, 2.6, 0.5);
-  flashScreen('rgb(255,176,32)', 0.22, 300);
-  vibrate(20);
+  const w = d.w != null ? d.w : d.e.w != null ? d.e.w : d.e.tier, W = WEAPONS[w] || WEAPONS[G.weapon], c = WRGB[WEAPONS.indexOf(W)];
+  const lv = d.lv || G.weaponLv, up = !!d.upgrade || lv > 1;
+  showBanner(up ? W.name + ' Lv' + lv + (lv >= W.maxLv ? ' 滿級' : ' ↑') : W.name + '！', cssHex(W.color));
+  shock(d.e.x, d.e.z, W.color, up ? 3.4 : 2.6, 0.55);
+  if (up) shock(d.e.x, d.e.z, 0xffffff, 1.8, 0.35);
+  burst(d.e.x, 1.2, d.e.z, up ? 36 : 22, c, 4.2, 0.6);
+  flashScreen('rgb(' + Math.round(c[0] * 255) + ',' + Math.round(c[1] * 255) + ',' + Math.round(c[2] * 255) + ')', 0.2, 320);
+  vibrate(up ? [15, 25, 25] : 20);
+  if (up) SFX.levelUp();
 });
 bus.on('heroActivated', d => {
   const p = d.e.grp.position;
@@ -1980,7 +2419,7 @@ function fxReset() {
   fGeo.attributes.position.needsUpdate = true; fGeo.attributes.color.needsUpdate = true;
   splatN = 0; splatHead = 0; splatLive = 0; splatMesh.count = 0; splatAge.fill(99);
   for (const k of rings) { k.on = false; k.mesh.visible = false; }
-  FX.shake = 0; sqPrev = null; progQ = -1; ghostW = 1; ghostQ = -1;
+  FX.shake = 0; sqPrev = null; progQ = -1; wSig = null; fireSys.clear(); smokeSys.clear(); for (const b of beams) b.t = 99; ghostW = 1; ghostQ = -1;
   for (const t of TIPS) if (t.on) showTip(t, false);
 }
 function fxUpdate(dt) {
@@ -2019,7 +2458,7 @@ function render(dt) {
   fxUpdate(rdt);
   drawZombies(G.time);
   drawSoldiers();
-  drawBullets();
+  drawBullets(rdt);
   drawShadows();
   drawParticles(rdt);
   G.shake = Math.max(0, G.shake - rdt * 1.5);
@@ -2032,6 +2471,8 @@ function render(dt) {
   camera.updateMatrixWorld();   // so popups/hints project with this frame's camera, not last frame's
   updatePops(rdt);
   updateTips();
+  updateCards();
+  SFX.tick();
   renderer.render(scene, camera);
   perfTick();
 }
@@ -2098,6 +2539,8 @@ function win() {
 }
 
 // ---------------------------------------------------------------- UI wiring (pause, stage select, mute)
+$('#ruleGuns').textContent = String(WEAPONS.length);
+$('#ruleLv').textContent = String(Math.max.apply(null, WEAPONS.map(w => w.maxLv)));
 G.paused = false;
 const pauseOv = $('#pauseOv');
 function setPaused(p) {
