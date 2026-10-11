@@ -182,7 +182,8 @@ function botRun(cfg) {
   // value (in the same units as gate values) of walking over weapon pickup e
   function gunValue(e) {
     const w = e.w;
-    const crate = 1.2 * ((zb.TUNE.crateRecruits || 0) + ((zb.SAVE && zb.SAVE.upgrades.recruit) || 0));   // every crate brings recruits
+    const room = Math.max(0, zb.TUNE.maxSquad - G.squad);
+    const crate = 1.2 * Math.min(room, (zb.TUNE.crateRecruits || 0) + ((zb.SAVE && zb.SAVE.upgrades.recruit) || 0)) * (G.squad > 30 ? 0.7 : 1);   // every crate brings recruits (worth less for a big squad)
     // forced to keep one gun: by default never walk over another gun's crate; with --hold-take the squad still collects the recruits (the harness hands the held gun back)
     if (cfg.hold !== undefined && cfg.hold !== null && w !== cfg.hold) return cfg.holdTake ? crate : -60;
     const cur = gunScore(G.weapon, G.weaponLv);
@@ -191,12 +192,28 @@ function botRun(cfg) {
       return crate + Math.max(0.5, Math.min(14, (gunScore(w, G.weaponLv + 1) / cur - 1) * 14));
     }
     // swapping throws away the levels you have: only worth it for a clearly better gun (a human does not trade for a 10 % edge)
-    return Math.min(14, crate + Math.max(-3.5, (gunScore(w, 1) / cur - 1.25) * 14));
+    return Math.min(14, crate + Math.max(-9, (gunScore(w, 1) / cur - 1.25) * 14));
   }
 
   function decide() {
     const h = half();
-    const lim = Math.max(0, ROAD - 0.45 - h);
+    const pb = zb.pathBounds ? zb.pathBounds() : { lo: -ROAD + 0.45, hi: ROAD - 0.45 };
+    const xLo = Math.min(pb.lo + h, (pb.lo + pb.hi) / 2), xHi = Math.max(pb.hi - h, (pb.lo + pb.hi) / 2);
+    // a fork ahead that the squad has not entered yet: how good is each side (gates and barrels up, hordes down)?
+    let fork = null;
+    if (zb.G.route) for (const sg of zb.G.route) {
+      if (sg.type === 'fork' && sg.chosen === undefined && G.z <= sg.z0 + 40 && G.z > sg.z1) {
+        const hp0 = Math.max(1, hitsPerSec()), sc = { '-1': 0, '1': 0 };
+        for (const e of G.events) {
+          if (e.z > sg.z0 || e.z <= sg.z1) continue;
+          if (e.type === 'gate' && e.pair === undefined) sc[e.side] += e.val;
+          else if (e.type === 'barrel') sc[e.x >= sg.split ? 1 : -1] += 1.5;
+          else if (e.type === 'horde') sc[e.spec.cx >= sg.split ? 1 : -1] -= 0.5 * e.spec.count * e.spec.hp / hp0;
+        }
+        fork = { seg: sg, left: sc['-1'], right: sc['1'], wt: Math.min(1, Math.max(0, (sg.z0 + 40 - G.z) / 12)) };
+        break;
+      }
+    }
     // zombie lane danger histogram
     dang.fill(0);
     if (persona.dodge > 0) {
@@ -227,8 +244,9 @@ function botRun(cfg) {
     const gv = new Map();
     for (const e of others) if (e.type === 'weapon') gv.set(e, gunValue(e));
     let bestX = tx, bestC = Infinity;
-    for (let x = -lim; x <= lim + 1e-6; x += GRID) {
+    for (let x = xLo; x <= xHi + 1e-6; x += GRID) {
       let c = 0;
+      if (fork) c -= fork.wt * (x >= fork.seg.split ? fork.right : fork.left) * opinion(fork.seg);
       // gates: the side the squad centre is on decides
       for (const e of gates) {
         const dz = G.z - e.z;
@@ -258,9 +276,9 @@ function botRun(cfg) {
         let skip = mode !== 'auto' && opening.has(e);
         if (e.type === 'weapon') {
           if (skip && (mode === 'gate' || mode === 'battery')) continue;
-          const rad = e.mate ? 0.9 + h * 0.5 : 1.4 + h;
           const val = gv.get(e);
-          if (Math.abs(x - e.x) < rad - 0.15) c -= wt * val * (val > 0 ? opinion(e) : 1);
+          // lanes: the gun is taken when the squad CENTRE is in its lane; the lane of no gun is the blank lane (keep what you have)
+          if (zb.laneOf ? zb.laneOf(x) === zb.laneOf(e.x) : Math.abs(x - e.x) < 1.2) c -= wt * val * (val > 0 ? opinion(e) : 1);
         } else if (e.type === 'barrel') {
           // line up behind a barrel that sits in a horde so the stray bullets set it off at the right moment
           if (dz > 6 && dz < 28 && Math.abs(x - e.x) < 0.9) c -= 2.0;
@@ -440,7 +458,7 @@ async function page_campaign() {
   await browser.close();
   process.exit(errors.length ? 1 : 0);
 }
-const ENTRY_AUTO = [1, 1, 48, 55, 50, 45, 45];   // typical survivors carried into stage n (index = n) for single-stage runs
+const ENTRY_AUTO = [1, 1, 35, 57, 56, 54, 54];   // typical survivors carried into stage n (index = n) for single-stage runs
 const GUNS = ['pistol', 'rifle', 'shotgun', 'gatling', 'sniper', 'flamer', 'rocket'];
 const gunIndex = v => { const i = GUNS.indexOf(v); return i >= 0 ? i : Number(v); };
 // one row per strategy: { label, opening, hold }

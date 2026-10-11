@@ -243,7 +243,7 @@ const results = await page.evaluate(() => {
     const pairA = G.events.find(e => e.type === 'weapon' && e.mate);
     got = pick(pairA, 1, 1);
     check('pair: taking one gun removes its mate', pairA.taken && pairA.mate.taken && !pairA.mate.grp.visible && G.weapon === pairA.w, `${G.weapon} ${pairA.w}`);
-    check('pair: the two guns are side by side (<= 2 in a row) and different', pairA.mate.mate === pairA && pairA.w !== pairA.mate.w && Math.abs(pairA.x - pairA.mate.x) >= 3 && G.events.filter(e => e.type === 'weapon' && e.z === pairA.z).length === 2);
+    check('pair: the two guns are side by side (<= 2 in a row) and different', pairA.mate.mate === pairA && pairA.w !== pairA.mate.w && Math.abs(pairA.x - pairA.mate.x) >= 2.5 && G.events.filter(e => e.type === 'weapon' && e.z === pairA.z).length === 2);
     // coverage: every gun is offered somewhere in stages 1-3
     const seen = new Set();
     for (const st of [1, 2, 3]) { zb.prepare(st); for (const e of G.events) if (e.type === 'weapon') seen.add(e.w); }
@@ -583,7 +583,7 @@ const results = await page.evaluate(() => {
   {
     zb.resetSave();
     // find, over the seeded stages, a gate of each special kind
-    const find = kind => { for (let sNo = 1; sNo <= 6; sNo++) { zb.prepare(sNo); const g = G.events.find(e => e.type === 'gate' && e.kind === kind); if (g) return sNo; } return 0; };
+    const find = kind => { for (let sNo = 1; sNo <= 14; sNo++) { zb.prepare(sNo); const g = G.events.find(e => e.type === "gate" && e.kind === kind); if (g) return sNo; } return 0; };
     const sR = find('rate'), sL = find('level'), sM = find('mystery');
     check('gates: the seeded stages contain rate, level and mystery gates', sR > 0 && sL > 0 && sM > 0, `${sR} ${sL} ${sM}`);
     const passIt = (stage, kind, setup) => {
@@ -718,6 +718,220 @@ const results = await page.evaluate(() => {
     G.shield = 1e9; zb.step(1 / 60); G.squad = 55; zb.syncSoldiers(); zb.step(1 / 60); zb.step(1 / 60);
     k5();
     check('squad milestones: only those above the entry squad count in a run (entry 30 -> just 50)', sm2.map(m => m.n).join() === '50', sm2.map(m => m.n).join());
+    zb.resetSave();
+  }
+
+  // ================================================================ round 4: lanes, routes, road limits, upgrade clamping
+  {
+    zb.resetSave();
+    const lanesX = zb.LANES;
+    const rowsOf = stage => {                           // gun rows of a stage: unpicked weapon events grouped by z
+      zb.prepare(stage);
+      const rows = [];
+      for (const e of G.events.filter(q => q.type === 'weapon').sort((a, b) => b.z - a.z)) {
+        const r = rows[rows.length - 1];
+        if (r && Math.abs(r[0].z - e.z) <= 2.5) r.push(e); else rows.push([e]);
+      }
+      return rows;
+    };
+    let bad = '', empties = new Set(), nrows = 0;
+    for (let sNo = 1; sNo <= 14; sNo++) {
+      const rows = rowsOf(sNo);
+      rows.forEach((r, i) => {
+        nrows++;
+        const used = new Set(r.map(e => lanesX.indexOf(e.x)));
+        if (r.length > 2) bad += ` st${sNo} row${i} has ${r.length} guns;`;
+        if ([...used].some(l => l < 0)) bad += ` st${sNo} row${i} off-lane x;`;
+        if (used.size !== r.length) bad += ` st${sNo} row${i} two guns in one lane;`;
+        if (r.some(e => e.z !== r[0].z)) bad += ` st${sNo} row${i} not one z;`;
+        if (i > 0 && rows[i - 1][0].z - r[0].z <= 2.5) bad += ` st${sNo} rows too close;`;
+        if (i > 0 || sNo >= 1) for (let l = 0; l < 3; l++) if (!used.has(l) && i > 0) empties.add(l);
+      });
+    }
+    check('lanes: every gun row (stages 1-14) sits on lane centres, uses at most 2 of the 3 lanes, one z per row, rows > 2.5 apart', bad === '' && nrows > 40, bad || nrows);
+    check('lanes: which lane is blank varies across rows (all three lanes are blank somewhere)', empties.size === 3, [...empties].join());
+    {
+      let ok = true;
+      for (let sNo = 1; sNo <= 14; sNo++) {
+        zb.prepare(sNo);
+        const rifle = G.events.find(e => e.type === 'weapon');
+        const gate = G.events.find(e => e.type === 'gate' && e.pair === undefined), hero = G.events.find(e => e.type === 'hero');
+        if (!(rifle.w === 1 && rifle.x === lanesX[1] && zb.laneOf(gate.x) !== 1 && zb.laneOf(hero.x) !== 1)) ok = false;
+      }
+      check('lanes: the opening rifle stays in the middle lane, the opening gate and battery in the side lanes', ok);
+    }
+    // behaviour: a 50-soldier squad in the blank lane keeps its gun, in a gun lane it takes it
+    {
+      const tryLane = (x, withWeapon) => {
+        zb.prepare(3); zb.start();
+        for (const e of G.events) { if (e.type === 'horde') e.spawned = true; else if (e.type === 'gate') e.used = true; }
+        G.squad = 50; zb.syncSoldiers(); G.shield = 1e9; G.weapon = withWeapon; G.weaponLv = 1;
+        const row = G.events.filter(e => e.type === 'weapon' && e.z < -60).sort((a, b) => b.z - a.z);
+        const first = row[0], rowGuns = row.filter(e => e.z === first.z);
+        const target = x(rowGuns);
+        G.z = first.z + 0.3; G.x = G.tx = target;
+        for (const s of G.soldiers) s.x = target;
+        zb.step(1 / 60);
+        return { rowGuns, taken: rowGuns.filter(e => e.taken), gun: G.weapon, squad: G.squad };
+      };
+      const blank = rg => lanesX[[0, 1, 2].find(l => !rg.some(e => e.x === lanesX[l]))];
+      const a = tryLane(blank, 0);
+      check('blank lane: a 50-soldier squad centred in the free lane picks nothing up and keeps its gun and squad size', a.taken.length === 0 && a.gun === 0 && a.squad === 50, JSON.stringify([a.taken.length, a.gun, a.squad]));
+      const b = tryLane(rg => rg[0].x, 0);
+      check('gun lane: the same squad centred in a gun lane takes that gun (the pair mate disappears)', b.taken.length === b.rowGuns.length && b.gun === b.rowGuns[0].w && b.squad === Math.min(60, 50 + zb.TUNE.crateRecruits), JSON.stringify([b.taken.length, b.gun, b.squad]));
+      const c = tryLane(rg => rg[rg.length - 1].x, 0);
+      check('gun lane: the other gun of a pair is taken from its own lane', c.taken.length === c.rowGuns.length && c.gun === c.rowGuns[c.rowGuns.length - 1].w, `${c.gun}`);
+      // formation overlap no longer counts: squad centre in the middle lane next to a side-lane gun
+      zb.prepare(1); zb.start();
+      for (const e of G.events) { if (e.type === 'horde') e.spawned = true; else if (e.type === 'gate') e.used = true; }
+      const row1 = G.events.filter(e => e.type === 'weapon' && e.z < -60).sort((a, b) => b.z - a.z);
+      const side = row1.find(e => Math.abs(e.x) > 2);
+      G.squad = 50; zb.syncSoldiers(); G.shield = 1e9; G.weapon = 0;
+      G.z = side.z + 0.3; G.x = G.tx = Math.sign(side.x) * 1.0;
+      for (const s of G.soldiers) s.x = G.x;
+      zb.step(1 / 60);
+      check('lanes: a wide squad whose centre is in the middle lane does not take a side-lane gun it only overlaps', !side.taken && G.weapon === 0, `${side.taken} ${G.weapon}`);
+    }
+  }
+
+  // ---------------------------------------------------------------- 16. route plans
+  {
+    zb.resetSave();
+    const sigOf = n => { zb.prepare(n); return G.route.map(s => s.type).join(','); };
+    const sigs = []; for (let n = 1; n <= 12; n++) sigs.push(sigOf(n));
+    const has = (n, ...types) => { zb.prepare(n); return types.every(t => G.route.some(s => s.type === t)); };
+    check('routes: stage 1 is a plain straight, 2 has forks, 3 narrows, 4 a gauntlet and an ambush, 5 a bit of everything',
+      sigs[0] === 'straight,arena' && has(2, 'fork') && !has(2, 'narrow') && has(3, 'narrow') && !has(3, 'fork') && has(4, 'gauntlet', 'ambush') && has(5, 'fork', 'narrow', 'gauntlet', 'ambush'), sigs.slice(0, 5).join(' | '));
+    check('routes: no two consecutive stages (1-12) share the same segment sequence', sigs.every((q, i) => i === 0 || q !== sigs[i - 1]), sigs.join(' | '));
+    let inv = '';
+    for (let n = 1; n <= 12; n++) {
+      zb.prepare(n);
+      const r = G.route, list = ['dawn', 'haze', 'sunset', 'night', 'storm'];
+      if (r[0].z0 !== 0 || r[r.length - 1].type !== 'arena' || r[r.length - 1].z0 !== -G.L) inv += ` st${n} ends;`;
+      for (let i = 0; i < r.length; i++) {
+        if (!(r[i].z0 > r[i].z1)) inv += ` st${n} seg${i} z0<=z1;`;
+        if (i > 0 && r[i].z0 !== r[i - 1].z1) inv += ` st${n} gap before seg${i};`;
+        if (r[i].type === 'narrow' && !(r[i].half > 0)) inv += ` st${n} no half;`;
+        if (r[i].type === 'fork' && typeof r[i].split !== 'number') inv += ` st${n} no split;`;
+      }
+      if (!list.includes(G.theme) || !G.routeName) inv += ` st${n} theme/name;`;
+    }
+    check('routes: segments are sorted, contiguous, start at 0 and end with the arena at -G.L; narrow has half, fork has split; theme and name are set', inv === '', inv);
+    const names = new Set(), themes = new Set();
+    for (let n = 1; n <= 5; n++) { zb.prepare(n); names.add(G.routeName); themes.add(G.theme); }
+    check('routes: stages 1-5 each have their own name and theme', names.size === 5 && themes.size >= 4, [...names].join('/') + ' ' + [...themes].join('/'));
+    zb.prepare(4); const rA = JSON.stringify(G.route), arrA = G.route, evA = JSON.stringify(G.events.map(e => [e.type, +e.z.toFixed(3), +(e.x || 0).toFixed(3), e.spec ? [e.spec.kind, e.spec.count, e.spec.cx] : 0]));
+    zb.start(); for (let i = 0; i < 20; i++) zb.step(1 / 60);
+    zb.prepare(4);
+    check('routes: same stage = same route and events on retry, and the route is a fresh array', JSON.stringify(G.route.map(s => { const c = { ...s }; delete c.chosen; return c; })) === JSON.stringify(JSON.parse(rA).map(s => { delete s.chosen; return s; })) && G.route !== arrA && JSON.stringify(G.events.map(e => [e.type, +e.z.toFixed(3), +(e.x || 0).toFixed(3), e.spec ? [e.spec.kind, e.spec.count, e.spec.cx] : 0])) === evA);
+    check('routes: a stage beyond the handcrafted ones is seeded procedural (6+ identical on rebuild)', (() => { const a = sigOf(8), t = G.theme, nm = G.routeName; const b = sigOf(8); return a === b && t === G.theme && nm === G.routeName; })());
+    // contents fit the segment
+    {
+      zb.prepare(2);
+      const f = G.route.find(s => s.type === 'fork');
+      const inF = G.events.filter(e => e.z <= f.z0 && e.z > f.z1);
+      const sideOf = e => (e.type === 'horde' ? e.spec.cx : e.x) >= f.split ? 1 : -1;
+      const left = inF.filter(e => (e.type === 'horde' || e.type === 'gate' || e.type === 'barrel') && sideOf(e) < 0), right = inF.filter(e => (e.type === 'horde' || e.type === 'gate' || e.type === 'barrel') && sideOf(e) > 0);
+      const sig = a => a.map(e => e.type + (e.spec ? e.spec.kind : '')).sort().join();
+      check('fork: both sides have contents and they differ; no gun rows inside a fork', left.length && right.length && sig(left) !== sig(right) && !inF.some(e => e.type === 'weapon'), sig(left) + ' | ' + sig(right));
+      zb.prepare(4);
+      const amb = G.events.filter(e => e.type === 'horde' && e.ahead);
+      const pairs = amb.every(e => amb.some(o => o !== e && o.z === e.z && Math.sign(o.spec.cx) === -Math.sign(e.spec.cx)));
+      check('ambush: hordes come in left/right pairs at the same z and are released late', amb.length >= 2 && pairs && amb.every(e => e.ahead < zb.TUNE.spawnAhead));
+      zb.prepare(3);
+      const nrw = G.route.filter(s => s.type === 'narrow');
+      const hs = G.events.filter(e => e.type === 'horde' && nrw.some(s => e.z <= s.z0 && e.z > s.z1));
+      check('narrow: hordes in a narrow come head-on and fit the road', hs.length >= 3 && hs.every(e => { const s = nrw.find(q => e.z <= q.z0 && e.z > q.z1); return e.spec.cx === 0 && e.spec.w <= 2 * s.half; }));
+    }
+  }
+
+  // ---------------------------------------------------------------- 17. road limits: narrow, fork median, routeSegment
+  {
+    zb.resetSave();
+    const lab4 = stage => {                              // running phase, nothing spawns or triggers, the squad stands where we put it
+      zb.prepare(stage); zb.start();
+      for (const e of G.events) { if (e.type === 'horde') e.spawned = true; else if (e.type === 'gate') e.used = true; else if (e.type === 'weapon') e.taken = true; else if (e.type === 'hero') e.missed = true; }
+      G.squad = 30; zb.syncSoldiers(); G.shield = 1e9;
+      for (const s of G.soldiers) s.cd = 1e9;
+    };
+    const mk4 = (x, z, hp) => { zb.spawnHorde({ kind: 'lab', cx: x, w: 0, d: 0, count: 1, hp }, z); const q = Z[Z.length - 1]; q.x = x; q.sp = 0; q.hp = hp; return q; };
+    // routeSegment: walk the whole of stage 2 and collect the events
+    {
+      lab4(2);
+      const segs = []; const off = listen('routeSegment', segs);
+      const keepRun = zb.TUNE.run; zb.TUNE.run = 60;
+      for (let i = 0; i < 6000 && G.phase === 'run'; i++) { G.shield = 1e9; zb.step(1 / 60); }
+      zb.TUNE.run = keepRun; off();
+      const want = zb.G.route.map(s => s.type);
+      check('routeSegment: fires once per segment in order as the squad enters it (payload seg, index)', segs.length >= want.length - 1 && segs.every((q, i) => q.seg === G.route[i] && q.index === i) && segs[0].seg.type === 'straight', segs.map(q => q.seg.type).join() + ' vs ' + want.join());
+    }
+    // narrow
+    {
+      lab4(3);
+      const nr = G.route.find(s => s.type === 'narrow');
+      G.z = nr.z0 - 5;
+      zb.step(1 / 60);
+      G.tx = 3.5; for (let i = 0; i < 90; i++) { G.shield = 1e9; zb.step(1 / 60); }
+      const maxX = Math.max(...G.soldiers.map(s => Math.abs(s.x))), pb = zb.pathBounds();
+      check('narrow: the squad centre is clamped so the whole formation stays inside the road, the formation uses fewer columns', Math.abs(G.x) + zb.formationHalf() <= nr.half - 0.3 + 0.01 && maxX <= nr.half + 0.05 && zb.formationHalf() < 1.24 + 1e-9 && pb.cols <= Math.floor((2 * nr.half - 0.6) / 0.62) + 1, `x ${G.x.toFixed(2)} half ${zb.formationHalf().toFixed(2)} maxX ${maxX.toFixed(2)} cols ${pb.cols}`);
+      const z1 = mk4(3.0, G.z - 4, 100), z2 = mk4(-3.0, G.z - 4, 100);
+      z1.sp = z2.sp = 0.5;
+      for (let i = 0; i < 30; i++) { G.shield = 1e9; zb.step(1 / 60); }
+      check('narrow: zombies are clamped to the road too', Math.abs(z1.x) <= nr.half - 0.3 + 1e-6 && Math.abs(z2.x) <= nr.half - 0.3 + 1e-6, `${z1.x} ${z2.x}`);
+      G.z = nr.z1 + 3; G.tx = 3.5; for (let i = 0; i < 90; i++) { G.shield = 1e9; zb.step(1 / 60); if (G.z < nr.z1) break; }
+      G.z = nr.z1 - 3; G.tx = 3.5; for (let i = 0; i < 60; i++) { G.shield = 1e9; zb.step(1 / 60); }
+      check('narrow: after the segment the full deck is back', G.x > nr.half, `x ${G.x.toFixed(2)}`);
+    }
+    // fork median
+    {
+      lab4(2);
+      const f = G.route.find(s => s.type === 'fork');
+      G.z = f.z0 + 3; G.x = G.tx = 2.0; for (const s of G.soldiers) s.x = 2.0;
+      for (let i = 0; i < 4; i++) zb.step(1 / 60);
+      for (let i = 0; i < 60 && G.z > f.z0 - 1; i++) { G.shield = 1e9; zb.step(1 / 60); }
+      check('fork: entering the fork on the right locks the right side (seg.chosen = 1)', f.chosen === 1, `${f.chosen} z ${G.z.toFixed(1)} z0 ${f.z0}`);
+      G.tx = -3.5; for (let i = 0; i < 90; i++) { G.shield = 1e9; zb.step(1 / 60); }
+      const minSoldier = Math.min(...G.soldiers.map(s => s.x));
+      check('fork: the squad cannot cross the median to the other side, formation included', G.x >= f.split + 0.45 && minSoldier >= f.split + 0.2 && G.z > f.z1, `x ${G.x.toFixed(2)} min ${minSoldier.toFixed(2)}`);
+      const zl = mk4(-1.0, G.z - 5, 100), zr = mk4(1.0, G.z - 5, 100);
+      zl.sp = zr.sp = 0.3;
+      for (let i = 0; i < 60; i++) { G.shield = 1e9; zb.step(1 / 60); }
+      check('fork: zombies stay on their own side (left stays left, right stays right)', zl.x <= f.split - 0.45 + 1e-6 && zr.x >= f.split + 0.45 - 1e-6, `${zl.x.toFixed(2)} ${zr.x.toFixed(2)}`);
+      // the other choice
+      lab4(2);
+      const f2 = G.route.find(s => s.type === 'fork');
+      G.z = f2.z0 + 3; G.x = G.tx = -2.0; for (const s of G.soldiers) s.x = -2.0;
+      for (let i = 0; i < 4; i++) zb.step(1 / 60);
+      for (let i = 0; i < 60 && G.z > f2.z0 - 1; i++) { G.shield = 1e9; zb.step(1 / 60); }
+      G.tx = 3.5; for (let i = 0; i < 90; i++) { G.shield = 1e9; zb.step(1 / 60); }
+      check('fork: a squad that entered on the left stays left', f2.chosen === -1 && G.x <= f2.split - 0.45, `chosen ${f2.chosen} x ${G.x.toFixed(2)}`);
+    }
+  }
+
+  // ---------------------------------------------------------------- 18. upgrades: clamp on load, lookup by id
+  {
+    zb.resetSave();
+    localStorage.setItem('zombie-bridge-save', JSON.stringify({ v: 1, coins: 50, best: 2, upgrades: { dmg: 8, rate: 10, recruit: 9, shield: 7, luck: 99 }, stages: {} }));
+    zb.loadSave();
+    check('upgrades: levels above max in an old save are clamped to max (5) on load', zb.UPGRADES.every(u => u.max === 5) && zb.UPGRADES.every(u => zb.SAVE.upgrades[u.id] === u.max), JSON.stringify(zb.SAVE.upgrades));
+    check('upgrades: the clamped levels cannot be bought further', zb.buyUpgrade('dmg') === false);
+    zb.resetSave();
+    // by id, not by index: reversing the table must not change what a dmg level does
+    const shot = () => {
+      zb.resetSave(); zb.SAVE.upgrades.dmg = 3;
+      lab3(1);
+      const t = mk3(0.14, -3, 100); t.s = 1.6;
+      G.weapon = 1; G.weaponLv = 1; G.soldiers[0].cd = 0;
+      zb.step(1 / 60); G.soldiers[0].cd = 1e9;
+      for (let i = 0; i < 30; i++) zb.step(1 / 60);
+      return 100 - t.hp;
+    };
+    const d1 = shot();
+    const saved = zb.UPGRADES.slice(); zb.UPGRADES.reverse();
+    const d2 = shot();
+    zb.UPGRADES.length = 0; saved.forEach(u => zb.UPGRADES.push(u));
+    const per = zb.UPGRADES.find(u => u.id === 'dmg').per;
+    check('upgrades: effects are looked up by id (reordering the table changes nothing)', Math.abs(d1 - d2) < 1e-9 && Math.abs(d1 - (1 + 3 * per)) < 1e-6, `${d1} ${d2}`);
     zb.resetSave();
   }
   T.critBase = crit0;
