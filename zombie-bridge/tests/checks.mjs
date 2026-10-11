@@ -915,6 +915,11 @@ const results = await page.evaluate(() => {
     zb.loadSave();
     check('upgrades: levels above max in an old save are clamped to max (5) on load', zb.UPGRADES.every(u => u.max === 5) && zb.UPGRADES.every(u => zb.SAVE.upgrades[u.id] === u.max), JSON.stringify(zb.SAVE.upgrades));
     check('upgrades: the clamped levels cannot be bought further', zb.buyUpgrade('dmg') === false);
+    {
+      const U = id => zb.UPGRADES.find(u => u.id === id);
+      check('upgrades: the owner\'s steps (+10% damage, +8% fire rate, +15% coins and +3% crit per level), all max 5', U('dmg').per === 0.10 && U('rate').per === 0.08 && U('luck').per === 0.15 && zb.TUNE.critPerLuck === 0.03 && zb.UPGRADES.every(u => u.max === 5));
+      check('upgrades: the shop text shows the real numbers', ['dmg', 'rate', 'luck'].every(id => U(id).desc.includes(Math.round(U(id).per * 100) + '%')) && U('luck').desc.includes(Math.round(zb.TUNE.critPerLuck * 100) + '%'), zb.UPGRADES.map(u => u.desc).join(' | '));
+    }
     zb.resetSave();
     // by id, not by index: reversing the table must not change what a dmg level does
     const shot = () => {

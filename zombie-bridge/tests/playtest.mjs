@@ -40,6 +40,7 @@ const opt = {
   cstages: Number(args.cstages || 5),
   upgrades: !!args.upgrades,                                       // campaign: buy upgrades greedily with the coins between stages
   retries: Number(args.retries || 0),                              // campaign: how often a lost stage is retried (after buying upgrades) before giving up
+  fork: args.fork ? String(args.fork) : '',                       // experiment: always take the 'left' or 'right' side of a fork (default: the bot chooses)
   line: !!args.line,                                 // one-line summary per row instead of the table (for sweeps)
   quiet: !!args.quiet,
   trace: !!args.trace,                               // print a coarse timeline for the first attempts of each row
@@ -184,7 +185,7 @@ function botRun(cfg) {
   function gunValue(e) {
     const w = e.w;
     const room = Math.max(0, zb.TUNE.maxSquad - G.squad);
-    const crate = 1.2 * Math.min(room, (zb.TUNE.crateRecruits || 0) + ((zb.SAVE && zb.SAVE.upgrades.recruit) || 0)) * (G.squad > 30 ? 0.7 : 1);   // every crate brings recruits (worth less for a big squad)
+    const crate = 1.2 * Math.min(room, (zb.TUNE.crateRecruits || 0) + ((zb.SAVE && zb.SAVE.upgrades.recruit) || 0)) * (G.squad < 12 ? 2.2 : G.squad < 30 ? 1.3 : 0.7);   // every crate brings recruits (worth less for a big squad)
     // forced to keep one gun: by default never walk over another gun's crate; with --hold-take the squad still collects the recruits (the harness hands the held gun back)
     if (cfg.hold !== undefined && cfg.hold !== null && w !== cfg.hold) return cfg.holdTake ? crate : -60;
     const cur = gunScore(G.weapon, G.weaponLv);
@@ -211,6 +212,7 @@ function botRun(cfg) {
           else if (e.type === 'barrel') sc[e.x >= sg.split ? 1 : -1] += 1.5;
           else if (e.type === 'horde') sc[e.spec.cx >= sg.split ? 1 : -1] -= 0.5 * e.spec.count * e.spec.hp / hp0;
         }
+        if (cfg.fork === 'left') { sc['-1'] = 99; sc['1'] = 0; } else if (cfg.fork === 'right') { sc['1'] = 99; sc['-1'] = 0; }
         fork = { seg: sg, left: sc['-1'], right: sc['1'], wt: Math.min(1, Math.max(0, (sg.z0 + 40 - G.z) / 12)) };
         break;
       }
@@ -243,7 +245,8 @@ function botRun(cfg) {
     const hps = hitsPerSec();
     readAhead();
     const gv = new Map();
-    for (const e of others) if (e.type === 'weapon') gv.set(e, gunValue(e));
+    // the guns-only route is "take every crate": the recruits and a fresh gun are the whole plan, so no blank lane for this player
+    for (const e of others) if (e.type === 'weapon') { const v = gunValue(e); gv.set(e, weaponsRoute ? v + 12 : v); }
     let bestX = tx, bestC = Infinity;
     for (let x = xLo; x <= xHi + 1e-6; x += GRID) {
       let c = 0;
@@ -340,7 +343,7 @@ function botRun(cfg) {
     bossKilled: LOG.bossDeadT !== undefined,
     bossHpLeft: G.boss ? Math.max(0, G.boss.hp / G.boss.max) : null,
     entry: G.entrySquad, stars: G.result ? G.result.stars : 0, coinsRun: G.result ? G.result.coins : 0, comboBest: G.comboBest, stage: cfg.stage,
-    gateDiffs: LOG.gateDiffs || [], deathZ: G.z, trace: cfg.trace ? trace : undefined, hero: !!LOG.hero, heroCharge: (() => { const h = G.events.find(e => e.type === 'hero'); return h ? Math.round(h.charge) + '/' + h.need : null; })(), tier: LOG.tier || 0, badGates: LOG.badGates || 0,
+    gateDiffs: LOG.gateDiffs || [], deathZ: G.z, trace: cfg.trace ? trace : undefined, hero: !!LOG.hero, heroCharge: (() => { const h = G.events.find(e => e.type === 'hero'); return h ? Math.round(h.charge) + '/' + h.need : null; })(), tier: LOG.tier || 0, pickups: LOG.pickups || 0, badGates: LOG.badGates || 0,
   };
   return res;
 }
@@ -459,7 +462,7 @@ async function page_campaign() {
   await browser.close();
   process.exit(errors.length ? 1 : 0);
 }
-const ENTRY_AUTO = [1, 1, 35, 57, 56, 54, 54];   // typical survivors carried into stage n (index = n) for single-stage runs
+const ENTRY_AUTO = [1, 1, 48, 59, 58, 54, 54];   // typical survivors carried into stage n (index = n) for single-stage runs
 const GUNS = ['pistol', 'rifle', 'shotgun', 'gatling', 'sniper', 'flamer', 'rocket'];
 const gunIndex = v => { const i = GUNS.indexOf(v); return i >= 0 ? i : Number(v); };
 // one row per strategy: { label, opening, hold }
@@ -476,7 +479,7 @@ for (const stage of opt.stages) {
   for (const row of openings) {
     const opening = row.label;
     const jobs = [];
-    for (let i = 0; i < opt.n; i++) jobs.push({ entry: opt.entry === 'auto' ? ENTRY_AUTO[Math.min(stage, ENTRY_AUTO.length - 1)] : Number(opt.entry), ups: opt.ups, noise: opt.noise, trace: opt.trace && i < 3, stage, opening: row.opening, hold: row.hold, holdTake: opt.holdTake, seed: opt.seed * 100003 + stage * 1009 + i * 7919 + 1, maxSeconds: opt.maxSeconds, dodge: opt.dodge });
+    for (let i = 0; i < opt.n; i++) jobs.push({ fork: opt.fork, entry: opt.entry === 'auto' ? ENTRY_AUTO[Math.min(stage, ENTRY_AUTO.length - 1)] : Number(opt.entry), ups: opt.ups, noise: opt.noise, trace: opt.trace && i < 3, stage, opening: row.opening, hold: row.hold, holdTake: opt.holdTake, seed: opt.seed * 100003 + stage * 1009 + i * 7919 + 1, maxSeconds: opt.maxSeconds, dodge: opt.dodge });
     const res = await runJobs(jobs);
     if (opt.trace) for (const r of res) if (r.trace) { console.log(`--- stage ${stage} ${opening} won=${r.won} cause=${r.cause} gates=${r.gateDiffs.join(',')}`); console.log(r.trace.join('\n')); }
     if (opt.dump) fs.appendFileSync(opt.dump, res.map((r, i) => JSON.stringify({ stage, opening, seed: jobs[i].seed, ...r })).join('\n') + '\n');
