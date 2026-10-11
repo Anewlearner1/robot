@@ -557,13 +557,14 @@ const TUNE = {
   bruteBase: 3, brutePerStage: 1, bruteHp: 10, bruteHpPerStage: 4,
   // --- layout spacing (units of empty bridge)
   spawnAhead: 58,                 // a horde is released when the squad is this far from its start line
+  lobG: 30, lobPeak: 2.6, lobHoming: 0.14, lobGroundK: 0.7,   // rocket lob: gravity (u/s^2), apex height, how far it re-aims per retarget, blast strength when it lands on the ground
   ambushAhead: 40,                // ambush hordes are released later (closer): no time to shoot them from afar
   openingGap: 24,                 // between the opening cluster and the first pattern event
   hordeGap: [5, 8],               // after a horde (plus the horde's depth)
   gateGap: 12, weaponGap: 10,     // after a gate pair / a weapon pickup
   // --- gates and the opening cluster
   openGatePf: 0.35,               // the opening red gate costs this fraction of the usual bullets per point
-  gatePer: 2, gatePerStage: 1, gatePerSquad: 12, // bullets for +1 on a gate = (per + perStage*stage + perSquad*min(squad,40)) -> a gate is worth about +5 whatever the squad size
+  gateSquadRef: 40, gatePer: 2, gatePerStage: 1, gatePerSquad: 12, // bullets for +1 on a gate = (per + perStage*stage + perSquad*min(squad,40)) -> a gate is worth about +5 whatever the squad size
   battNeed: 6, battNeedPerStage: 6,
   shieldSecs: 4,
   crateRecruits: 8,               // soldiers that come with every gun crate (so a guns-only route still grows the squad)
@@ -606,16 +607,28 @@ const TUNE = {
 //   'straight' (pistol)  | 'burst' (rifle: 3-round bursts) | 'fan' (shotgun: pellets fan out and slow down)
 //   'spray' (gatling: weaving jitter) | 'beam' (sniper: near-instant line) | 'stream' (flamer: slows, rises, drifts)
 //   'lob' (rocket: arcs up and comes down on the target, curving toward it)
+// Implemented (round 5 logic): every WEAPONS entry has `traj` plus its parameters.
+//   straight  as before.                                   burst   {burst, burstGap}: `burst` rounds `burstGap` s apart, then a pause so the
+//                                                          average is still `rate` (cadence lives in updateSquad, bullets fly straight).
+//   fan   {drag, minSpeed}: speed decays as exp(-drag t); a pellet dies below minSpeed x speed, so the effective range is ~25% shorter.
+//   spray {weaveAmp, weaveHz}: x weaves sinusoidally (+-weaveAmp units) around the aim line, phase per soldier (param ph of spawnBullet).
+//   beam  speed 160, dead straight (sub-stepped so it cannot skip a zombie), pierce as before.
+//   stream{drag, rise, drift}: speed decays as exp(-drag t), `by` rises (rise u/s from 0.9), drifts sideways (+-drift u/s).
+//   lob   TUNE.lobG / lobPeak / lobHoming / lobGroundK: launches up from by = 1.6, parabolic `by`, aimed at the target given to spawnBullet
+//         (tx, tz), re-aims gently at the zombie nearest to its landing point; only collides when by < 1.9 (it flies over the front rows),
+//         explodes on direct contact or when it reaches the ground. Mech shells (bk = 1) get a cosmetic arc only.
+// by = height above the deck, bt = age in s: both written every step (and kept through removeBullet swaps). bs = current speed,
+// bph = phase / drift sign, bvy = vertical speed, btx/btz = the lob's current aim point.
 // Per-bullet state for presentation: `by` (height above the deck, logic writes it every step; default 1.25 for flat shots)
 //   and `bt` (seconds since fired). Presentation draws trails from bx/by/bz history it keeps itself.
 const WEAPONS = [
-  { id: 'pistol',  name: '手槍',   desc: '基本配槍',         fx: 'bullet', color: 0xffe08a, rate: 8,    pellets: 1, spread: 0.04, dmg: 2.5,    speed: 42, range: 0.56, pierce: 0, splash: 0,   knock: 0,   bossEff: 0.93,    lvMul: 1.6, maxLv: 3, ui: { power: 1, rate: 4, range: 3 } },
-  { id: 'rifle',   name: '步槍',   desc: '射速快、射程長',   fx: 'bullet', color: 0xffd060, rate: 10.5, pellets: 1, spread: 0.05, dmg: 1,   speed: 46, range: 0.56, pierce: 1, splash: 0,   knock: 0,   bossEff: 1,    lvMul: 1.3, maxLv: 3, ui: { power: 2, rate: 3, range: 4 } },
-  { id: 'shotgun', name: '散彈槍', desc: '近距離一次轟一片', fx: 'pellet', color: 0xffb070, rate: 6.9, pellets: 5, spread: 0.16, dmg: 1,   speed: 40, range: 0.32, pierce: 0, splash: 0,   knock: 0.6, bossEff: 0.3, lvMul: 1.3, maxLv: 3, ui: { power: 4, rate: 2, range: 2 } },
-  { id: 'gatling', name: '加特林', desc: '火力全開的彈幕',   fx: 'bullet', color: 0xfff0a0, rate: 22,  pellets: 1, spread: 0.08, dmg: 1,   speed: 44, range: 0.5,  pierce: 0, splash: 0,   knock: 0,   bossEff: 0.62,    lvMul: 1.3, maxLv: 3, ui: { power: 1, rate: 5, range: 3 } },
-  { id: 'sniper',  name: '狙擊槍', desc: '一發貫穿整排',     fx: 'rail',   color: 0x9fe8ff, rate: 1.75, pellets: 1, spread: 0.01, dmg: 3.5,   speed: 90, range: 0.32, pierce: 5, splash: 0,   knock: 0.3, bossEff: 0.95,    lvMul: 1.3, maxLv: 3, ui: { power: 5, rate: 1, range: 5 } },
-  { id: 'flamer',  name: '火焰槍', desc: '燒穿整群，射程短', fx: 'flame',  color: 0xff7a2a, rate: 7,    pellets: 2, spread: 0.3,  dmg: 1.0, speed: 18, range: 0.6, pierce: 2, splash: 0,   knock: 0,   bossEff: 0.22,  lvMul: 1.3, maxLv: 3, ui: { power: 2, rate: 4, range: 1 } },
-  { id: 'rocket',  name: '火箭筒', desc: '爆炸範圍傷害',     fx: 'rocket', color: 0xff9a40, rate: 0.9,  pellets: 1, spread: 0.03, dmg: 5,   speed: 26, range: 0.9,  pierce: 0, splash: 1.6, knock: 1,   bossEff: 0.83,  lvMul: 1.3, maxLv: 3, ui: { power: 5, rate: 1, range: 4 } },
+  { id: 'pistol',  name: '手槍',   desc: '基本配槍',         fx: 'bullet', color: 0xffe08a, rate: 8,    traj: 'straight', pellets: 1, spread: 0.04, dmg: 2.5,    speed: 42, range: 0.56, pierce: 0, splash: 0,   knock: 0,   bossEff: 0.93,    lvMul: 1.6, maxLv: 3, ui: { power: 1, rate: 4, range: 3 } },
+  { id: 'rifle',   name: '步槍',   desc: '射速快、射程長',   fx: 'bullet', color: 0xffd060, rate: 10.5, traj: 'burst', burst: 3, burstGap: 0.07, pellets: 1, spread: 0.05, dmg: 1,   speed: 46, range: 0.56, pierce: 1, splash: 0,   knock: 0,   bossEff: 1,    lvMul: 1.3, maxLv: 3, ui: { power: 2, rate: 3, range: 4 } },
+  { id: 'shotgun', name: '散彈槍', desc: '近距離一次轟一片', fx: 'pellet', color: 0xffb070, rate: 6.9, traj: 'fan', drag: 2.4, minSpeed: 0.3, pellets: 5, spread: 0.22, dmg: 1,   speed: 40, range: 0.36, pierce: 0, splash: 0,   knock: 0.6, bossEff: 0.3, lvMul: 1.3, maxLv: 3, ui: { power: 4, rate: 2, range: 2 } },
+  { id: 'gatling', name: '加特林', desc: '火力全開的彈幕',   fx: 'bullet', color: 0xfff0a0, rate: 22,  traj: 'spray', weaveAmp: 0.45, weaveHz: 2.4, pellets: 1, spread: 0.08, dmg: 1,   speed: 44, range: 0.5,  pierce: 0, splash: 0,   knock: 0,   bossEff: 0.62,    lvMul: 1.3, maxLv: 3, ui: { power: 1, rate: 5, range: 3 } },
+  { id: 'sniper',  name: '狙擊槍', desc: '一發貫穿整排',     fx: 'rail',   color: 0x9fe8ff, rate: 1.75, traj: 'beam', pellets: 1, spread: 0.01, dmg: 3.5,   speed: 160, range: 0.18, pierce: 5, splash: 0,   knock: 0.3, bossEff: 0.95,    lvMul: 1.3, maxLv: 3, ui: { power: 5, rate: 1, range: 5 } },
+  { id: 'flamer',  name: '火焰槍', desc: '燒穿整群，射程短', fx: 'flame',  color: 0xff7a2a, rate: 7,    traj: 'stream', drag: 2.0, rise: 1.3, drift: 0.9, pellets: 2, spread: 0.3,  dmg: 1.0, speed: 26, range: 0.6, pierce: 2, splash: 0,   knock: 0,   bossEff: 0.22,  lvMul: 1.3, maxLv: 3, ui: { power: 2, rate: 4, range: 1 } },
+  { id: 'rocket',  name: '火箭筒', desc: '爆炸範圍傷害',     fx: 'rocket', color: 0xff9a40, rate: 0.9,  traj: 'lob', pellets: 1, spread: 0.03, dmg: 5,   speed: 26, range: 0.9,  pierce: 0, splash: 1.6, knock: 1,   bossEff: 0.83,  lvMul: 1.3, maxLv: 3, ui: { power: 5, rate: 1, range: 4 } },
 ];
 
 // ---------------------------------------------------------------- round 3 contract: campaign, wallet, upgrades
@@ -1021,6 +1034,7 @@ scene.add(bMesh);
 const bx = new Float32Array(MAXB), bz = new Float32Array(MAXB), bdx = new Float32Array(MAXB), bdz = new Float32Array(MAXB);
 const bl = new Float32Array(MAXB), bd = new Float32Array(MAXB), bk = new Uint8Array(MAXB);
 const by = new Float32Array(MAXB).fill(1.25), bt = new Float32Array(MAXB);   // round 5: height above deck, age (s)
+const bs = new Float32Array(MAXB), bph = new Float32Array(MAXB), bvy = new Float32Array(MAXB), btx = new Float32Array(MAXB), btz = new Float32Array(MAXB);   // round 5: speed, phase, vertical speed, lob aim point
 const bw = new Uint8Array(MAXB);   // WEAPONS index that fired the bullet (meaningful when bk === 0; bk 1 = mech shell)
 // pierce bookkeeping: extra zombies a bullet may still pass through, and the zombies it has already hit (so it never hits one twice)
 const bpr = new Uint8Array(MAXB), bhn = new Uint8Array(MAXB), bhid = new Int32Array(MAXB * 8);
@@ -1642,7 +1656,7 @@ function syncSoldiers() {
     if (G.phase !== 'menu') burst(s.x, 1, s.z, 8, [0.3, 0.75, 1], 3, 0.5);
   }
   while (G.soldiers.length > want) scene.remove(G.soldiers.pop().mesh);
-  G.dmgMul = G.squad > MAXVIS ? G.squad / MAXVIS : 1;
+  G.dmgMul = G.squad > MAXVIS ? G.squad / MAXVIS : 1;   // round 5: the cap equals MAXVIS (100), so this is always 1; kept for squads loaded above the cap
 }
 // colCap: how many columns fit the road where the squad is (narrow segments and fork sides squeeze the formation, see updateRoute).
 let colCap = 99;
@@ -1857,15 +1871,28 @@ function fillBuckets() {
   }
 }
 
-function spawnBullet(x, z, dx, dz, dmg, kind, w) {
+// ph: phase (spray) / drift sign (stream); tx, tz: where a lob should land (default: 14 units straight ahead).
+function spawnBullet(x, z, dx, dz, dmg, kind, w, ph, tx, tz) {
   if (nb >= MAXB) return;
   w = w || 0;
+  const W = kind ? null : WEAPONS[w];
   bw[nb] = w;
-  bpr[nb] = kind ? 0 : WEAPONS[w].pierce; bhn[nb] = 0;
-  bx[nb] = x; bz[nb] = z; bdx[nb] = dx; bdz[nb] = dz; bl[nb] = kind ? 0.75 : WEAPONS[w].range; bd[nb] = dmg; bk[nb] = kind;
+  bpr[nb] = kind ? 0 : W.pierce; bhn[nb] = 0;
+  bx[nb] = x; bz[nb] = z; bdx[nb] = dx; bdz[nb] = dz; bl[nb] = kind ? 0.75 : W.range; bd[nb] = dmg; bk[nb] = kind;
+  bs[nb] = kind ? BULLET_SPEED : W.speed; by[nb] = 1.25; bt[nb] = 0; bph[nb] = ph === undefined ? 0 : ph; bvy[nb] = 0;
+  if (W && W.traj === 'stream') { by[nb] = 0.9; bvy[nb] = W.rise; if (ph === undefined) bph[nb] = Math.random() * 2 - 1; }
+  else if (W && W.traj === 'lob') {
+    const dist = clamp(tx === undefined ? 14 : Math.hypot(tx - x, tz - z), 3, 40);
+    by[nb] = 1.6; bvy[nb] = Math.sqrt(2 * TUNE.lobG * Math.max(0.2, TUNE.lobPeak - 1.6));
+    const T = lobTime(by[nb], bvy[nb]);
+    bs[nb] = dist / T; bl[nb] = Math.min(W.range, T + 0.2);
+    btx[nb] = tx === undefined ? x + dx * dist : tx; btz[nb] = tz === undefined ? z + dz * dist : tz;
+  }
   bMesh.setColorAt(nb, kind ? tmpC.setRGB(1, 0.5, 0.15) : tmpC.setRGB(1, 0.88, 0.45));
   nb++;
 }
+// seconds until a lob at height h with vertical speed v reaches the ground
+function lobTime(h, v) { const g = TUNE.lobG; return (v + Math.sqrt(v * v + 2 * g * Math.max(0, h))) / g; }
 function removeBullet(i) {
   const j = --nb;
   if (i === j) return;
@@ -1873,6 +1900,7 @@ function removeBullet(i) {
   bpr[i] = bpr[j]; bhn[i] = bhn[j];
   for (let q = 0, n = bhn[j]; q < n; q++) bhid[i * 8 + q] = bhid[j * 8 + q];
   bx[i] = bx[j]; bz[i] = bz[j]; bdx[i] = bdx[j]; bdz[i] = bdz[j]; bl[i] = bl[j]; bd[i] = bd[j]; bk[i] = bk[j];
+  by[i] = by[j]; bt[i] = bt[j]; bs[i] = bs[j]; bph[i] = bph[j]; bvy[i] = bvy[j]; btx[i] = btx[j]; btz[i] = btz[j];
   bMesh.setColorAt(i, bk[i] ? tmpC.setRGB(1, 0.5, 0.15) : tmpC.setRGB(1, 0.88, 0.45));
 }
 
@@ -2088,7 +2116,7 @@ function gateHit(e, dmg) {
   if (e.kind !== 'add') return;                                 // x, rate and level gates cannot be shot up
   e.hits += dmg;
   let changed = false;
-  const per = (e.per + TUNE.gatePerSquad * Math.min(G.squad, MAXVIS)) * e.pf;
+  const per = (e.per + TUNE.gatePerSquad * Math.min(G.squad, TUNE.gateSquadRef)) * e.pf;
   while (e.hits >= per) { e.hits -= per; e.val++; changed = true; }
   if (changed) {
     e.draw(); e.bump = 1;
@@ -2337,24 +2365,30 @@ function updateSquad(dt) {
     const tx = G.x + (col - (inRow - 1) / 2) * SP, tz = G.z + row * SP;
     s.x += (tx - s.x) * Math.min(1, dt * 10);
     s.z += (tz - s.z) * Math.min(1, dt * 10);
-    let dx = 0, dz = -1;
+    let dx = 0, dz = -1, aimX, aimZ;                             // aimX / aimZ: the target's position (a lob lands there)
     if (nT > 0) {
       // with the boss in range, a fixed share of the squad (spread evenly by a golden-ratio stride) keeps firing at it
       const k = bossOn && nT > 1 ? ((i * 0.618034) % 1 < TUNE.bossFocus ? 0 : 1 + i % (nT - 1)) : i % nT;
       dx = tgX[k] - s.x; dz = tgZ[k] - s.z;
+      aimX = tgX[k]; aimZ = tgZ[k];
       const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
-      if (dz > -0.2) { dx = 0; dz = -1; }
+      if (dz > -0.2) { dx = 0; dz = -1; aimX = undefined; aimZ = undefined; }
     }
     s.mesh.position.set(s.x, running ? Math.abs(Math.sin(G.time * 11 + i)) * 0.08 : 0, s.z);
     s.mesh.rotation.y = Math.atan2(-dx, -dz);
     s.cd -= dt;
     if (s.cd <= 0) {
-      s.cd = Math.max(s.cd, -0.05) + 1 / (W.rate * rateMul) * rr(0.85, 1.15);
+      const gap = 1 / (W.rate * rateMul) * rr(0.85, 1.15);
+      if (W.traj === 'burst') {                                  // `burst` rounds `burstGap` apart, then a pause: the average rate stays W.rate
+        s.bn = (s.bn | 0) + 1;
+        if (s.bn < W.burst) s.cd = Math.max(s.cd, -0.05) + W.burstGap;
+        else { s.bn = 0; s.cd = Math.max(s.cd, -0.05) + Math.max(W.burstGap, W.burst * gap - (W.burst - 1) * W.burstGap); }
+      } else s.cd = Math.max(s.cd, -0.05) + gap;
       for (let p = 0; p < pellets; p++) {
         const a = (Math.random() - 0.5) * spreadW * 2 + (pellets > 1 ? (p - (pellets - 1) / 2) * spreadW * 0.7 : 0);
         const ca = Math.cos(a), sa = Math.sin(a);
         const rx = dx * ca - dz * sa, rz = dx * sa + dz * ca;
-        spawnBullet(s.x + rx * 0.5 + 0.14, s.z + rz * 0.5, rx, rz, extra && Math.abs(p - pMid) > pMain + 0.01 ? shotDmg * TUNE.splitDmg : shotDmg, 0, G.weapon);
+        spawnBullet(s.x + rx * 0.5 + 0.14, s.z + rz * 0.5, rx, rz, extra && Math.abs(p - pMid) > pMain + 0.01 ? shotDmg * TUNE.splitDmg : shotDmg, 0, G.weapon, i * 1.7, aimX, aimZ);
       }
       SFX.shot();
       bus.emit('shot', { x: s.x, z: s.z, w: G.weapon, lv: G.weaponLv });
@@ -2500,20 +2534,31 @@ function updateBullets(dt) {
   for (let i = 0; i < nb; i++) {
     let hit = false;
     const WB = bk[i] ? null : WEAPONS[bw[i]];                  // null for mech shells
-    const spd = WB ? WB.speed : BULLET_SPEED;
-    const nsub = spd * dt > 1.3 ? 3 : 2;                        // fast bullets are sub-stepped so they cannot skip a zombie
+    const tr = WB ? WB.traj : 'shell';
+    let spd = bs[i];
+    const nsub = tr === 'beam' ? Math.min(6, Math.ceil(spd * dt / 0.8)) : spd * dt > 1.3 ? 3 : 2;   // fast bullets are sub-stepped so they cannot skip a zombie
+    const h = dt / nsub;
+    // flight model, once per step: lateral velocity (weave / drift), drag, retargeting
+    let lat = 0;
+    if (tr === 'spray') lat = WB.weaveAmp * 6.2832 * WB.weaveHz * Math.cos(6.2832 * WB.weaveHz * bt[i] + bph[i]);
+    else if (tr === 'stream') lat = bph[i] * WB.drift;
+    else if (tr === 'lob') lobSteer(i, dt);
+    const lx = -bdz[i], lz = bdx[i];                            // perpendicular of the aim line
     for (let step = 0; step < nsub && !hit; step++) {
       const oz = bz[i];
-      bx[i] += bdx[i] * spd * dt / nsub;
-      bz[i] += bdz[i] * spd * dt / nsub;
+      bx[i] += bdx[i] * spd * h + lx * lat * h;
+      bz[i] += bdz[i] * spd * h + lz * lat * h;
+      if (tr === 'lob') { bvy[i] -= TUNE.lobG * h; by[i] += bvy[i] * h; }
+      else if (tr === 'stream') by[i] += bvy[i] * h;
       const x = bx[i], z = bz[i], dmg = bd[i], kind = bk[i];
+      const low = tr !== 'lob' || by[i] < 1.9;                  // a lob flies over the front rows and only collides when it is down
       let bhit = false;
-      for (let q = 0; q < nbar; q++) {
+      if (low) for (let q = 0; q < nbar; q++) {
         const o = activeB[q];
         if (!o.dead && Math.abs(x - o.x) < 0.6 && Math.abs(z - o.z) < 0.7) { hitBarrel(o, dmg); bhit = true; break; }
       }
-      if (bhit) { hit = true; break; }
-      if (b && b.alive && Math.abs(x - b.x) < 1.25 && Math.abs(z - b.z) < 0.9) {
+      if (bhit) { hit = true; if (tr === 'lob') splash(x, z, dmg, WB.splash); break; }
+      if (b && b.alive && (tr !== 'lob' || by[i] < 3.4) && Math.abs(x - b.x) < 1.25 && Math.abs(z - b.z) < 0.9) {
         hitBoss(dmg * critRoll(x, z, dmg)); burst(x, 2.4, z, 2, [0.45, 1, 0.3], 2, 0.25);
         if (kind) splash(x, z, dmg);
         else if (WB.splash) splash(x, z, dmg, WB.splash);
@@ -2521,7 +2566,7 @@ function updateBullets(dt) {
         hit = true; break;                                     // the boss stops every shot, piercing or not
       }
       const k0 = bIdx(z);
-      for (let k = k0 - 1; k <= k0 + 1 && !hit; k++) {
+      if (low) for (let k = k0 - 1; k <= k0 + 1 && !hit; k++) {
         if (k < 0 || k >= BN) continue;
         const arr = buckets[k];
         for (let a = 0; a < arr.length && !hit; a++) {
@@ -2556,7 +2601,11 @@ function updateBullets(dt) {
         }
       }
       if (hit) break;
-      for (let q = 0; q < na; q++) {
+      if (tr === 'lob' && by[i] <= 0) {                          // came down on the ground: the shell explodes where it lands
+        splash(x, z, dmg, WB.splash, TUNE.lobGroundK);
+        hit = true; break;
+      }
+      for (let q = 0; q < na; q++) {                             // gates and batteries count when the path crosses their plane (a lob too, at any height)
         const e = activeE[q];
         if (e.type === 'gate') {
           if (!e.used && oz > e.z && z <= e.z && Math.abs(x - e.x) < 1.85) { bxHit = x; gateHit(e, dmg); hit = true; break; }
@@ -2565,8 +2614,45 @@ function updateBullets(dt) {
         }
       }
     }
+    // end of step: age, drag, shell arc, life
+    bt[i] += dt;
+    if (!hit) {
+      if (tr === 'fan' || tr === 'stream') {
+        bs[i] *= Math.exp(-WB.drag * dt);
+        if (tr === 'fan' && bs[i] < WB.speed * WB.minSpeed) hit = true;       // a spent pellet drops out
+      } else if (tr === 'shell') by[i] = 1.25 + 1.6 * Math.sin(Math.PI * Math.min(1, bt[i] / 0.75));   // cosmetic arc, collision stays flat
+      else if (tr !== 'lob') by[i] = tr === 'stream' ? by[i] : 1.25;
+    }
     bl[i] -= dt;
     if (hit || bl[i] <= 0 || Math.abs(bx[i]) > ROAD + 1) { removeBullet(i); i--; }
+  }
+}
+
+// Lob steering (once per step): every few steps re-aim at the zombie nearest to the current aim point, then turn a fraction of the way
+// toward it and set the horizontal speed so the shell comes down on the aim point exactly when its arc ends.
+function lobSteer(i, dt) {
+  const Trem = lobTime(by[i], bvy[i]);
+  if (((bt[i] / dt + 0.5) | 0) % 4 === 0) {
+    const tz = btz[i], tx = btx[i];
+    const k0 = bIdx(tz);
+    let bestD = 6.25, bx_ = tx, bz_ = tz;                       // within 2.5 units of the aim point
+    for (let k = k0 - 2; k <= k0 + 2; k++) {
+      if (k < 0 || k >= BN) continue;
+      const arr = buckets[k];
+      for (let a = 0; a < arr.length; a++) {
+        const zb = Z[arr[a]];
+        if (zb.dying > 0) continue;
+        const d = (zb.x - tx) ** 2 + (zb.z - tz) ** 2;
+        if (d < bestD) { bestD = d; bx_ = zb.x; bz_ = zb.z + zb.sp * Trem; }   // lead the target by its walk during the rest of the flight
+      }
+    }
+    btx[i] += (bx_ - btx[i]) * TUNE.lobHoming * 4; btz[i] += (bz_ - btz[i]) * TUNE.lobHoming * 4;
+    const ex = btx[i] - bx[i], ez = btz[i] - bz[i], dist = Math.hypot(ex, ez) || 1;
+    const k = TUNE.lobHoming * 4;
+    let nx = bdx[i] * (1 - k) + (ex / dist) * k, nz = bdz[i] * (1 - k) + (ez / dist) * k;
+    const nl = Math.hypot(nx, nz) || 1;
+    bdx[i] = nx / nl; bdz[i] = nz / nl;
+    bs[i] = clamp(dist / Math.max(0.15, Trem), 5, 45);
   }
 }
 
@@ -4668,7 +4754,7 @@ function resetSave() {
 // Start stage n from the beginning with its entry squad (same as prepare(n) + startRun()).
 function startStage(n) { prepare(n); startRun(); }
 window.__zb = { BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
-  stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0), bw: Array.from(bw.subarray(0, nb)), bl: Array.from(bl.subarray(0, nb)) }),
+  stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0), bw: Array.from(bw.subarray(0, nb)), bl: Array.from(bl.subarray(0, nb)), by: Array.from(by.subarray(0, nb)), bt: Array.from(bt.subarray(0, nb)), bs: Array.from(bs.subarray(0, nb)), bx: Array.from(bx.subarray(0, nb)), bz: Array.from(bz.subarray(0, nb)) }),
   perf: () => ({ pr: PR_STEPS[prIdx], steps: PR_STEPS, avg: Perf.avg, fxScale }) };
 })();
 </script>
