@@ -574,12 +574,28 @@ const WEAPONS = [
 // UPGRADES: permanent upgrades bought with coins between stages. cost(lv) = Math.round(base * grow^lv); lv 0..max.
 //   Each `per` is applied per level by logic (e.g. dmg 0.08 = +8 % damage per level). Presentation shows name/desc/lv/cost.
 const UPGRADES = [
-  { id: 'dmg',     name: '火力',   desc: '全隊傷害 +1.5%',      per: 0.015, max: 10, base: 60,  grow: 1.55 },
-  { id: 'rate',    name: '射速',   desc: '全隊射速 +1%',        per: 0.01, max: 10, base: 60,  grow: 1.55 },
-  { id: 'recruit', name: '援軍',   desc: '每個槍箱多 +1 名隊員', per: 1,    max: 5,  base: 120, grow: 1.7  },
-  { id: 'shield',  name: '護盾',   desc: '機甲護盾 +1 秒',      per: 1,    max: 5,  base: 90,  grow: 1.6  },
-  { id: 'luck',    name: '幸運',   desc: '金幣掉落 +10%、爆擊率 +2%', per: 0.1, max: 8, base: 80, grow: 1.5 },
+  // Round 4 (owner): fewer levels, each one clearly felt. Logic may retune `per`/costs but keeps max 5 and a big per-level step.
+  { id: 'dmg',     name: '火力',   desc: '全隊傷害 +10%',       per: 0.10, max: 5, base: 80,  grow: 1.9 },
+  { id: 'rate',    name: '射速',   desc: '全隊射速 +8%',        per: 0.08, max: 5, base: 80,  grow: 1.9 },
+  { id: 'recruit', name: '援軍',   desc: '每個槍箱多 +1 名隊員', per: 1,    max: 5, base: 120, grow: 1.8 },
+  { id: 'shield',  name: '護盾',   desc: '機甲護盾 +1 秒',      per: 1,    max: 5, base: 90,  grow: 1.7 },
+  { id: 'luck',    name: '幸運',   desc: '金幣 +15%、爆擊率 +3%', per: 0.15, max: 5, base: 90, grow: 1.8 },
 ];
+// ---------------------------------------------------------------- round 4 contract: lanes and routes
+// LANES: the road is read as three lanes. Every pickup row (guns) uses at most two of them, so at least one lane is always
+//   empty and the player can skip the guns. Pickups trigger on the lane of the squad centre (G.x), not on formation overlap.
+const LANES = [-2.6, 0, 2.6];
+// G.route (logic builds it per stage in buildLevel; presentation draws from it). Ordered list of segments along -z:
+//   { type, z0, z1, ...extra }   z0 > z1 (start nearer the start line). Types and extras:
+//   'straight'                   plain bridge
+//   'narrow'   { half }          road half-width shrinks to `half` (wrecks / barriers on both sides); squad is clamped
+//   'fork'     { split: x }      a median barrier at x splits the road into two paths with different contents
+//   'gauntlet'                   barrel alley / hazard-heavy stretch
+//   'ambush'                     hordes enter from both sides
+//   'arena'                      the boss arena at the end
+// G.routeName: short Chinese name of the stage's route plan (e.g. '斷橋', '分岔路'), G.theme: visual theme id
+//   ('dawn' | 'haze' | 'sunset' | 'night' | 'storm' …) chosen per stage by logic; presentation maps it to sky/fog/light.
+// Events: routeSegment{seg} fires when the squad enters a segment (presentation may show a short label for forks/narrows).
 // SAVE: persisted progress (localStorage key 'zombie-bridge-save', version 1; every access in try/catch).
 //   coins: wallet; upgrades: { id: lv }; best: highest stage unlocked;
 //   stages: { [n]: { entry: squad you start stage n with (carry-over from clearing n-1), stars: best 0..3 } }.
@@ -627,6 +643,7 @@ const G = {
   // round 3 (logic writes, presentation reads): combo chain, coins earned this run, timed buffs { id: secondsLeft },
   // the squad this stage started with, and the last stage result (set right before `win` / `gameOver`).
   combo: 0, comboT: 0, comboBest: 0, coins: 0, buffs: {}, entrySquad: 1, result: null,
+  route: [], routeName: '', theme: 'haze',   // round 4: see the lanes-and-routes contract above
   // added by logic in round 3: permanent fire-rate bonus from '射速+' gates (this stage), power-up orbs on the ground (the same
   // objects that sit in G.events as { type: 'powerup', id: 'frenzy'|'split', x, z, t, taken, gone }; no mesh, the front end draws
   // them lazily and hides them on taken / gone; logic moves and collects them), next squad milestone index.
