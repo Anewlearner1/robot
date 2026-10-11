@@ -224,6 +224,21 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 }
 @media (prefers-reduced-motion: reduce) { .tip span { animation: none; } .tip { transition: none; } }
 
+/* ---- round 4: stage intro, bigger shop steps ---- */
+#intro { position: fixed; left: 0; right: 0; top: 15%; display: grid; place-items: center; gap: 2px; pointer-events: none; opacity: 0; text-align: center; }
+#intro small { font: 400 15px var(--display); letter-spacing: .2em; color: var(--hazard); text-shadow: 0 2px 0 var(--ink), 0 0 10px rgba(0,0,0,.5); }
+#intro b { font: 900 clamp(30px, 9.5vw, 42px)/1.1 var(--body); letter-spacing: .12em; color: #fff; text-shadow: 0 3px 0 var(--ink), 0 0 20px rgba(0,0,0,.55); }
+.entryline .rn { color: #9fd0ff; letter-spacing: .1em; }
+.upi .tot { grid-column: 1; font: 900 13px var(--body); color: #ffe08a; letter-spacing: .04em; min-height: 17px; }
+.upi .tot.fresh { animation: totpop .7s cubic-bezier(.2,1.5,.4,1); }
+@keyframes totpop { 0% { transform: scale(1.5); color: #fff; text-shadow: 0 0 12px #ffd34d; } 100% { transform: none; } }
+.upi .pp i { width: 26px; height: 11px; border-radius: 3px; }
+.upi .pp i.on { background: linear-gradient(#ffd76a, #f09a10); box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+.upi .pp i.fresh { animation: pipfill2 .75s cubic-bezier(.2,1.6,.4,1); }
+@keyframes pipfill2 { 0% { transform: scale(2.4, 3.4); background: #fff; box-shadow: 0 0 16px #fff, 0 0 28px #ffd34d; } 100% { transform: none; } }
+.stoast { position: fixed; left: 0; right: 0; top: 18%; display: grid; place-items: center; pointer-events: none; opacity: 0; z-index: 7; }
+.stoast b { font: 900 clamp(26px, 8vw, 36px)/1.1 var(--body); color: #ffe08a; letter-spacing: .06em; text-shadow: 0 3px 0 #5a3a00, 0 0 22px rgba(255,200,60,.8); }
+.stoast small { font: 900 14px var(--body); color: #fff; text-shadow: 0 2px 0 var(--ink); letter-spacing: .1em; }
 /* ---- round 3: combo, coins, buffs, banners, result, shop ---- */
 #over, #win { display: none !important; }   /* superseded by #result (logic still writes into them, harmlessly) */
 .chip.coin { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px 4px 6px; }
@@ -317,9 +332,9 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 @media (max-height: 700px) {
   .stars { min-height: 44px; } .star { width: 44px; height: 44px; }
   .resc { gap: 6px; } .trow { min-height: 22px; font-size: 13px; } .trow b { font-size: 18px; } .tally { padding: 7px 12px; gap: 3px; }
-  .upi { padding: 6px 10px; } .shopc { gap: 8px; } .upl { gap: 6px; } .upi .ds { font-size: 11px; }
+  .upi { padding: 5px 10px; } .upi .pp i { height: 9px; } .shopc { gap: 6px; } .upl { gap: 6px; } .upi .ds { font-size: 11px; }
 }
-@media (prefers-reduced-motion: reduce) { .star.on, .newbest, .carry, .resc.go h2, .upi .pp i.fresh, .cico.bump, .chest.shake { animation: none; } .resc h2 { opacity: 1; } .chest .lid { transition: none; } .trow.bonus { transition: none; } #combo { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .upi .tot.fresh, .upi .pp i.fresh { animation: none; } .star.on, .newbest, .carry, .resc.go h2, .upi .pp i.fresh, .cico.bump, .chest.shake { animation: none; } .resc h2 { opacity: 1; } .chest .lid { transition: none; } .trow.bonus { transition: none; } #combo { transition: none; } }
 
 </style>
 </head>
@@ -357,6 +372,7 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 <div id="banner" aria-live="polite"><b></b></div>
 <div id="banner2"><b></b><small></small></div>
 <div id="flies" aria-hidden="true"></div>
+<div id="intro" aria-hidden="true"><small></small><b></b></div>
 <div id="vignette"></div>
 <div id="flash"></div>
 
@@ -469,6 +485,30 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 (() => {
 'use strict';
 const T = window.THREE;
+// Curved world (purely visual): view-space offset that grows with the square of the distance from the camera, applied to every
+// material through a Material.onBeforeCompile hook so instanced meshes, particles and units bend together. Gameplay stays straight.
+const BEND = { value: new T.Vector3(0, 0, 0) };   // x, y per unit^2 (see fxBendTarget); z unused
+if (T && T.Material) {
+  const desc = Object.getOwnPropertyDescriptor(T.Material.prototype, 'onBeforeCompile');
+  const baseFn = desc && typeof desc.value === 'function' ? desc.value : function () {};
+  Object.defineProperty(T.Material.prototype, 'onBeforeCompile', {
+    configurable: true,
+    get() {
+      const user = this.__obc || baseFn;
+      const f = function (shader, renderer) {
+        user.call(this, shader, renderer);
+        if (shader.vertexShader && shader.vertexShader.indexOf('#include <project_vertex>') >= 0) {
+          shader.uniforms.uBend = BEND;
+          shader.vertexShader = 'uniform vec3 uBend;\n' + shader.vertexShader.replace('#include <project_vertex>',
+            '#include <project_vertex>\n{ float bd = min(max(-mvPosition.z - 6.0, 0.0), 80.0); mvPosition.x += uBend.x * bd * bd; mvPosition.y += uBend.y * bd * bd; gl_Position = projectionMatrix * mvPosition; }');
+        }
+      };
+      f.toString = () => user.toString() + '/*bend1*/';      // program cache key (see Material.customProgramCacheKey)
+      return f;
+    },
+    set(fn) { this.__obc = fn; },
+  });
+}
 const $ = s => document.querySelector(s);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const rr = (a, b) => a + (b - a) * Math.random();
@@ -700,7 +740,8 @@ const FOG = 0x8fa3b3;
 scene.background = new T.Color(FOG);
 scene.fog = new T.Fog(FOG, 24, 78);
 const camera = new T.PerspectiveCamera(60, 1, 0.5, 100); // fog is opaque by 78, so 100 is invisible but culls the far scenery
-scene.add(new T.HemisphereLight(0xe2e9f1, 0x4a4038, 0.95));
+const hemi = new T.HemisphereLight(0xe2e9f1, 0x4a4038, 0.95);
+scene.add(hemi);
 const sun = new T.DirectionalLight(0xfff2dc, 0.75);
 sun.position.set(6, 12, 5);
 scene.add(sun);
@@ -722,12 +763,12 @@ window.addEventListener('resize', resize);
 resize();
 
 // ---------------------------------------------------------------- geometry helpers
-// [w, h, d, x, y, z, color]
+// [w, h, d, x, y, z, color, zSegments?]  (zSegments tessellates a long part so the curved-world bend can curve it)
 function boxes(parts) {
   const pos = [], nor = [], col = [];
   const c = new T.Color();
   for (const p of parts) {
-    const g = new T.BoxGeometry(p[0], p[1], p[2]).toNonIndexed();
+    const g = new T.BoxGeometry(p[0], p[1], p[2], 1, 1, p[7] || 1).toNonIndexed();
     g.translate(p[3], p[4], p[5]);
     const a = g.attributes.position.array, n = g.attributes.normal.array;
     c.set(p[6]);
@@ -1044,12 +1085,13 @@ function buildLevel(n) {
 // Static scenery in as few draw calls as possible. The skyline loop consumes R() in exactly the original order so a stage
 // keeps the same layout of hordes and gates.
 function buildScenery(len, mid) {
-  const parts = [[ROAD * 2 + 0.4, 0.6, len, 0, -0.3, mid, 0x8a837c]];
+  const sg = Math.ceil(len / 4);
+  const parts = [[ROAD * 2 + 0.4, 0.6, len, 0, -0.3, mid, 0x8a837c, sg]];
   for (const s of [-1, 1]) {
-    parts.push([0.35, 0.35, len, s * (ROAD + 0.08), 0.17, mid, 0xbab3a9],
-               [0.12, 0.12, len, s * (ROAD + 0.15), 0.98, mid, 0x3a3e44],
-               [0.12, 0.12, len, s * (ROAD + 0.15), 0.6, mid, 0x3a3e44],
-               [0.9, 2.4, len, s * (ROAD - 0.4), -1.8, mid, 0x5b6068]);
+    parts.push([0.35, 0.35, len, s * (ROAD + 0.08), 0.17, mid, 0xbab3a9, sg],
+               [0.12, 0.12, len, s * (ROAD + 0.15), 0.98, mid, 0x3a3e44, sg],
+               [0.12, 0.12, len, s * (ROAD + 0.15), 0.6, mid, 0x3a3e44, sg],
+               [0.9, 2.4, len, s * (ROAD - 0.4), -1.8, mid, 0x5b6068, sg]);
   }
   levelGroup.add(new T.Mesh(boxes(parts), M.vc));
   const water = new T.Mesh(new T.PlaneGeometry(600, len + 200).rotateX(-Math.PI / 2), M.water);
@@ -1065,10 +1107,11 @@ function buildScenery(len, mid) {
   }
   posts.frustumCulled = false;
   levelGroup.add(posts);
-  const dashCount = Math.floor(len / 5);
-  const dashes = new T.InstancedMesh(new T.BoxGeometry(0.14, 0.02, 2.2), M.dash, dashCount);
+  // lane boundaries (the road is read as three lanes: LANES = -2.6 / 0 / 2.6, so the dashes sit between them at +-1.3)
+  const dashCount = Math.floor(len / 5) * 2;
+  const dashes = new T.InstancedMesh(new T.BoxGeometry(0.12, 0.02, 2.0), M.dash, dashCount);
   for (let i = 0; i < dashCount; i++) {
-    dummy.position.set(0, 0.01, 30 - i * 5); dummy.updateMatrix();
+    dummy.position.set(i & 1 ? 1.3 : -1.3, 0.01, 30 - (i >> 1) * 5); dummy.updateMatrix();
     dashes.setMatrixAt(i, dummy.matrix);
   }
   dashes.frustumCulled = false;
@@ -1451,6 +1494,13 @@ const pops = [];
 const popPool = [];     // recycled DOM nodes, so a fight never allocates elements per hit
 const POP_MAX = 6;       // concurrent world pops: more than this is noise
 const pv = new T.Vector3();
+// Screen projection that follows the curved world (the plain Vector3.project would drift off bent objects at a distance).
+function fxProject(v) {
+  v.applyMatrix4(camera.matrixWorldInverse);
+  const bd = Math.min(Math.max(-v.z - 6, 0), 80), b = BEND.value;
+  v.x += b.x * bd * bd; v.y += b.y * bd * bd;
+  return v.applyMatrix4(camera.projectionMatrix);
+}
 let lastPlus = 0;
 const NUM_RE = /^[+\-]?\d+$/;
 function popText(cls, n) { return cls === 'crit' ? String(n) : (n > 0 ? '+' + n : String(n)); }
@@ -1485,7 +1535,7 @@ function updatePops(dt) {
     const p = pops[i];
     p.t += dt; p.y += dt * 1.4;
     if (p.t > 1.1) { p.el.remove(); popPool.push(p.el); pops.splice(i, 1); continue; }
-    pv.set(p.x, p.y, p.z).project(camera);
+    fxProject(pv.set(p.x, p.y, p.z));
     const sx = (pv.x * 0.5 + 0.5) * vw;
     let sy = (-pv.y * 0.5 + 0.5) * vh;
     if (band && sy > bandTop && sy < bandBot) sy = sy - bandTop < bandBot - sy ? bandTop : bandBot;
@@ -1591,6 +1641,13 @@ const SFX = {
   buy() { this.tone(988, 0.08, 'square', 0.06); this.tone(1318, 0.16, 'square', 0.06, 0, 0.07); },
   chestShake() { for (let i = 0; i < 4; i++) this.tone(180 + (i % 2) * 40, 0.05, 'square', 0.05, 0, i * 0.09); },
   chestOpen() { this.tone(260, 0.25, 'sawtooth', 0.06, 700); [988, 1318, 1568].forEach((f, i) => this.tone(f, 0.18, 'triangle', 0.09, 0, 0.12 + i * 0.07)); },
+  thunder() { const c = this.ctx; if (!c || !this.on) return; const now = c.currentTime; this.noiseHit(now + 0.35, 'lowpass', 220, 0.7, 0.3, 1.3); this.tone(60, 0.9, 'sine', 0.12, -20, 0.35); },
+  buyBig(lv) {
+    const b = 523 * Math.pow(1.122, clamp(lv, 1, 6));
+    [1, 1.26, 1.5, 2].forEach((m, i) => this.tone(b * m, 0.16, 'square', 0.06, 0, i * 0.06));
+    this.tone(b / 2, 0.3, 'triangle', 0.1, 0, 0);
+    this.tone(b * 3, 0.25, 'triangle', 0.05, 0, 0.26);
+  },
   levelUp() { [659, 784, 988, 1318].forEach((f, i) => this.tone(f, 0.13, 'triangle', 0.1, 0, 0.12 + i * 0.06)); },
   tone(freq, dur, type, vol, slide, delay) {
     const c = this.ctx; if (!c || !this.on) return;
@@ -2504,9 +2561,9 @@ function spriteSys(transientCap, puffCap, additive) {
   geo.setAttribute('aCol', new T.BufferAttribute(col, 4).setUsage(T.DynamicDrawUsage));
   geo.setAttribute('aSize', new T.BufferAttribute(siz, 1).setUsage(T.DynamicDrawUsage));
   const mat = new T.ShaderMaterial({
-    uniforms: { map: { value: SOFT_TEX }, uScale: SPR_SCALE },
-    vertexShader: 'attribute vec4 aCol; attribute float aSize; uniform float uScale; varying vec4 vCol;\n' +
-      'void main() { vCol = aCol; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = min(aSize * uScale / -mv.z, 160.0); gl_Position = projectionMatrix * mv; }',
+    uniforms: { map: { value: SOFT_TEX }, uScale: SPR_SCALE, uBend: BEND },
+    vertexShader: 'attribute vec4 aCol; attribute float aSize; uniform float uScale; uniform vec3 uBend; varying vec4 vCol;\n' +
+      'void main() { vCol = aCol; vec4 mv = modelViewMatrix * vec4(position, 1.0); float bd = min(max(-mv.z - 6.0, 0.0), 80.0); mv.xy += uBend.xy * bd * bd; gl_PointSize = min(aSize * uScale / -mv.z, 160.0); gl_Position = projectionMatrix * mv; }',
     fragmentShader: 'uniform sampler2D map; varying vec4 vCol;\n' +
       'void main() { gl_FragColor = vec4(vCol.rgb, texture2D(map, gl_PointCoord).a * vCol.a); }',
     transparent: true, depthWrite: false, blending: additive ? T.AdditiveBlending : T.NormalBlending,
@@ -2625,7 +2682,7 @@ function drawBullets(dt) {
   const tc = bMesh.instanceColor.array, pc = pelMesh.instanceColor.array, rc = rkMesh.instanceColor.array;
   fireSys.reset(); smokeSys.reset();
   const flameA = 0.6 * clamp(110 / (lastFlames + 1), 0.12, 1);
-  const lvK = 1 + 0.2 * (G.weaponLv - 1);
+  const lvK = (1 + 0.2 * (G.weaponLv - 1)) * TH.cur.tracer;      // night / storm: brighter, fatter tracers
   for (let i = 0; i < nb; i++) {
     const dx = bdx[i], dz = bdz[i], ang = Math.atan2(dx, dz);
     if (bk[i]) {      // mech shell
@@ -2937,7 +2994,7 @@ const TIPS = [
 ];
 function showTip(t, show, e) {
   if (show) {
-    pv.set(t.ax(e), t.y, t.az(e)).project(camera);
+    fxProject(pv.set(t.ax(e), t.y, t.az(e)));
     if (pv.z > 1) show = false;
   }
   if (!show) { t.rect = null; if (t.on) { t.on = false; t.el.classList.remove('on'); } return; }
@@ -2997,7 +3054,7 @@ const hits = (a, b) => a && b && a.x0 < b.x1 + 4 && a.x1 > b.x0 - 4 && a.y0 < b.
 function projRect(x0, x1, y0, y1, z) {
   let ax = 1e9, bx = -1e9, ay = 1e9, by = -1e9;
   for (let i = 0; i < 4; i++) {
-    pv.set(i & 1 ? x1 : x0, i & 2 ? y1 : y0, z).project(camera);
+    fxProject(pv.set(i & 1 ? x1 : x0, i & 2 ? y1 : y0, z));
     if (pv.z > 1) return null;
     const sx = (pv.x * 0.5 + 0.5) * vw, sy = (-pv.y * 0.5 + 0.5) * vh;
     if (sx < ax) ax = sx; if (sx > bx) bx = sx; if (sy < ay) ay = sy; if (sy > by) by = sy;
@@ -3038,9 +3095,9 @@ function updateCards() {
   const sig = G.weapon + ':' + G.weaponLv;
   for (const e of vis) {
     if (!e.fxEl) { e.fxEl = buildCard(e); e.fxMode = null; e.fxPlace = 'below'; e.fxForce = false; e.fxChipW = 100; e.fxDx = 0; e.fxSpot = 0; e.fxHide = false; }
-    pv.set(e.x, 2.0, e.z).project(camera);
+    fxProject(pv.set(e.x, 2.0, e.z));
     e.fxSx = (pv.x * 0.5 + 0.5) * vw; e.fxSy = (-pv.y * 0.5 + 0.5) * vh; e.fxOn = true;
-    pv.set(e.x, 0.05, e.z).project(camera);
+    fxProject(pv.set(e.x, 0.05, e.z));
     e.fxGy = (-pv.y * 0.5 + 0.5) * vh;
     if (e.fxSig !== sig) {      // the gun in hand changed (or fonts loaded): same gun -> upgrade call-out instead of bars
       e.fxSig = sig;
@@ -3241,7 +3298,7 @@ bus.on('coin', d => {
   if (t - lastCoinPop > 250) { lastCoinPop = t; pop('+' + amt, d.x, 1.7, d.z, 'gold'); }
   if (reduced || !flyLayer.animate || G.phase === 'menu') return;
   if (t - coinMeasured > 1500) measureCoin();
-  pv.set(d.x, 1.2, d.z).project(camera);
+  fxProject(pv.set(d.x, 1.2, d.z));
   const sx = Math.round((pv.x * 0.5 + 0.5) * vw), sy = Math.round((-pv.y * 0.5 + 0.5) * vh);
   const n = clamp(Math.ceil(amt / 6), 1, 5);
   coinPending += amt;
@@ -3389,6 +3446,7 @@ function updateWorld(t) {
 }
 // sprites for glowing things, pushed into the fire system just before it is flushed
 function worldSprites() {
+  fxLampSprites();
   const pu = reduced ? 0.6 : 0.5 + 0.5 * Math.sin(G.time * 7);
   for (const e of worldList) {
     if (!e.grp || !e.grp.visible || G.z - e.z < -3 || G.z - e.z > 60) continue;
@@ -3482,6 +3540,311 @@ function updateGateReveal(e, dt) {
     e.fxDirty = true;
     SFX.shuffle();
   }
+}
+
+// ================================================================ round 4: themes, route props, lanes, curved world, stage intro
+// ---- themes (G.theme -> sky, fog, lights, extras)
+const THEMES = {
+  dawn:   { sky: 0xe3b79c, fogNear: 28, fogFar: 84, hemiSky: 0xffe6d2, hemiGnd: 0x6a5c58, hemiI: 1.0, sun: 0xffd4a8, sunI: 0.85, sunPos: [-7, 8, 6], tracer: 1 },
+  haze:   { sky: 0x8fa3b3, fogNear: 24, fogFar: 78, hemiSky: 0xe2e9f1, hemiGnd: 0x4a4038, hemiI: 0.95, sun: 0xfff2dc, sunI: 0.75, sunPos: [6, 12, 5], tracer: 1 },
+  sunset: { sky: 0xd78552, fogNear: 22, fogFar: 72, hemiSky: 0xffcfa6, hemiGnd: 0x5a3a36, hemiI: 0.9, sun: 0xff9a55, sunI: 1.0, sunPos: [9, 5, 3], tracer: 1.05 },
+  night:  { sky: 0x070d20, fogNear: 14, fogFar: 58, hemiSky: 0x5668a8, hemiGnd: 0x161a2c, hemiI: 0.6, sun: 0x7f93e0, sunI: 0.4, sunPos: [-5, 10, 4], tracer: 1.5, lamps: true },
+  storm:  { sky: 0x36424c, fogNear: 12, fogFar: 50, hemiSky: 0x8fa0ae, hemiGnd: 0x2a3036, hemiI: 0.65, sun: 0xaabdd2, sunI: 0.35, sunPos: [3, 12, 6], tracer: 1.15, rain: true },
+};
+const TH = { id: null, cur: THEMES.haze, flash: 0, ltIn: 6, again: 0, fApplied: -1 };
+const LIGHTNING = new T.Color(0xdbe6ff), tmpTc = new T.Color();
+function fxApplyTheme(id) {
+  const th = THEMES[id] || THEMES.haze;
+  TH.id = id; TH.cur = th; TH.fApplied = -1; TH.ltIn = rr(3, 6);
+  scene.fog.near = th.fogNear; scene.fog.far = th.fogFar;
+  hemi.color.setHex(th.hemiSky); hemi.groundColor.setHex(th.hemiGnd);
+  sun.color.setHex(th.sun); sun.intensity = th.sunI; sun.position.set(th.sunPos[0], th.sunPos[1], th.sunPos[2]);
+}
+// rain: one LineSegments draw call, streaks positioned and animated entirely in the vertex shader around the camera
+const RAIN_N = 360;
+const rainU = { uTime: { value: 0 }, uCam: { value: new T.Vector3() } };
+const rainGeo = new T.BufferGeometry();
+{
+  const seed = new Float32Array(RAIN_N * 2 * 3), end = new Float32Array(RAIN_N * 2);
+  for (let i = 0; i < RAIN_N; i++) {
+    const a = Math.random(), b = Math.random(), c = Math.random();
+    for (let k = 0; k < 2; k++) { seed.set([a, b, c], (i * 2 + k) * 3); end[i * 2 + k] = k; }
+  }
+  rainGeo.setAttribute('position', new T.BufferAttribute(new Float32Array(RAIN_N * 2 * 3), 3));
+  rainGeo.setAttribute('aSeed', new T.BufferAttribute(seed, 3));
+  rainGeo.setAttribute('aEnd', new T.BufferAttribute(end, 1));
+}
+const rainMesh = new T.LineSegments(rainGeo, new T.ShaderMaterial({
+  uniforms: rainU, transparent: true, depthWrite: false,
+  vertexShader: 'uniform float uTime; uniform vec3 uCam; attribute vec3 aSeed; attribute float aEnd;\n' +
+    'void main() { vec3 w = uCam + vec3((aSeed.x - 0.5) * 36.0, 0.0, (aSeed.z - 0.5) * 70.0 - 16.0); w.y = mod(aSeed.y * 24.0 - uTime * 22.0, 24.0);\n' +
+    'w += aEnd * vec3(0.18, 1.1, 0.0); gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0); }',
+  fragmentShader: 'void main() { gl_FragColor = vec4(0.78, 0.86, 1.0, 0.3); }',
+}));
+rainMesh.frustumCulled = false; rainMesh.visible = false;
+scene.add(rainMesh);
+function fxUpdateTheme(dt) {
+  const id = THEMES[G.theme] ? G.theme : 'haze';
+  if (id !== TH.id) fxApplyTheme(id);
+  const th = TH.cur;
+  rainMesh.visible = !!th.rain;
+  if (th.rain) { rainU.uTime.value = G.time * (reduced ? 0.2 : 1); rainU.uCam.value.set(camera.position.x, 0, camera.position.z); }
+  if (th.rain && !reduced && !G.paused) {           // lightning: a flash that decays, sometimes with a second strike (never with reduced motion)
+    TH.ltIn -= dt;
+    if (TH.ltIn <= 0) { TH.flash = 1; TH.again = Math.random() < 0.5 ? 0.16 : 0; TH.ltIn = rr(5, 11); SFX.thunder(); }
+    if (TH.again > 0) { TH.again -= dt; if (TH.again <= 0) TH.flash = 0.9; }
+    TH.flash = Math.max(0, TH.flash - dt * 3.2);
+  } else TH.flash = 0;
+  const f = Math.round(TH.flash * 50) / 50;
+  if (f !== TH.fApplied) {
+    TH.fApplied = f;
+    tmpTc.setHex(th.sky).lerp(LIGHTNING, f * 0.55);
+    scene.background.copy(tmpTc); scene.fog.color.copy(tmpTc);
+    hemi.intensity = th.hemiI + f * 1.1;
+  }
+}
+
+// ---- prop geometries (built once, shared)
+function fxColored(geo, hex) {
+  const g = geo.index ? geo.toNonIndexed() : geo, c = new T.Color(hex), n = g.attributes.position.count, col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) col.set([c.r, c.g, c.b], i * 3);
+  g.setAttribute('color', new T.BufferAttribute(col, 3));
+  return g;
+}
+function fxMerge(list) {
+  const pos = [], nor = [], col = [];
+  for (const g of list) {
+    pos.push(...g.attributes.position.array); nor.push(...g.attributes.normal.array); col.push(...g.attributes.color.array);
+  }
+  const geo = new T.BufferGeometry();
+  geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new T.Float32BufferAttribute(nor, 3));
+  geo.setAttribute('color', new T.Float32BufferAttribute(col, 3));
+  geo.computeBoundingSphere(); geo.userData.shared = true;
+  return geo;
+}
+const PROPG = {};
+function fxProp(name) {
+  if (PROPG[name]) return PROPG[name];
+  let g;
+  switch (name) {
+    case 'jersey': g = boxes([[0.62, 0.3, 1.55, 0, 0.15, 0, 0xb9b5ad], [0.38, 0.5, 1.55, 0, 0.55, 0, 0xc6c2ba], [0.4, 0.14, 0.42, 0, 0.82, -0.52, 0xe0a820], [0.4, 0.14, 0.42, 0, 0.82, 0.52, 0xe0a820], [0.4, 0.14, 0.4, 0, 0.82, 0, 0x2a2a2a]]); break;
+    case 'wreck': g = boxes([[1.7, 0.55, 3.5, 0, 0.5, 0, 0xd2d2d2], [1.45, 0.5, 1.7, 0, 1.0, -0.1, 0x565b61], [0.25, 0.5, 0.55, -0.88, 0.28, 1.1, 0x202020], [0.25, 0.5, 0.55, 0.88, 0.28, 1.1, 0x202020], [0.25, 0.5, 0.55, -0.88, 0.28, -1.1, 0x202020], [0.25, 0.5, 0.55, 0.88, 0.28, -1.1, 0x202020]]); break;
+    case 'debris': g = boxes([[0.6, 0.28, 0.45, 0, 0.14, 0, 0x8a8680], [0.3, 0.2, 0.5, 0.3, 0.34, 0.1, 0x6d6a66]]); break;
+    case 'cone': g = boxes([[0.34, 0.14, 0.34, 0, 0.07, 0, 0x303030], [0.22, 0.45, 0.22, 0, 0.36, 0, 0xff6a1a], [0.24, 0.1, 0.24, 0, 0.34, 0, 0xffffff]]); break;
+    case 'stripe': g = boxes([[7.8, 0.03, 0.55, 0, 0.015, 0, 0xffffff]]); break;
+    case 'railfrag': g = boxes([[0.14, 1.0, 0.14, 0, 0.5, 0, 0x3a3e44], [0.12, 0.12, 2.2, 0, 0.9, 0.7, 0x4a4e54], [0.12, 0.12, 1.6, 0, 0.55, -0.3, 0x4a4e54]]); break;
+    case 'lamp': g = boxes([[0.14, 4.4, 0.14, 0, 2.2, 0, 0x3a3e44], [0.12, 0.12, 0.12, 0, 4.4, 0, 0x3a3e44], [0.9, 0.1, 0.1, -0.45, 4.42, 0, 0x3a3e44], [0.5, 0.14, 0.3, -0.9, 4.34, 0, 0xfff0c0]]); break;
+    case 'sign': {
+      const post = boxes([[0.1, 2.3, 0.1, 0, 1.15, 0, 0x4a4e54]]);
+      const plate = fxColored(new T.CylinderGeometry(0.66, 0.66, 0.07, 4).rotateX(Math.PI / 2).translate(0, 2.35, 0.06), 0xf2c230);
+      const mark = boxes([[0.1, 0.42, 0.09, 0, 2.42, 0.1, 0x1a1a1a], [0.1, 0.1, 0.09, 0, 2.12, 0.1, 0x1a1a1a]]);
+      g = fxMerge([post, plate, mark]); break;
+    }
+    default: g = boxes([[1, 1, 1, 0, 0.5, 0, 0xffffff]]);
+  }
+  g.userData.shared = true;
+  return PROPG[name] = g;
+}
+const ROUTE = { route: null, lg: null, theme: null, group: null, lamps: [] };
+const hashF = n => { const x = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return x - Math.floor(x); };
+function fxBuildRoute() {
+  if (ROUTE.group) { if (ROUTE.group.parent) ROUTE.group.parent.remove(ROUTE.group); disposeTree(ROUTE.group); ROUTE.group = null; }
+  ROUTE.route = G.route; ROUTE.lg = levelGroup; ROUTE.theme = TH.id; ROUTE.lamps = [];
+  if (!levelGroup) return;
+  const grp = new T.Group();
+  levelGroup.add(grp); ROUTE.group = grp;
+  const rng = mulberry((G.level | 0) * 5171 + 77);       // own generator: never touches the stage's R() sequence
+  const rr_ = (a, b) => a + (b - a) * rng();
+  const inst = {};
+  const add = (t, x, y, z, ry, rz, sc, col) => (inst[t] || (inst[t] = [])).push([x, y, z, ry, rz, sc, col == null ? 0xffffff : col]);
+  const flats = [];       // { x0, x1, z0, z1, opacity } dark / scorch rectangles on the road
+  const scorch = [];
+  for (const seg of G.route || []) {
+    const z0 = seg.z0, z1 = seg.z1, len = z0 - z1, mid = (z0 + z1) / 2;
+    switch (seg.type) {
+      case 'narrow': {
+        const h = seg.half || 2.6;
+        for (let z = z0 - 1.5; z > z1 + 0.5; z -= 3.3) {
+          if (rng() < 0.12) continue;
+          for (const s of [-1, 1]) add('jersey', s * (h + 0.32 + rr_(-0.04, 0.08)), 0, z + rr_(-0.3, 0.3), rr_(-0.1, 0.1), 0, 1);
+        }
+        if (h + 1.5 < ROAD - 0.5) for (let z = z0 - 6; z > z1 + 2; z -= rr_(9, 14)) { const s = rng() < 0.5 ? -1 : 1; add('wreck', s * (h + 1.4), 0, z, rr_(-0.5, 0.5), 0, 1, [0xd2d2d2, 0xb8745a, 0x6f8aa0, 0xa8a060][(rng() * 4) | 0]); }
+        for (let i = 0, n = Math.round(len / 1.8); i < n; i++) { const s = rng() < 0.5 ? -1 : 1; add('debris', s * rr_(h + 0.55, ROAD - 0.25), 0, rr_(z1, z0), rr_(0, 6.28), 0, rr_(0.6, 1.4)); }
+        for (let i = 0; i < 6; i++) for (const s of [-1, 1]) add('cone', s * (ROAD - 0.4 + (h + 0.3 - (ROAD - 0.4)) * (i / 5)), 0, z0 - 1 - i * 0.8, 0, 0, 1);
+        for (const s of [-1, 1]) flats.push({ x0: s > 0 ? h : -ROAD, x1: s > 0 ? ROAD : -h, z0, z1, o: 0.4 });
+        break;
+      }
+      case 'fork': {
+        const sx = seg.split || 0;
+        for (let z = z0 - 1; z > z1; z -= 1.7) add('jersey', sx, 0, z, 0, 0, 1);
+        for (let i = 0; i < 4; i++) add('cone', sx + (i < 2 ? -0.7 : 0.7), 0, z0 - 0.8 - (i % 2) * 0.8, 0, 0, 1);
+        break;
+      }
+      case 'gauntlet': {
+        for (let z = z0 - 4; z > z1; z -= 13) for (const s of [-1, 1]) add('sign', s * (ROAD - 0.35), 0, z, 0, 0, 1);
+        for (let i = 0, n = Math.round(len / 3.5); i < n; i++) scorch.push([rr_(-3.6, 3.6), rr_(z1, z0), rr_(0.8, 2.2)]);
+        for (let i = 0; i < 4; i++) { add('stripe', 0, 0, z0 - 1 - i * 0.9, 0, 0, 1, i & 1 ? 0x1a1a1a : 0xf2c230); add('stripe', 0, 0, z1 + 1 + i * 0.9, 0, 0, 1, i & 1 ? 0x1a1a1a : 0xf2c230); }
+        break;
+      }
+      case 'ambush': {
+        for (let z = z0 - 4; z > z1; z -= rr_(8, 12)) for (const s of [-1, 1]) {
+          add('railfrag', s * (ROAD + 0.15), 0, z, rr_(-0.3, 0.3), s * rr_(0.3, 0.7), 1);
+          add('debris', s * (ROAD - 0.5), 0, z + rr_(-1, 1), rr_(0, 6.28), 0, rr_(0.8, 1.5));
+        }
+        break;
+      }
+      case 'arena': ROUTE.arena = seg; break;
+      default: break;
+    }
+  }
+  const mkInst = (t, list) => {
+    const m = new T.InstancedMesh(fxProp(t), M.vc, list.length);
+    const c = new T.Color();
+    list.forEach((a, i) => {
+      dummy.position.set(a[0], a[1], a[2]); dummy.rotation.set(0, a[3], a[4]); dummy.scale.setScalar(a[5]); dummy.updateMatrix();
+      m.setMatrixAt(i, dummy.matrix); m.setColorAt(i, c.setHex(a[6]));
+    });
+    dummy.scale.setScalar(1); dummy.rotation.set(0, 0, 0);
+    m.frustumCulled = false; grp.add(m);
+  };
+  for (const t in inst) mkInst(t, inst[t]);
+  // flat decals: dark road outside a narrow section, scorch marks, arena plaza
+  if (flats.length) {
+    const mat = new T.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    mat.userData.own = true;
+    for (const f of flats) {
+      const sg = Math.max(1, Math.ceil((f.z0 - f.z1) / 4));
+      const m = new T.Mesh(new T.PlaneGeometry(f.x1 - f.x0, f.z0 - f.z1, 1, sg).rotateX(-Math.PI / 2), mat);
+      m.position.set((f.x0 + f.x1) / 2, 0.03, (f.z0 + f.z1) / 2); m.frustumCulled = false; grp.add(m);
+    }
+  }
+  if (scorch.length) {
+    const mat = new T.MeshBasicMaterial({ color: 0x1a120c, transparent: true, opacity: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    mat.userData.own = true;
+    const m = new T.InstancedMesh(new T.CircleGeometry(1, 10).rotateX(-Math.PI / 2), mat, scorch.length);
+    scorch.forEach((a, i) => { dummy.position.set(a[0], 0.026, a[1]); dummy.rotation.set(0, rr_(0, 6.28), 0); dummy.scale.set(a[2], 1, a[2] * rr_(0.6, 1)); dummy.updateMatrix(); m.setMatrixAt(i, dummy.matrix); });
+    dummy.scale.setScalar(1); dummy.rotation.set(0, 0, 0);
+    m.frustumCulled = false; grp.add(m);
+  }
+  const ar = ROUTE.arena; ROUTE.arena = null;
+  if (ar) {
+    const len = ar.z0 - ar.z1, mid = (ar.z0 + ar.z1) / 2;
+    const plaza = new T.Mesh(boxes([[20, 0.5, len, 0, -0.24, mid, 0x837d76, Math.max(1, Math.ceil(len / 4))]]), M.vc);
+    plaza.frustumCulled = false; grp.add(plaza);
+    const ringMat = new T.MeshBasicMaterial({ color: 0xe9e4d8, transparent: true, opacity: 0.55, depthWrite: false, side: T.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    ringMat.userData.own = true;
+    for (const r of [[5.4, 5.8], [2.2, 2.45]]) { const ring = new T.Mesh(new T.RingGeometry(r[0], r[1], 56).rotateX(-Math.PI / 2), ringMat); ring.position.set(0, 0.04, mid); ring.frustumCulled = false; grp.add(ring); }
+  }
+  // night: street lamps along both rails (the glow sprites are pushed in worldSprites)
+  if (TH.cur.lamps) {
+    const list = [];
+    for (let z = 20, i = 0; z > -(G.L + 60); z -= 14, i++) for (const s of [-1, 1]) { list.push([s * (ROAD + 0.4), 0, z, s > 0 ? 0 : Math.PI, 0, 1, 0xffffff]); ROUTE.lamps.push([s * (ROAD - 0.5), 4.3, z]); }
+    mkInst('lamp', list);
+  }
+}
+function fxEnsureRoute() {
+  if (ROUTE.route === G.route && ROUTE.lg === levelGroup && ROUTE.theme === TH.id && ROUTE.n === (G.route || []).length) return;
+  ROUTE.n = (G.route || []).length;
+  fxBuildRoute();
+}
+// per-segment bend of the visual world (mild, never in the menu, never with reduced motion)
+const BENDC = { x: 0, y: 0 };
+function fxUpdateBend(dt) {
+  let tx = 0, ty = 0;
+  if (!reduced && G.phase !== 'menu' && G.route && G.route.length) {
+    let idx = -1;
+    for (let i = 0; i < G.route.length; i++) if (G.z <= G.route[i].z0) idx = i;
+    if (idx >= 0) {
+      const seg = G.route[idx], k = seg.type === 'narrow' || seg.type === 'arena' ? 0.3 : 1, h = (G.level | 0) * 31 + idx * 17;
+      tx = (hashF(h) * 2 - 1) * 0.00075 * k; ty = (hashF(h * 1.7 + 3) * 2 - 1) * 0.0005 * k;
+    }
+  }
+  const a = Math.min(1, dt * 0.6);
+  BENDC.x += (tx - BENDC.x) * a; BENDC.y += (ty - BENDC.y) * a;
+  BEND.value.set(BENDC.x, BENDC.y, 0);
+}
+
+// ---- lanes: highlight the next gun row (gun lanes tinted in the gun's colour, empty lane marked 「保留」), plus the lane the squad is in
+const laneNearest = x => { let b = 0; for (let i = 1; i < 3; i++) if (Math.abs(LANES[i] - x) < Math.abs(LANES[b] - x)) b = i; return b; };
+const LANE_TEX = (() => {
+  const c = document.createElement('canvas'); c.width = 4; c.height = 64;
+  const x = c.getContext('2d'), g = x.createLinearGradient(0, 64, 0, 0);     // canvas bottom = +z end (toward the squad), top = the pickup end
+  g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.75, 'rgba(255,255,255,.8)'); g.addColorStop(1, 'rgba(255,255,255,1)');
+  x.fillStyle = g; x.fillRect(0, 0, 4, 64);
+  return new T.CanvasTexture(c);
+})();
+const laneMeshes = [0, 1, 2].map(() => {
+  const m = new T.Mesh(new T.PlaneGeometry(2.3, 16.5).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ map: LANE_TEX, color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+  m.visible = false; m.frustumCulled = false; scene.add(m);
+  return m;
+});
+const laneLabelTex = (() => {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+  const x = c.getContext('2d');
+  x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round';
+  x.font = '900 70px "Noto Sans TC", sans-serif'; x.lineWidth = 14; x.strokeStyle = 'rgba(8,24,44,.95)'; x.strokeText('保留', 128, 46); x.fillStyle = '#a9e4ff'; x.fillText('保留', 128, 46);
+  x.font = '900 34px "Noto Sans TC", sans-serif'; x.lineWidth = 9; x.strokeText('不換槍', 128, 102); x.fillText('不換槍', 128, 102);
+  return new T.CanvasTexture(c);
+})();
+const laneLabels = [0, 1].map(() => {
+  const m = new T.Mesh(new T.PlaneGeometry(2.4, 1.2).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ map: laneLabelTex, transparent: true, opacity: 0, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
+  m.visible = false; m.frustumCulled = false; scene.add(m);
+  return m;
+});
+function fxUpdateLanes(t) {
+  let rowZ = null;
+  if (G.phase === 'run' && !G.paused) for (const e of wList) { const d = G.z - e.z; if (!e.taken && d > -1.2 && d < 25 && (rowZ === null || e.z > rowZ)) rowZ = e.z; }
+  if (rowZ === null) { for (const m of laneMeshes) m.visible = false; for (const m of laneLabels) m.visible = false; return; }
+  const occ = [false, false, false], col = [0xffffff, 0xffffff, 0xffffff];
+  for (const e of wList) if (!e.taken && Math.abs(e.z - rowZ) < 2.5) { const l = laneNearest(e.x); occ[l] = true; col[l] = WEAPONS[e.w].color; }
+  const cur = laneNearest(G.x), a = clamp((25 - (G.z - rowZ)) / 6, 0, 1), pulse = reduced ? 0.5 : 0.5 + 0.5 * Math.sin(t * 6);
+  let nl = 0;
+  for (let i = 0; i < 3; i++) {
+    const m = laneMeshes[i];
+    m.visible = a > 0.01;
+    m.position.set(LANES[i], 0.032, rowZ + 7.2);
+    const mat = m.material;
+    mat.color.setHex(occ[i] ? col[i] : 0x9cc4e4);
+    mat.opacity = a * (occ[i] ? 0.34 + (cur === i ? 0.2 + 0.1 * pulse : 0) : 0.14 + (cur === i ? 0.18 + 0.06 * pulse : 0));
+    if (!occ[i] && nl < 2) {
+      const lb = laneLabels[nl++];
+      lb.visible = a > 0.01; lb.position.set(LANES[i], 0.045, rowZ + 3.4);
+      lb.material.opacity = a * (cur === i ? 1 : 0.7);
+    }
+  }
+  for (let k = nl; k < 2; k++) laneLabels[k].visible = false;
+}
+
+// ---- stage intro card (title + route name); never blocks input
+const introEl = $('#intro');
+let introPhase = null;
+function fxIntro() {
+  if (G.phase !== introPhase) {
+    if (introPhase === 'menu' && G.phase === 'run') {
+      introEl.children[0].textContent = 'STAGE ' + G.level;
+      introEl.children[1].textContent = G.routeName || '';
+      if (introEl.animate) {
+        introEl.getAnimations().forEach(a => a.cancel());
+        introEl.animate(reduced
+          ? [{ opacity: 0 }, { opacity: 1, offset: 0.15 }, { opacity: 1, offset: 0.8 }, { opacity: 0 }]
+          : [{ opacity: 0, transform: 'translateY(-14px) scale(.9)' }, { opacity: 1, transform: 'none', offset: 0.14 }, { opacity: 1, transform: 'none', offset: 0.78 }, { opacity: 0, transform: 'translateY(-8px)' }],
+          { duration: 1700, easing: 'ease-out' });
+      }
+    }
+    introPhase = G.phase;
+  }
+}
+const SEG_LABEL = { narrow: ['窄橋', '隊伍被擠在中間'], fork: ['分岔路', '選一條路'], gauntlet: ['火線走廊', '小心油桶'], ambush: ['伏擊！', '兩側有屍群'], arena: ['決戰廣場', '巨屍就在前方'] };
+bus.on('routeSegment', d => {
+  const seg = d.seg || {}, l = SEG_LABEL[seg.type];
+  if (l) bannerPush(l[0], '#ffd34d', l[1], 1);
+});
+
+// ---- extra world sprites for the theme (street lamp glows)
+function fxLampSprites() {
+  if (!TH.cur.lamps) return;
+  for (const l of ROUTE.lamps) { const d = G.z - l[2]; if (d < -4 || d > 62) continue; if (fireSys.full()) break; fireSys.push(l[0], l[1], l[2], 1, 0.82, 0.45, 0.55, 2.6); }
 }
 
 let lastBoomRing = 0;
@@ -3589,6 +3952,7 @@ function fxReset() {
   coinPending = 0; coinShown = G.coins | 0; hudCoins._v = null; flyLayer.textContent = ''; flyActive = 0;
   for (const id in buffState) { buffState[id].el.remove(); delete buffState[id]; }
   TSL.length = 0; G.timeScale = 1; auraMesh.visible = false; bannerClear(); CH.n = 0;
+  TH.flash = 0; TH.fApplied = -1; for (const m of laneMeshes) m.visible = false; for (const m of laneLabels) m.visible = false;
   if (RS.on && G.phase !== 'win' && G.phase !== 'over') hideResult();
 }
 function fxUpdate(dt) {
@@ -3603,6 +3967,11 @@ function fxUpdate(dt) {
   updateBossBar(dt);
   updateWorld(G.time);
   updateBuffHud(G.time);
+  fxUpdateTheme(dt);
+  fxEnsureRoute();
+  fxUpdateBend(dt);
+  fxUpdateLanes(G.time);
+  fxIntro();
 }
 
 // ---- adaptive resolution: start at min(dpr, 2); step 2 -> 1.5 -> 1 when frames stay slow, then trim particle counts
@@ -3771,7 +4140,7 @@ function goMenu() {
 function syncMenu() {
   $('#menuCoins').textContent = String(SAVE.coins | 0);
   const sv = SAVE.stages && SAVE.stages[G.level], entry = sv && sv.entry ? sv.entry : TUNE.startSquad, stars = clamp(sv && sv.stars | 0, 0, 3);
-  $('#entryLine').innerHTML = '起始兵力 ×' + entry + '　<span class="st">' + '★'.repeat(stars) + '<i>' + '★'.repeat(3 - stars) + '</i></span>';
+  $('#entryLine').innerHTML = (G.routeName ? '<span class="rn">' + G.routeName + '</span>　' : '') + '起始兵力 ×' + entry + '　<span class="st">' + '★'.repeat(stars) + '<i>' + '★'.repeat(3 - stars) + '</i></span>';
   const multi = best > 1;
   const prev = $('#stagePrev'), next = $('#stageNext');
   prev.hidden = next.hidden = !multi;
@@ -3911,6 +4280,10 @@ $r('resShop').addEventListener('click', () => openShop('result'));
 const shopEl = $r('shop'), shopList = $r('shopList');
 let shopFrom = null, shopBought = false;
 const upCost = (u, lv) => Math.round(u.base * Math.pow(u.grow, lv));
+// the cumulative effect at a level, derived from the per-level description ('全隊傷害 +10%' at Lv3 -> '全隊傷害 +30%')
+const upTotalText = (u, lv) => u.desc.replace(/\d+(\.\d+)?/g, m => String(+(parseFloat(m) * lv).toFixed(2)));
+const shopToast = document.createElement('div'); shopToast.className = 'stoast'; shopToast.innerHTML = '<b></b><small></small>';
+document.body.appendChild(shopToast);
 const COIN_ICON = '<svg class="cico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="#ffd34d" stroke="#a86a00" stroke-width="2"/><circle cx="12" cy="12" r="6.2" fill="none" stroke="#c98a00" stroke-width="2"/></svg>';
 function renderShop(fresh) {
   const coins = SAVE.coins | 0;
@@ -3922,6 +4295,7 @@ function renderShop(fresh) {
     const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = u.name;
     const em = document.createElement('em'); em.textContent = 'Lv ' + lv + '/' + u.max; nm.appendChild(em);
     const ds = document.createElement('div'); ds.className = 'ds'; ds.textContent = u.desc;
+    const tot = document.createElement('div'); tot.className = 'tot' + (fresh === u.id ? ' fresh' : ''); tot.textContent = lv > 0 ? '目前　' + upTotalText(u, lv) : '';
     const pp = document.createElement('div'); pp.className = 'pp';
     for (let i = 0; i < u.max; i++) { const p = document.createElement('i'); if (i < lv) p.className = 'on' + (fresh === u.id && i === lv - 1 ? ' fresh' : ''); pp.appendChild(p); }
     const bt = document.createElement('button'); bt.type = 'button'; bt.className = 'buy' + (maxed ? ' maxed' : '');
@@ -3929,7 +4303,7 @@ function renderShop(fresh) {
     bt.disabled = !can;
     bt.setAttribute('aria-label', u.name + (maxed ? ' 已滿級' : ' 升級，需要 ' + cost + ' 金幣'));
     bt.addEventListener('click', () => buy(u.id, bt));
-    li.append(nm, ds, pp, bt);
+    li.append(nm, ds, tot, pp, bt);
     shopList.appendChild(li);
   }
 }
@@ -3940,7 +4314,15 @@ function buy(id, btn) {
 }
 bus.on('upgradeBought', d => {
   shopBought = true;
-  SFX.buy();
+  SFX.buyBig(d.lv | 0);
+  const u = UPGRADES.find(x => x.id === d.id);
+  if (u && !shopEl.hidden && shopToast.animate) {            // weighty feedback: the new total floats up
+    shopToast.children[0].textContent = upTotalText(u, d.lv | 0);
+    shopToast.children[1].textContent = u.name + ' Lv ' + (d.lv | 0) + (d.lv >= u.max ? '　滿級！' : '');
+    shopToast.getAnimations().forEach(a => a.cancel());
+    shopToast.animate(reduced ? [{ opacity: 0 }, { opacity: 1, offset: 0.2 }, { opacity: 1, offset: 0.8 }, { opacity: 0 }]
+      : [{ opacity: 0, transform: 'translateY(16px) scale(.7)' }, { opacity: 1, transform: 'scale(1.12)', offset: 0.2 }, { opacity: 1, transform: 'scale(1)', offset: 0.7 }, { opacity: 0, transform: 'translateY(-18px)' }], { duration: 1300, easing: 'ease-out' });
+  }
   renderShop(d.id);
   syncMenu();
   if (!shopEl.hidden) {
@@ -4063,7 +4445,7 @@ function resetSave() {
 }
 // Start stage n from the beginning with its entry squad (same as prepare(n) + startRun()).
 function startStage(n) { prepare(n); startRun(); }
-window.__zb = { SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
+window.__zb = { BEND, SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
   stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0), bw: Array.from(bw.subarray(0, nb)), bl: Array.from(bl.subarray(0, nb)) }),
   perf: () => ({ pr: PR_STEPS[prIdx], steps: PR_STEPS, avg: Perf.avg, fxScale }) };
 })();
