@@ -177,7 +177,8 @@ function botRun(cfg) {
     for (let k = 0; k < 6; k++) { num += ctx.w[k] * NICHE[w][k]; den += ctx.w[k]; }
     const tot = den + ctx.boss * 8;
     num += ctx.boss * 8 * BOSS_NICHE[w];
-    return lvm(w, lv) * (tot > 0 ? num / tot : 1);
+    const slow = WP[w].rate < 3 ? Math.min(1, Math.max(0.5, (G.squad + 6) / 30)) : 1;   // a slow heavy gun is weak with a handful of soldiers (the rate bar says it)
+    return lvm(w, lv) * (tot > 0 ? num / tot : 1) * slow;
   }
   // value (in the same units as gate values) of walking over weapon pickup e
   function gunValue(e) {
