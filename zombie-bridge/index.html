@@ -5139,6 +5139,13 @@ document.addEventListener('pointerdown', e => {
 const hudCloudInit = G.cloud || { state: 'off' };
 hudCloudChip(hudCloudInit.state, hudCloudInit.lastSyncAt);
 bus.on('cloudSync', e => hudCloudChip(e.state, e.lastSyncAt));
+// A cloud copy changed SAVE (another device's progress arrived): re-read it on the screens that show it. In the menu, jump to
+// the highest unlocked stage, as a fresh boot would; never touch a run (the engine defers remote saves until a run ends).
+bus.on('cloudSync', e => {
+  if (!e.merged) return;
+  if (G.phase === 'menu') { if (G.level < best) prepare(best); syncMenu(); }
+  if (!shopEl.hidden) renderShop();
+});
 
 prepare(G.level);
 syncMenu();
