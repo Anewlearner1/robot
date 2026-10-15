@@ -1660,7 +1660,10 @@ function syncSoldiers() {
 }
 // colCap: how many columns fit the road where the squad is (narrow segments and fork sides squeeze the formation, see updateRoute).
 let colCap = 99;
-function perRow(n) { return Math.min(colCap, n <= 2 ? Math.max(1, n) : Math.min(5, Math.ceil(Math.sqrt(n * 1.5)))); }
+// Soldiers per row (the single source of truth for formation width; the camera reads it too). Round 5: big squads use wider rows so
+// 100 soldiers are ~13 rows, not 20: up to 9 soldiers max 5 per row (as before), 10-39 max 6, 40-79 max 7, 80+ max 8; narrow roads and
+// fork sides still cap it through colCap.
+function perRow(n) { return Math.min(colCap, n <= 2 ? Math.max(1, n) : Math.min(n < 10 ? 5 : n < 40 ? 6 : n < 80 ? 7 : 8, Math.ceil(Math.sqrt(n * 1.5)))); }
 const laneOf = x => { let b = 0; for (let i = 1; i < 3; i++) if (Math.abs(x - LANES[i]) < Math.abs(x - LANES[b])) b = i; return b; };   // nearest lane index 0..2
 function formationHalf() { return (perRow(G.soldiers.length) - 1) / 2 * SP; }
 
@@ -1894,6 +1897,7 @@ function spawnBullet(x, z, dx, dz, dmg, kind, w, ph, tx, tz) {
 // seconds until a lob at height h with vertical speed v reaches the ground
 function lobTime(h, v) { const g = TUNE.lobG; return (v + Math.sqrt(v * v + 2 * g * Math.max(0, h))) / g; }
 function removeBullet(i) {
+  // (front end: its fxBulletEnd(i) call goes right here, before nb changes and before any swap)
   const j = --nb;
   if (i === j) return;
   bw[i] = bw[j];

@@ -1112,6 +1112,15 @@ const results = await page.evaluate(() => {
       for (const e of G.events) if (e.type === 'gate') e.used = true;
       const wk = G.events.find(e => e.type === 'weapon'); wk.taken = false; G.weapon = 1; G.z = wk.z + 0.3; G.x = G.tx = wk.x; zb.step(1 / 60);
       check('cap: crates cannot push the squad above 100', G.squad === 100, G.squad);
+      {
+        const rowsFor = n => { G.squad = n; zb.syncSoldiers(); const r = Math.min(G.soldiers.length, 99) && Math.round(zb.formationHalf() * 2 / 0.62) + 1; return r; };
+        const w = [9, 25, 50, 100].map(rowsFor);
+        check('formation: rows widen with the squad (9 -> <=5, 25 -> 6, 50 -> 7, 100 -> 8 per row, ~13 rows for 100)', w[0] <= 5 && w[1] === 6 && w[2] === 7 && w[3] === 8 && Math.ceil(100 / w[3]) <= 13, w.join());
+        G.squad = 100; zb.syncSoldiers(); G.tx = 3.5; for (let i = 0; i < 90; i++) { G.shield = 1e9; zb.step(1 / 60); }
+        check('formation: a squad of 100 in rows of 8 still reaches the side lane (centre in lane 2)', zb.laneOf(G.x) === 2 && G.x + zb.formationHalf() <= 3.56, `x ${G.x.toFixed(2)} half ${zb.formationHalf().toFixed(2)}`);
+        G.tx = -3.5; for (let i = 0; i < 90; i++) { G.shield = 1e9; zb.step(1 / 60); }
+        check('formation: ... and the other side lane too', zb.laneOf(G.x) === 0, `x ${G.x.toFixed(2)}`);
+      }
       zb.SAVE.stages[2] = { entry: 100, stars: 0 };
       localStorage.setItem('zombie-bridge-save', JSON.stringify({ v: 1, coins: 0, best: 2, upgrades: {}, stages: { 2: { entry: 999, stars: 0 } } }));
       zb.loadSave();
