@@ -673,25 +673,32 @@ const LANES = [-2.6, 0, 2.6];
 //   stages: { [n]: { entry: squad you start stage n with (carry-over from clearing n-1), stars: best 0..3 } }.
 // Clearing stage n stores the surviving squad as stages[n+1].entry (logic decides the exact rule, e.g. keep the larger).
 // Retrying a stage, or starting it from the menu, starts with stages[n].entry (stage 1 = TUNE.startSquad).
-const SAVE = { v: 1, coins: 0, upgrades: {}, best: 1, stages: {} };
+// Round 6 (cloud save): SAVE also carries rev (integer, +1 on every saveGame), updatedAt (ms of the last saveGame) and epoch (+1 on every
+//   resetSave). localStorage stays the always-available cache; the cloud copy (db doc data/users/<id>/save, see the cloud layer) is merged in:
+//   MERGE POLICY (mergeSaves; never lose progress): different epochs -> the higher epoch wins as a whole (that is how a reset travels);
+//   same epoch -> best: max; per stage: stars max, entry max; upgrades: per-id max level; coins: from the copy with the newer updatedAt
+//   (coins go down when spent, so max would duplicate them; equal updatedAt: the larger); rev / updatedAt: max.
+const SAVE = { v: 1, coins: 0, upgrades: {}, best: 1, stages: {}, rev: 0, updatedAt: 0, epoch: 0 };
 const SAVE_KEY = 'zombie-bridge-save', OLD_BEST_KEY = 'zombie-bridge-best';
 const toInt = (v, lo, hi, d) => { v = parseInt(v, 10); return isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
-function resetSaveData() { SAVE.v = 1; SAVE.coins = 0; SAVE.upgrades = {}; SAVE.best = 1; SAVE.stages = {}; }
+function resetSaveData() { SAVE.v = 1; SAVE.coins = 0; SAVE.upgrades = {}; SAVE.best = 1; SAVE.stages = {}; SAVE.rev = 0; SAVE.updatedAt = 0; SAVE.epoch = 0; }
+// A clean save object from untrusted data (a stored JSON string's parse, or a cloud document): every field clamped, unknown keys dropped.
+function sanitizeSave(o) {
+  const r = { v: 1, coins: toInt(o.coins, 0, 1e9, 0), upgrades: {}, best: toInt(o.best, 1, 999, 1), stages: {},
+    rev: toInt(o.rev, 0, 1e9, 0), updatedAt: toInt(o.updatedAt, 0, 9e15, 0), epoch: toInt(o.epoch, 0, 1e9, 0) };
+  if (o.upgrades && typeof o.upgrades === 'object') for (const u of UPGRADES) r.upgrades[u.id] = toInt(o.upgrades[u.id], 0, u.max, 0);
+  if (o.stages && typeof o.stages === 'object') for (const k of Object.keys(o.stages)) {
+    const n = toInt(k, 1, 999, 0), st = o.stages[k];
+    if (n && st && typeof st === 'object') r.stages[n] = { entry: toInt(st.entry, 1, TUNE.maxSquad, TUNE.startSquad), stars: toInt(st.stars, 0, 3, 0) };
+  }
+  return r;
+}
 // Reads the save (every storage access in try/catch). No save yet: migrates the old `zombie-bridge-best` key.
 function loadSave() {
   resetSaveData();
   let o = null;
   try { const raw = localStorage.getItem(SAVE_KEY); if (raw) o = JSON.parse(raw); } catch (e) { o = null; }
-  if (o && typeof o === 'object') {
-    SAVE.coins = toInt(o.coins, 0, 1e9, 0);
-    SAVE.best = toInt(o.best, 1, 999, 1);
-    if (o.upgrades && typeof o.upgrades === 'object') for (const u of UPGRADES) SAVE.upgrades[u.id] = toInt(o.upgrades[u.id], 0, u.max, 0);
-    if (o.stages && typeof o.stages === 'object') for (const k of Object.keys(o.stages)) {
-      const n = toInt(k, 1, 999, 0), st = o.stages[k];
-      if (n && st && typeof st === 'object') SAVE.stages[n] = { entry: toInt(st.entry, 1, TUNE.maxSquad, TUNE.startSquad), stars: toInt(st.stars, 0, 3, 0) };
-    }
-    return;
-  }
+  if (o && typeof o === 'object') { Object.assign(SAVE, sanitizeSave(o)); return; }
   let old = 1;
   try { old = toInt(localStorage.getItem(OLD_BEST_KEY), 1, 999, 1); } catch (e) {}
   if (old > 1) {
@@ -699,7 +706,9 @@ function loadSave() {
     for (let n = 2; n <= old; n++) SAVE.stages[n] = { entry: Math.min(TUNE.maxSquad, TUNE.migrateEntry), stars: 0 };
   }
 }
-function saveGame() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(SAVE)); } catch (e) {} }
+function persistLocal() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(SAVE)); } catch (e) {} }
+// Every save: rev + 1, updatedAt = now, localStorage, then a debounced cloud write (a no-op without a cloud).
+function saveGame() { SAVE.rev++; SAVE.updatedAt = Date.now(); persistLocal(); cloudSchedule(); }
 // The squad you start stage n with: stage 1 = TUNE.startSquad, later stages = the survivors of the best clear of the stage before.
 function entryFor(n) {
   if (n <= 1) return TUNE.startSquad;
@@ -715,6 +724,7 @@ const G = {
   // round 3 (logic writes, presentation reads): combo chain, coins earned this run, timed buffs { id: secondsLeft },
   // the squad this stage started with, and the last stage result (set right before `win` / `gameOver`).
   combo: 0, comboT: 0, comboBest: 0, coins: 0, buffs: {}, entrySquad: 1, result: null,
+  cloud: { state: 'off', lastSyncAt: 0, user: false },   // round 6: cloud save status for the UI (see the cloud layer)
   route: [], routeName: '', theme: 'haze',   // round 4: see the lanes-and-routes contract above
   seg: null,                                  // round 4 (logic): the route segment the squad is in now (null before the first step)
   // added by logic in round 3: permanent fire-rate bonus from '射速+' gates (this stage), power-up orbs on the ground (the same
@@ -726,6 +736,8 @@ const G = {
 // ---------------------------------------------------------------- event bus
 // Contract between game logic (emits) and presentation (listens). Logic never reaches into FX/HUD directly
 // for new effects; it emits one of these and presentation code subscribes with bus.on(name, fn).
+// Round 6 (cloud save): cloudSync{state, lastSyncAt, merged?} on every change of G.cloud.state ('off' | 'local' | 'syncing' | 'synced' | 'pending' | 'error'),
+//   and with merged: true when a cloud copy changed SAVE (the UI re-reads SAVE). G.cloud = { state, lastSyncAt (ms), user (has a cloud identity) }.
 // Events: shot{x,z,w,lv} soldierDied{x,z} zombieDied{x,z,big} gateHit{e} gatePass{e,diff}
 //         explode{x,z,r} weaponPickup{e,w,lv,upgrade,recruits} heroActivated{e} bossSpawn{} bossHit{} bossDied{x,z} soldierContact{} gameOver{reason,cause,kind,phase} win{}
 // explode: one per blast (mech shell or rocket), r = its real radius. weaponPickup.upgrade is true when the gun you held levelled up (lv = new level).
@@ -5066,14 +5078,191 @@ if (document.fonts && document.fonts.load) {
 }
 requestAnimationFrame(frame);
 
+// ---------------------------------------------------------------- round 6: cloud save
+// The page runs inside the claude.ai artifact viewer, where `window.claude.use('db')` / `use('user')` resolve a namespace or null.
+// Outside it (the file opened directly, the headless tests) window.claude is undefined and none of this runs. localStorage stays the
+// always-available cache; the cloud doc data/users/<id>/save is the cross-device copy (private per viewer, written at Contributor level and up).
+//   boot: local save loads as always -> use(db/user) -> get(doc) -> mergeSaves -> apply to SAVE -> bus 'cloudSync' {merged: true} -> write
+//         the merge back only if the cloud content differs; then ONE onSnapshot on the doc.
+//   writes: after every saveGame, debounced 1.5 s, one at a time per doc, only when the content (everything but rev / updatedAt) changed;
+//         flushed on visibilitychange -> hidden and on pagehide. Errors branch on `code` (see cloudFail).
+//   remote snapshots newer than local (epoch, rev, updatedAt) merge in while the player is NOT in a run; during a run they are queued.
+function mergeSaves(a, b) {
+  if (a.epoch !== b.epoch) return JSON.parse(JSON.stringify(a.epoch > b.epoch ? a : b));      // a reset (higher epoch) wins as a whole
+  const m = { v: 1, epoch: a.epoch, best: Math.max(a.best, b.best), rev: Math.max(a.rev, b.rev), updatedAt: Math.max(a.updatedAt, b.updatedAt), upgrades: {}, stages: {} };
+  m.coins = a.updatedAt > b.updatedAt ? a.coins : b.updatedAt > a.updatedAt ? b.coins : Math.max(a.coins, b.coins);
+  for (const u of UPGRADES) m.upgrades[u.id] = Math.max(a.upgrades[u.id] | 0, b.upgrades[u.id] | 0);
+  for (const src of [a, b]) for (const k of Object.keys(src.stages)) {
+    const st = src.stages[k], cur = m.stages[k] || (m.stages[k] = { entry: 1, stars: 0 });
+    cur.entry = Math.max(cur.entry, st.entry); cur.stars = Math.max(cur.stars, st.stars);
+  }
+  return m;
+}
+const saveCore = o => JSON.stringify([o.epoch, o.coins, o.best, UPGRADES.map(u => o.upgrades[u.id] | 0), Object.keys(o.stages).sort((x, y) => x - y).map(k => [k, o.stages[k].entry, o.stages[k].stars])]);
+const saveHasProgress = o => o.rev > 0 || o.best > 1 || o.coins > 0 || Object.keys(o.stages).length > 0 || UPGRADES.some(u => o.upgrades[u.id] > 0);
+const remoteNewer = (r, l) => r.epoch !== l.epoch ? r.epoch > l.epoch : r.rev !== l.rev ? r.rev > l.rev : r.updatedAt > l.updatedAt;
+const inRun = () => G.phase === 'run' || G.phase === 'boss';
+
+// CLOUD: internal state. G.cloud = { state, lastSyncAt, user } is what the UI reads; every state change emits bus 'cloudSync' { state, lastSyncAt }
+// (a merge that changed SAVE also emits it, with merged: true, so the UI re-reads SAVE). States: 'off' (no viewer / db / identity), 'local'
+// (db present but this viewer cannot write), 'syncing', 'synced', 'pending' (a write failed transiently, retried on the next save), 'error'.
+const CLOUD = { enabled: false, ref: null, unsub: null, readOk: false, writing: false, again: false, timer: 0, retried: false, dead: false,
+  base: '', queued: null, qTimer: 0, resetPending: false, backoffUntil: 0, gen: 0, ready: Promise.resolve() };
+function cloudState(state, merged) {
+  const changed = G.cloud.state !== state;
+  if (state === 'synced') G.cloud.lastSyncAt = Date.now();
+  G.cloud.state = state;
+  if (changed || merged) bus.emit('cloudSync', merged ? { state, lastSyncAt: G.cloud.lastSyncAt, merged: true } : { state, lastSyncAt: G.cloud.lastSyncAt });
+}
+function cloudApply(m) {                                    // replaces SAVE's content in place (SAVE is shared by reference)
+  SAVE.coins = m.coins; SAVE.best = m.best; SAVE.upgrades = m.upgrades; SAVE.stages = m.stages; SAVE.rev = m.rev; SAVE.updatedAt = m.updatedAt; SAVE.epoch = m.epoch;
+  best = SAVE.best; persistLocal();
+}
+// Local and cloud meet: merge, apply locally if it changed anything, and report what the cloud still lacks (rev / updatedAt only move on content).
+function cloudMeet(remote) {
+  const m = mergeSaves(SAVE, remote), core = saveCore(m);
+  const needCloud = core !== saveCore(remote), changedLocal = core !== saveCore(SAVE);
+  if (needCloud) { m.rev = Math.max(SAVE.rev, remote.rev) + 1; m.updatedAt = Date.now(); }   // the merged state is news for the other devices
+  CLOUD.base = saveCore(remote);
+  if (changedLocal || needCloud || m.rev !== SAVE.rev) cloudApply(m);
+  if (changedLocal) cloudState(G.cloud.state, true);
+  return needCloud;                                          // true: the cloud lacks something we have
+}
+function cloudBackoff(ms) { CLOUD.backoffUntil = Date.now() + ms; }
+function cloudFail(e, phase) {
+  const code = e && e.code;
+  if (code === 'invalid_argument') {                        // a view-only viewer: writes reject, reads look like a missing doc -> local only, no retry loop
+    CLOUD.dead = true; cloudStop(); cloudState('local'); return;
+  }
+  if (code === 'revoked' || code === 'not_granted' || code === 'capability_disabled' || code === 'capability_removed' || code === 'transform_error' || code === 'quota_exceeded') {
+    CLOUD.dead = true; cloudStop(); cloudState('error'); return;
+  }
+  if (code === 'resource_exhausted') { cloudBackoff(30000); cloudState('pending'); return; }
+  // unavailable (and any unknown code): one retry after a short random delay, then 'pending' until the next save
+  if (!CLOUD.retried) { CLOUD.retried = true; clearTimeout(CLOUD.timer); CLOUD.timer = setTimeout(cloudRun, 300 + Math.random() * 700); return; }
+  CLOUD.retried = false; cloudState('pending');
+}
+function cloudStop() { clearTimeout(CLOUD.timer); clearTimeout(CLOUD.qTimer); if (CLOUD.unsub) { try { CLOUD.unsub(); } catch (e) {} CLOUD.unsub = null; } }
+// One sync pass: read (until a read has worked once, so a stale local never overwrites the cloud), merge, write if the cloud lacks something.
+async function cloudRun() {
+  if (!CLOUD.ref || CLOUD.dead) return;
+  if (CLOUD.writing) { CLOUD.again = true; return; }
+  if (Date.now() < CLOUD.backoffUntil) { clearTimeout(CLOUD.timer); CLOUD.timer = setTimeout(cloudRun, CLOUD.backoffUntil - Date.now() + 50); return; }
+  if (CLOUD.readOk && !CLOUD.resetPending && saveCore(SAVE) === CLOUD.base) return;     // nothing changed since the cloud last had it: no write, no event
+  CLOUD.writing = true; CLOUD.again = false;
+  const gen = CLOUD.gen;
+  try {
+    cloudState('syncing');
+    let need = false;
+    if (!CLOUD.readOk || CLOUD.resetPending) {
+      const snap = await CLOUD.ref.get();
+      if (gen !== CLOUD.gen) return;
+      if (snap.exists) {
+        const remote = sanitizeSave(snap.data() || {});
+        if (CLOUD.resetPending) {                           // our reset must outrank whatever the cloud holds
+          CLOUD.resetPending = false;
+          if (remote.epoch >= SAVE.epoch) { SAVE.epoch = remote.epoch + 1; SAVE.rev = Math.max(SAVE.rev, remote.rev) + 1; SAVE.updatedAt = Date.now(); persistLocal(); }
+          CLOUD.base = saveCore(remote); need = true;
+        } else need = cloudMeet(remote);
+      } else { CLOUD.resetPending = false; need = saveHasProgress(SAVE); CLOUD.base = need ? '' : saveCore(SAVE); }
+      CLOUD.readOk = true;
+      cloudSubscribe();
+    } else need = saveCore(SAVE) !== CLOUD.base;
+    if (need) {
+      const body = JSON.parse(JSON.stringify(SAVE));
+      await CLOUD.ref.set(body);
+      if (gen !== CLOUD.gen) return;
+      CLOUD.base = saveCore(body);
+    }
+    CLOUD.retried = false;
+    cloudState('synced');
+  } catch (e) {
+    if (gen === CLOUD.gen) cloudFail(e, 'run');
+  } finally {
+    if (gen === CLOUD.gen) { CLOUD.writing = false; if (CLOUD.again && !CLOUD.dead) cloudSchedule(); }
+  }
+}
+// Debounced: a burst of saves is one write 1.5 s after the last one.
+function cloudSchedule() {
+  if (!CLOUD.ref || CLOUD.dead) return;
+  clearTimeout(CLOUD.timer); CLOUD.timer = setTimeout(cloudRun, 1500);
+}
+function cloudSubscribe() {
+  if (CLOUD.unsub || CLOUD.dead) return;
+  try {
+    CLOUD.unsub = CLOUD.ref.onSnapshot(snap => {
+      if (!snap.exists || (snap.metadata && snap.metadata.hasPendingWrites)) return;        // missing, or our own unconfirmed write
+      const remote = sanitizeSave(snap.data() || {});
+      if (!remoteNewer(remote, SAVE)) return;
+      CLOUD.queued = remote;
+      if (inRun()) { clearInterval(CLOUD.qTimer); CLOUD.qTimer = setInterval(cloudApplyQueued, 1000); return; }   // deferred until the run ends
+      cloudApplyQueued();
+    }, e => { if (e && e.code !== 'unavailable') cloudFail(e, 'snapshot'); });
+  } catch (e) { cloudFail(e, 'subscribe'); }
+}
+function cloudApplyQueued() {
+  if (!CLOUD.queued || inRun()) return false;
+  clearInterval(CLOUD.qTimer);
+  const remote = CLOUD.queued; CLOUD.queued = null;
+  const needWrite = cloudMeet(remote);
+  if (needWrite) cloudSchedule();
+  return true;
+}
+// Boot (or a test injecting a fake): find db + user, then the first sync. Never blocks the menu or gameplay.
+function cloudInit(c) {
+  CLOUD.gen++; cloudStop();
+  Object.assign(CLOUD, { enabled: false, ref: null, readOk: false, writing: false, again: false, retried: false, dead: false, base: '', queued: null, resetPending: false, backoffUntil: 0 });
+  G.cloud.user = false; cloudState('off');
+  if (!c || typeof c.use !== 'function') return CLOUD.ready = Promise.resolve();
+  CLOUD.enabled = true;
+  const gen = CLOUD.gen;
+  return CLOUD.ready = (async () => {
+    let db = null, user = null;
+    try { db = await c.use('db'); } catch (e) {}
+    try { user = await c.use('user'); } catch (e) {}
+    if (gen !== CLOUD.gen || !db || !user) return;
+    let id = null;
+    try { id = await user.id(); } catch (e) {}
+    if (gen !== CLOUD.gen || !id) return;
+    try { CLOUD.ref = db.doc('data/users/' + id + '/save'); } catch (e) { return; }
+    G.cloud.user = true;
+    await cloudRun();
+  })();
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden && CLOUD.ref && !CLOUD.dead) { clearTimeout(CLOUD.timer); cloudRun(); } });
+window.addEventListener('pagehide', () => { if (CLOUD.ref && !CLOUD.dead) { clearTimeout(CLOUD.timer); cloudRun(); } });
+// Test handle: flush() runs the pending sync now (and applies a queued remote save if the player is not in a run), state() reads G.cloud,
+// _inject(fakeClaude) restarts the cloud layer on a fake window.claude (returns the init promise).
+const cloudApi = {
+  flush: async () => {
+    const nap = ms => new Promise(r => setTimeout(r, ms));
+    const idle = async () => { for (let i = 0; i < 400 && (CLOUD.writing || CLOUD.retried); i++) await nap(10); };
+    clearTimeout(CLOUD.timer); await CLOUD.ready;
+    for (let i = 0; i < 100 && CLOUD.writing; i++) await nap(10);
+    cloudApplyQueued();
+    if (CLOUD.ref && !CLOUD.dead) {
+      if (CLOUD.retried) await idle();                        // a retry is already on its way: that is the next attempt
+      else { clearTimeout(CLOUD.timer); await cloudRun(); await idle(); }
+    }
+    cloudApplyQueued();
+  },
+  state: () => G.cloud.state, _inject: c => cloudInit(c), merge: mergeSaves, internal: CLOUD,
+};
+cloudInit(window.claude);
+
 // handle for automated play-tests
 function resetSave() {
+  const epoch = SAVE.epoch | 0;
   resetSaveData(); best = 1;
   try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem(OLD_BEST_KEY); } catch (e) {}
+  if (CLOUD.enabled) {                                       // a reset travels: a higher epoch beats any older copy, and the fresh save is written up
+    SAVE.epoch = epoch + 1; SAVE.rev = 1; SAVE.updatedAt = Date.now(); persistLocal();
+    CLOUD.resetPending = true; cloudSchedule();
+  }
 }
 // Start stage n from the beginning with its entry squad (same as prepare(n) + startRun()).
 function startStage(n) { prepare(n); startRun(); }
-window.__zb = { fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
+window.__zb = { cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
   stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0), bw: Array.from(bw.subarray(0, nb)), bl: Array.from(bl.subarray(0, nb)), by: Array.from(by.subarray(0, nb)), bt: Array.from(bt.subarray(0, nb)), bs: Array.from(bs.subarray(0, nb)), bx: Array.from(bx.subarray(0, nb)), bz: Array.from(bz.subarray(0, nb)) }),
   perf: () => ({ pr: PR_STEPS[prIdx], steps: PR_STEPS, avg: Perf.avg, fxScale }) };
 })();
