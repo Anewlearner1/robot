@@ -1,6 +1,6 @@
 # 屍潮斷橋 測試工具
 
-三支 Node + Playwright 腳本，全部用 headless Chromium 載入 `../index.html`，並透過 `window.__zb`（測試用的內部把手）直接推進模擬。
+五支 Node + Playwright 腳本，全部用 headless Chromium 載入 `../index.html`，並透過 `window.__zb`（測試用的內部把手）直接推進模擬。
 **不用等即時時間**：一次 `page.evaluate` 裡連續呼叫 `__zb.step(1/60)`，一場完整關卡約幾十毫秒。
 
 ## 準備
@@ -107,3 +107,13 @@ CPU_THROTTLE=4 node zombie-bridge/tests/perf.mjs     # 用 CDP 模擬 4 倍慢�
 
 只計 `step()` 時間（SwiftShader 的 FPS 沒有參考價值）。`performance.now()` 只有 0.1 ms 精度，所以以 20 步為一批取平均。
 可調：`ZOMBIES`、`SPREAD`（殭屍擠在多深的範圍；越小越密）、`STEPS`。同時印出每步堆積配置量的估計值。
+
+## shots.mjs — 截圖（視覺檢查）
+
+```bash
+node zombie-bridge/tests/shots.mjs                                  # 預設存到 zombie-bridge/tests/shots-out/（已列入 tests/.gitignore）
+node zombie-bridge/tests/shots.mjs --out /some/dir --w 390 --h 844   # 指定輸出資料夾與視窗大小（預設 390 × 844）
+```
+
+依序拍：`menu.png`（選單）、`stage1.png`–`stage5.png`（各關中段）、`boss.png`（第 1 關巨屍戰）、`result.png`（勝利結算）、`shop.png`（強化）。
+每個 `page.evaluate` 最多推進 600 步，截圖 timeout 為 60 秒。頁面有 `pageerror` / console error，或某一步沒到預期狀態時，結束碼為 1。

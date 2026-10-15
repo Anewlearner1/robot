@@ -246,7 +246,8 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 .cico { width: 20px; height: 20px; flex: none; }
 .subrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 30px; }
 #buffs { display: flex; gap: 6px; }
-.buff { display: flex; align-items: center; gap: 6px; padding: 3px 11px 3px 4px; border-radius: 999px; background: var(--panel); font: 900 13px var(--body); color: #fff; box-shadow: 0 0 0 2px var(--bc); letter-spacing: .06em; }
+.buff { display: flex; align-items: center; gap: 5px; padding: 3px 9px 3px 3px; border-radius: 999px; background: var(--panel); font: 900 13px var(--body); color: #fff; box-shadow: 0 0 0 2px var(--bc); letter-spacing: .06em; }
+.buff span { white-space: nowrap; }   /* the two-character name never wraps (狂 above 暴) */
 .buff svg { width: 26px; height: 26px; transform: rotate(-90deg); }
 .buff circle { fill: none; stroke-width: 4; }
 .buff .bg { stroke: rgba(255,255,255,.2); }
