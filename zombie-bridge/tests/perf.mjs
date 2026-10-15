@@ -13,6 +13,7 @@ const STEPS = Number(process.env.STEPS || 1500);
 const ZOMBIES = Number(process.env.ZOMBIES || 600);
 const THROTTLE = Number(process.env.CPU_THROTTLE || 1);   // e.g. 4 = emulate a ~4x slower phone CPU
 const SPREAD = Number(process.env.SPREAD || 20);          // depth (z units) the horde is packed into: smaller = denser = worse case
+const SQUAD = Number(process.env.SQUAD || 40), GUN = Number(process.env.GUN || 3);   // e.g. SQUAD=100 GUN=3 (gatling) for the worst case
 const BATCH = 20;                                          // performance.now() is only 0.1 ms precise: time batches of steps
 
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-precise-memory-info'] });
@@ -28,18 +29,18 @@ await page.waitForFunction(() => window.__zb);
 await page.evaluate(() => document.getElementById('mute').click());
 if (THROTTLE > 1) { const cdp = await page.context().newCDPSession(page); await cdp.send('Emulation.setCPUThrottlingRate', { rate: THROTTLE }); }
 
-const res = await page.evaluate(({ STEPS, ZOMBIES, BATCH, SPREAD }) => {
+const res = await page.evaluate(({ STEPS, ZOMBIES, BATCH, SPREAD, SQUAD, GUN }) => {
   const zb = window.__zb, G = zb.G, Z = zb.Z;
   let seed = 12345;
   Math.random = () => { seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   zb.prepare(3);
   zb.start();
-  G.squad = 40; G.weapon = 3; G.shield = 1e9; zb.syncSoldiers();
+  G.squad = SQUAD; G.weapon = GUN; G.shield = 1e9; zb.syncSoldiers();
   const hero = G.events.find(e => e.type === 'hero');
   zb.activateHero(hero);
   // keep the pressure constant: top the horde up to ZOMBIES every step, tanky enough to survive the whole run
   const topUp = () => {
-    G.squad = 40; G.shield = 1e9;
+    G.squad = SQUAD; G.shield = 1e9;
     if (G.z < -150) G.z = 0;
     const need = ZOMBIES - Z.length;
     if (need > 0) zb.spawnHorde({ cx: 0, w: 7.4, d: SPREAD, count: need, hp: 40 }, G.z - 3);
@@ -74,7 +75,7 @@ const res = await page.evaluate(({ STEPS, ZOMBIES, BATCH, SPREAD }) => {
     // heap growth per step (steps with a GC in between are dropped, so this is a lower bound)
     allocMeanKB: allocs.length ? allocs.reduce((a, b) => a + b, 0) / allocs.length / 1024 : 0,
   };
-}, { STEPS, ZOMBIES, BATCH, SPREAD });
+}, { STEPS, ZOMBIES, BATCH, SPREAD, SQUAD, GUN });
 
 console.log(JSON.stringify(res, (k, v) => typeof v === 'number' ? Math.round(v * 1000) / 1000 : v));
 console.log(`step ms (per-step mean of 20-step batches; throttle x${THROTTLE}): mean ${res.meanMs.toFixed(3)}  p50 ${res.p50.toFixed(3)}  p95 ${res.p95.toFixed(3)}  p99 ${res.p99.toFixed(3)}  max ${res.max.toFixed(3)}   step() heap alloc/step ~${res.allocMeanKB.toFixed(1)} KB`);

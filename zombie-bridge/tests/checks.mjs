@@ -48,8 +48,9 @@ const results = await page.evaluate(() => {
 
   // ---------------------------------------------------------------- 1. fixed timestep
   for (const fps of [30, 60, 120, 144, 20]) {
-    zb.prepare(1); zb.start();
     const t0 = now0();
+    window.__raf(t0);                                   // sets the frame clock first: the first measured frame must not carry the real time spent since the last section
+    zb.prepare(1); zb.start();
     const frames = fps * 3;
     let maxSteps = 0, prev = G.time;
     for (let i = 1; i <= frames; i++) {
@@ -197,10 +198,10 @@ const results = await page.evaluate(() => {
     check('zombie pool capped at 900', Z.length === 900, Z.length);
     for (let i = 0; i < 240; i++) { G.shield = 1e9; zb.step(1 / 60); if (i % 30 === 0) zb.render(1 / 60); }
     for (let i = 0; i < 5000; i++) zb.spawnBullet(0, G.z - 3, 0, -1, 1, 0);
-    check('bullet pool capped at 700', zb.stats().bullets === 700, zb.stats().bullets);
+    check('bullet pool capped at 1200', zb.stats().bullets === 1200, zb.stats().bullets);
     for (let i = 0; i < 120; i++) { G.shield = 1e9; zb.step(1 / 60); if (i % 20 === 0) zb.render(1 / 60); }
     const st = zb.stats();
-    check('particle pool capped at 1400, still running', st.particles <= 1400 && st.bullets <= 700 && Z.length <= 900, JSON.stringify(st));
+    check('particle pool capped at 1400, still running', st.particles <= 1400 && st.bullets <= 1200 && Z.length <= 900, JSON.stringify(st));
     check('pools degrade without breaking the run', G.phase === 'run' && G.soldiers.length === 40);
   }
   // ---------------------------------------------------------------- 8. guns: pickups, levels, swap, pairs
@@ -289,7 +290,7 @@ const results = await page.evaluate(() => {
     let exploded = [];
     const eh = d => exploded.push(d);
     zb.bus.on('explode', eh);
-    zb.spawnBullet(0, -1, 0, -1, 4, 0, 6);              // rocket: splash 1.6
+    zb.spawnBullet(0, -1, 0, -1, 4, 0, 6, 0, 0, -6);   // rocket (lob): splash 1.6, lands on the target at z = -6
     for (let i = 0; i < 60; i++) zb.step(1 / 60);
     zb.bus.map.explode.splice(zb.bus.map.explode.indexOf(eh), 1);
     const sp = zb.TUNE.splashDmg;
@@ -327,7 +328,7 @@ const results = await page.evaluate(() => {
     check('bullets expire by their gun\'s range', zb.stats().bullets === 0, JSON.stringify(zb.stats().bw));
     lab();
     for (const w of [4, 2, 6, 1]) zb.spawnBullet(0, -1, 0, -1, 1, 0, w);
-    for (let i = 0; i < 22; i++) zb.step(1 / 60);       // 0.37 s: sniper (0.32 s) and shotgun (0.32 s) are gone, rocket (0.9 s) and rifle (0.56 s) are not
+    for (let i = 0; i < 26; i++) zb.step(1 / 60);       // 0.43 s: sniper (0.18 s) and shotgun (0.4 s) are gone, rocket (0.9 s) and rifle (0.56 s) are not
     const st2 = zb.stats();
     check('bw: after swap-removals exactly the long-lived guns remain', st2.bw.length === 2 && st2.bw.slice().sort().join() === '1,6', JSON.stringify(st2.bw));
     check('bullet life starts at the gun\'s range', (() => { lab(); zb.spawnBullet(3.9, -1, 0, -1, 1, 0, 5); return Math.abs(zb.stats().bl[0] - W[5].range) < 1e-6; })());
@@ -441,8 +442,12 @@ const results = await page.evaluate(() => {
     const st = [sv(19), sv(20), sv(29), sv(30)];
     check('stars: entry 20 -> 19 survivors 1 star, 20 -> 2, 29 -> 2, 30 -> 3', st.join() === '1,2,2,3', st.join());
     zb.SAVE.stages[2] = { entry: 50, stars: 0 };
-    const hi = [playWin(2, 49).r.stars, playWin(2, 50).r.stars, playWin(2, 60).r.stars];
-    check('stars: the 3-star bar is capped by the squad limit (entry 50: 60 survivors = 3)', hi.join() === '1,2,3', hi.join());
+    const hi = [playWin(2, 74).r.stars, playWin(2, 75).r.stars, playWin(2, 49).r.stars];
+    zb.SAVE.stages[2] = { entry: 94, stars: 0 };
+    const top = [playWin(2, 94).r.stars, playWin(2, 95).r.stars];
+    check('stars: with an entry of 94 the 3-star bar is 95% of the cap (95 survivors), not an impossible 100+', top.join() === '2,3', top.join());
+    zb.SAVE.stages[2] = { entry: 50, stars: 0 };
+    check('stars: with the cap at 100 the 3-star bar for entry 50 is 75 survivors (>= 1.5 x entry); below the entry is 1 star', hi.join() === '2,3,1', hi.join());
     zb.resetSave();
   }
 
@@ -540,7 +545,7 @@ const results = await page.evaluate(() => {
       const sh = mk3(0, -6, 100); sh.ek = 'shield'; sh.sh = true; sh.shHp = T.shieldBreak;
       const behind = mk3(0, -7, 100);
       const blocks = []; const k = listen('shieldBlock', blocks);
-      zb.spawnBullet(x0, z0, dx, dz, 7, 0, w);
+      zb.spawnBullet(x0, z0, dx, dz, 7, 0, w, 0, 0, -6);
       for (let i = 0; i < 50; i++) zb.step(1 / 60);
       k();
       return { sh, behind, blocks };
@@ -938,6 +943,190 @@ const results = await page.evaluate(() => {
     const per = zb.UPGRADES.find(u => u.id === 'dmg').per;
     check('upgrades: effects are looked up by id (reordering the table changes nothing)', Math.abs(d1 - d2) < 1e-9 && Math.abs(d1 - (1 + 3 * per)) < 1e-6, `${d1} ${d2}`);
     zb.resetSave();
+  }
+
+  // ================================================================ round 5: trajectories and the squad cap
+  {
+    zb.resetSave();
+    const W = zb.WEAPONS, T5 = zb.TUNE;
+    const trajOf = id => W.find(g => g.id === id).traj;
+    check('traj: every gun has its own flight model (straight, burst, fan, spray, beam, stream, lob)', ['pistol', 'rifle', 'shotgun', 'gatling', 'sniper', 'flamer', 'rocket'].map(trajOf).join() === 'straight,burst,fan,spray,beam,stream,lob');
+    const track = (spawn, steps, grab) => {                    // spawn bullet(s), step, sample a bullet each step
+      lab3(1); G.z = 0;
+      spawn();
+      const out = [];
+      for (let i = 0; i < steps; i++) { zb.step(1 / 60); const st = zb.stats(); out.push(grab(st)); }
+      return out;
+    };
+    // straight
+    {
+      const tr = track(() => zb.spawnBullet(0, -1, 0, -1, 1, 0, 0), 12, st => [st.bx[0], st.bz[0], st.by[0], st.bs[0]]);
+      check('traj straight: dead straight at constant speed and height', tr.every(q => Math.abs(q[0]) < 1e-6 && q[2] === 1.25 && q[3] === W[0].speed) && Math.abs((tr[0][1] - tr[11][1]) - 11 * W[0].speed / 60) < 1e-3);
+    }
+    // burst cadence (real soldier firing the rifle at a far, tough target)
+    {
+      lab3(1); G.z = 0; G.weapon = 1; G.weaponLv = 1;
+      const t = mk3(0, -14, 1e9); t.sp = 0;
+      const times = []; const off = listen('shot', times);
+      G.soldiers[0].cd = 0;
+      for (let i = 0; i < 360; i++) { G.shield = 1e9; zb.step(1 / 60); }
+      off();
+      const ts = times.length;
+      // times are not stamped by the event: re-run recording G.time
+      lab3(1); G.z = 0; G.weapon = 1; G.weaponLv = 1; const t2 = mk3(0, -14, 1e9); t2.sp = 0;
+      const stamps = []; const h = () => stamps.push(G.time); zb.bus.on('shot', h);
+      G.soldiers[0].cd = 0;
+      for (let i = 0; i < 360; i++) { G.shield = 1e9; zb.step(1 / 60); }
+      zb.bus.map.shot.splice(zb.bus.map.shot.indexOf(h), 1);
+      const gaps = stamps.slice(1).map((v, i) => v - stamps[i]);
+      const short = gaps.filter(g => g <= 0.095).length, long = gaps.filter(g => g > 0.095).length;
+      const rate = (stamps.length - 1) / (stamps[stamps.length - 1] - stamps[0]);
+      check('traj burst: rounds come in bursts of 3 (two short gaps, then a pause) and the average rate is the gun rate', stamps.length > 20 && short / (short + long) > 0.55 && short / (short + long) < 0.78 && gaps.every(g => g > W[1].burstGap * 0.9) && Math.abs(rate / W[1].rate - 1) < 0.2, `short ${short} long ${long} rate ${rate.toFixed(2)} vs ${W[1].rate}`);
+    }
+    // fan: pellets spread wide and decelerate
+    {
+      lab3(1); G.z = 0; G.weapon = 2; G.weaponLv = 1;
+      const t = mk3(0, -14, 1e9); t.sp = 0;
+      G.soldiers[0].cd = 0; zb.step(1 / 60);
+      const st0 = zb.stats(), dirs = [];
+      for (let i = 0; i < st0.bullets; i++) dirs.push(st0.bx[i]);
+      G.soldiers[0].cd = 1e9;
+      const v0 = st0.bs[0];
+      for (let i = 0; i < 12; i++) zb.step(1 / 60);
+      const st1 = zb.stats();
+      const spreadNow = Math.max(...st1.bx) - Math.min(...st1.bx);
+      check('traj fan: five pellets fan out wide (>= 2 units apart after 0.2 s)', st0.bullets === 5 && spreadNow > 2, `${st0.bullets} ${spreadNow.toFixed(2)}`);
+      const ratio = st1.bs[0] / v0, want = Math.exp(-W[2].drag * (13 / 60));
+      check('traj fan: pellets decelerate exponentially (speed ratio after 13 steps matches exp(-drag t))', Math.abs(ratio - want) < 0.03, `${ratio.toFixed(3)} vs ${want.toFixed(3)}`);
+      const noDrag = W[2].speed * W[2].range;
+      const tr = track(() => zb.spawnBullet(0, -1, 0, -1, 1, 0, 2), 40, st => st.bullets ? st.bz[0] : null);
+      const last = tr.filter(v => v !== null).pop();
+      check('traj fan: the effective range is much shorter than speed x life', -1 - last < noDrag * 0.8 && -1 - last > 5, `${(-1 - last).toFixed(1)} vs ${noDrag.toFixed(1)}`);
+    }
+    // spray: sinusoidal weave in x, phase per soldier
+    {
+      const a = track(() => zb.spawnBullet(0, -1, 0, -1, 1, 0, 3, 0), 30, st => st.bx[0]);
+      const b = track(() => zb.spawnBullet(0, -1, 0, -1, 1, 0, 3, 1.5), 30, st => st.bx[0]);
+      const amp = Math.max(...a.filter(v => v !== undefined).map(Math.abs));
+      let flips = 0; for (let i = 2; i < a.length; i++) if ((a[i] - a[i - 1]) * (a[i - 1] - a[i - 2]) < 0) flips++;
+      check('traj spray: x weaves sinusoidally around the aim line (amplitude ~weaveAmp, several reversals)', amp > W[3].weaveAmp * 0.7 && amp < W[3].weaveAmp * 1.6 && flips >= 2, `amp ${amp.toFixed(2)} flips ${flips}`);
+      check('traj spray: the phase differs per soldier (a different weave for ph = 1.5)', a.some((v, i) => Math.abs(v - b[i]) > 0.15));
+    }
+    // beam
+    {
+      const tr = track(() => zb.spawnBullet(0, -1, 0, -1, 1, 0, 4), 4, st => st.bullets ? [st.bx[0], st.bz[0]] : null);
+      const stepLen = tr[0] && tr[1] ? tr[0][1] - tr[1][1] : 0;
+      check('traj beam: near-instant (>= 2.5 units a step), dead straight', stepLen > 2.5 && tr.every(q => !q || Math.abs(q[0]) < 1e-6), stepLen.toFixed(2));
+      lab3(1); G.z = 0; const line5 = []; for (let i = 0; i < 8; i++) line5.push(mk3(0, -4 - i * 1.0, 100)); zb.spawnBullet(0, -1, 0, -1, 7, 0, 4);
+      for (let i = 0; i < 6; i++) zb.step(1 / 60);
+      check('traj beam: one step crosses the whole line, pierce as before (pierce + 1 zombies hit, none skipped)', line5.filter(q => q.hp < 100).length === W[4].pierce + 1 && line5.slice(0, W[4].pierce + 1).every(q => q.hp < 100));
+    }
+    // stream
+    {
+      const tr = track(() => zb.spawnBullet(0, -1, 0, -1, 1, 0, 5, 1), 45, st => st.bullets ? [st.bs[0], st.by[0], st.bx[0], st.bz[0]] : null);
+      const live = tr.filter(Boolean);
+      check('traj stream: speed decays with drag', live[0][0] > live[live.length - 1][0] * 1.3 && live.every((q, i) => i === 0 || q[0] < live[i - 1][0]));
+      check('traj stream: it rises (by goes up from 0.9) and drifts sideways', live[0][1] >= 0.9 && live[live.length - 1][1] > live[0][1] + 0.3 && Math.abs(live[live.length - 1][2]) > 0.1 && live.every((q, i) => i === 0 || q[1] >= live[i - 1][1]), `${live[0][1].toFixed(2)} -> ${live[live.length - 1][1].toFixed(2)} x ${live[live.length - 1][2].toFixed(2)}`);
+      check('traj stream: short life', tr[tr.length - 1] === null && -1 - live[live.length - 1][3] < 13);
+    }
+    // lob
+    {
+      const tr = track(() => zb.spawnBullet(0, -1, 0, -1, 4, 0, 6, 0, 0, -13), 70, st => st.bullets ? [st.by[0], st.bz[0], st.bx[0]] : null);
+      const live = tr.filter(Boolean);
+      const peak = Math.max(...live.map(q => q[0]));
+      const peakI = live.findIndex(q => q[0] === peak);
+      check('traj lob: launches up from by = 1.6, climbs to the apex (lobPeak) and comes down: a parabola', live[0][0] > 1.6 && Math.abs(peak - T5.lobPeak) < 0.25 && peakI > 3 && peakI < live.length - 3 && live.slice(peakI).every((q, i, a) => i === 0 || q[0] <= a[i - 1][0]), `peak ${peak.toFixed(2)} at ${peakI}/${live.length}`);
+      check('traj lob: it lands near the aim point (z = -13) and is gone', tr[tr.length - 1] === null && Math.abs(live[live.length - 1][1] + 13) < 2.5, `z ${live[live.length - 1][1].toFixed(1)}`);
+      lab3(1); G.z = 0;
+      const ex = []; const off = listen('explode', ex);
+      zb.spawnBullet(0, -1, 0, -1, 4, 0, 6, 0, 0, -13);
+      let landedAt = -1;
+      for (let i = 0; i < 70; i++) { zb.step(1 / 60); if (ex.length && landedAt < 0) landedAt = i; }
+      off();
+      check('traj lob: it explodes exactly once when it reaches the ground (no zombie needed)', ex.length === 1 && Math.abs(ex[0].r - W[6].splash) < 1e-6 && Math.abs(ex[0].z + 13) < 2.5 && zb.stats().bullets === 0, JSON.stringify(ex));
+      // flies over the front rows, explodes on contact in the end
+      lab3(1); G.z = 0;
+      const near = mk3(0, -3, 100), tgt = mk3(0, -13, 100);
+      const ex2 = []; const off2 = listen('explode', ex2);
+      zb.spawnBullet(0, -1, 0, -1, 4, 0, 6, 0, 0, -13);
+      let nearHurtEarly = false;
+      for (let i = 0; i < 70; i++) { zb.step(1 / 60); if (i < 10 && near.hp < 100) nearHurtEarly = true; }
+      off2();
+      check('traj lob: it flies over a zombie close to the squad and comes down on the target (direct hit + blast)', !nearHurtEarly && near.hp === 100 && tgt.hp <= 100 - 4 && ex2.length === 1, `${near.hp} ${tgt.hp}`);
+      // homing: a zombie off to the side of the aim point pulls the shell toward it
+      const landX = (withZombie) => {
+        lab3(1); G.z = 0;
+        const z = withZombie ? mk3(1.4, -13, 1e9) : null; if (z) z.sp = 0;
+        const exs = []; const o = listen('explode', exs);
+        zb.spawnBullet(0, -1, 0, -1, 4, 0, 6, 0, 0, -13);
+        for (let i = 0; i < 70; i++) zb.step(1 / 60);
+        o();
+        return exs.length ? exs[0].x : null;
+      };
+      const x0 = landX(false), x1 = landX(true);
+      check('traj lob: it homes gently toward the zombie nearest its aim point (lands closer to it)', x0 !== null && x1 !== null && x1 > x0 + 0.25 && x1 < 1.9, `${x0} -> ${x1}`);
+      // a lob crossing a gate plane counts
+      lab3(1); G.z = 0;
+      const gate = G.events.find(e => e.type === 'gate' && e.kind === 'add');
+      gate.used = false; gate.z = -8; gate.x = 0; gate.hits = 0;
+      const gh = []; const og = listen('gateHit', gh);
+      zb.spawnBullet(0, -1, 0, -1, 4, 0, 6, 0, 0, -13);
+      for (let i = 0; i < 70; i++) zb.step(1 / 60);
+      og();
+      check('traj lob: a lob that passes the gate plane (even high above it) counts as a hit on the gate', gh.length === 1 && gh[0].e === gate, gh.length);
+    }
+    // by / bt integrity through swap-removals, shells arc cosmetically
+    {
+      lab3(1); G.z = 0;
+      const order = [[4, 0], [6, 0], [5, 1], [0, 0], [3, 0], [2, 0]];
+      order.forEach(([w, ph]) => zb.spawnBullet(3.9, -1, 0, -1, 1, 0, w, ph, 3.9, -12));
+      for (let i = 0; i < 4; i++) zb.step(1 / 60);
+      zb.spawnBullet(3.9, -1, 0, -1, 1, 0, 0);               // a late one
+      for (let i = 0; i < 12; i++) zb.step(1 / 60);
+      const st = zb.stats();
+      let ok = st.bullets >= 3, why = '';
+      for (let k = 0; k < st.bullets; k++) {
+        const age = st.bw[k] === 0 && st.bt[k] < 0.11 && k === st.bullets - 1 ? 6 / 60 : 10 / 60;
+        const expectAge = (st.bt[k] > 0.23) ? 16 / 60 : 12 / 60;
+        if (Math.abs(st.bt[k] - expectAge) > 1e-4) { ok = false; why += ` slot${k} gun${st.bw[k]} bt ${st.bt[k]}`; }
+        const g = st.bw[k];
+        if (g === 6 && !(st.by[k] > 1.0 && st.by[k] < 3.2)) { ok = false; why += ` lob by ${st.by[k]}`; }
+        if (g === 5 && !(st.by[k] > 0.9)) { ok = false; why += ` stream by ${st.by[k]}`; }
+        if ((g === 0 || g === 2) && st.by[k] !== 1.25) { ok = false; why += ` flat by ${st.by[k]}`; }
+        if (st.bt[k] > 0 && st.bl[k] > W[g].range + 1e-6) { ok = false; why += ` life ${g}`; }
+      }
+      check('by / bt: every surviving bullet keeps its own age and height through swap-removals (beam gone, lob/stream/flat still right)', ok && !st.bw.includes(4), why + ' ' + JSON.stringify(st.bw));
+      // mech shells: cosmetic arc only
+      lab3(1); G.z = 0;
+      zb.spawnBullet(3.9, -1, 0, -1, 1, 1, 0);
+      const ys = []; for (let i = 0; i < 20; i++) { zb.step(1 / 60); const s2 = zb.stats(); if (s2.bullets) ys.push(s2.by[0]); }
+      check('by / bt: a mech shell (bk = 1) arcs cosmetically: height rises above 1.25 and the path stays flat', Math.max(...ys) > 1.9 && (() => { const s2 = zb.stats(); return !s2.bullets || Math.abs(s2.bx[0] - 3.9) < 1e-6; })());
+    }
+    // squad cap 100
+    {
+      zb.resetSave(); zb.startStage(1);
+      G.shield = 1e9; G.squad = 99; zb.syncSoldiers();
+      check('cap: the squad cap and the number of drawn soldiers are both 100', T5.maxSquad === 100 && G.soldiers.length === 99);
+      G.squad = 100; zb.syncSoldiers();
+      check('cap: all 100 soldiers are drawn and nothing multiplies damage', G.soldiers.length === 100 && G.dmgMul === 1);
+      for (const e of G.events) if (e.type === 'gate') e.used = true;
+      const wk = G.events.find(e => e.type === 'weapon'); wk.taken = false; G.weapon = 1; G.z = wk.z + 0.3; G.x = G.tx = wk.x; zb.step(1 / 60);
+      check('cap: crates cannot push the squad above 100', G.squad === 100, G.squad);
+      {
+        const rowsFor = n => { G.squad = n; zb.syncSoldiers(); const r = Math.min(G.soldiers.length, 99) && Math.round(zb.formationHalf() * 2 / 0.62) + 1; return r; };
+        const w = [9, 25, 50, 100].map(rowsFor);
+        check('formation: rows widen with the squad (9 -> <=5, 25 -> 6, 50 -> 7, 100 -> 8 per row, ~13 rows for 100)', w[0] <= 5 && w[1] === 6 && w[2] === 7 && w[3] === 8 && Math.ceil(100 / w[3]) <= 13, w.join());
+        G.squad = 100; zb.syncSoldiers(); G.tx = 3.5; for (let i = 0; i < 90; i++) { G.shield = 1e9; zb.step(1 / 60); }
+        check('formation: a squad of 100 in rows of 8 still reaches the side lane (centre in lane 2)', zb.laneOf(G.x) === 2 && G.x + zb.formationHalf() <= 3.56, `x ${G.x.toFixed(2)} half ${zb.formationHalf().toFixed(2)}`);
+        G.tx = -3.5; for (let i = 0; i < 90; i++) { G.shield = 1e9; zb.step(1 / 60); }
+        check('formation: ... and the other side lane too', zb.laneOf(G.x) === 0, `x ${G.x.toFixed(2)}`);
+      }
+      zb.SAVE.stages[2] = { entry: 100, stars: 0 };
+      localStorage.setItem('zombie-bridge-save', JSON.stringify({ v: 1, coins: 0, best: 2, upgrades: {}, stages: { 2: { entry: 999, stars: 0 } } }));
+      zb.loadSave();
+      check('cap: an entry squad above the cap loads clamped to 100', zb.entryFor(2) === 100, zb.entryFor(2));
+      zb.resetSave();
+    }
   }
   T.critBase = crit0;
   return out;
