@@ -305,6 +305,22 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 .btnrow { display: flex; gap: 10px; justify-content: center; align-items: center; }
 .btnrow .btn.ghost { padding: 11px 22px; font-size: 17px; }
 .menu-wallet { justify-self: end; }
+/* cloud sync chip (menu, shop, result) and its popover */
+.walletrow { display: flex; align-items: center; gap: 8px; justify-self: end; max-width: 100%; }
+.hchips { display: flex; align-items: center; gap: 8px; }
+.walletval { display: inline-flex; align-items: center; gap: 8px; }
+.hudcloud { display: inline-flex; align-items: center; gap: 6px; border: 0; cursor: pointer; color: var(--paper); line-height: 1.2; }
+.hudcloud svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.hudcloud[data-state="synced"] svg { color: #9be7a6; }
+.hudcloud[data-state="syncing"] svg { color: var(--holo); }
+.hudcloud[data-state="pending"] svg { color: var(--hazard); }
+.hudcloud[data-state="local"] svg, .hudcloud[data-state="off"] svg { color: var(--muted); }
+.hudcloud[data-state="error"] svg { color: #ff8a80; }
+.hudcloud .hudcloud-spin { transform-origin: 12px 13.2px; animation: hudCloudSpin 1s linear infinite; }
+@keyframes hudCloudSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .hudcloud .hudcloud-spin { animation: none; } }
+.cloudpop { position: fixed; z-index: 60; max-width: min(280px, calc(100vw - 24px)); background: var(--ink); color: var(--paper); border-radius: 12px; padding: 10px 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .4); }
+.cloudpop p { margin: 0; font: 500 13px/1.5 var(--body); }
 .entryline { font: 900 14px var(--body); color: var(--paper); letter-spacing: .08em; min-height: 18px; }
 .entryline .st { color: #ffd34d; letter-spacing: .12em; }
 .entryline .st i { font-style: normal; color: rgba(255,255,255,.22); }
@@ -376,10 +392,11 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 <div id="intro" aria-hidden="true"><small></small><b></b></div>
 <div id="vignette"></div>
 <div id="flash"></div>
+<div id="hudCloudPop" class="cloudpop" role="status" hidden><p id="hudCloudPopText"></p></div>
 
 <section class="overlay" id="menu">
   <div class="card">
-    <span class="chip coin menu-wallet" id="menuWallet"><svg class="cico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="#ffd34d" stroke="#a86a00" stroke-width="2"/><circle cx="12" cy="12" r="6.2" fill="none" stroke="#c98a00" stroke-width="2"/></svg><b id="menuCoins">0</b></span>
+    <div class="walletrow menu-wallet"><span class="chip coin" id="menuWallet"><svg class="cico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="#ffd34d" stroke="#a86a00" stroke-width="2"/><circle cx="12" cy="12" r="6.2" fill="none" stroke="#c98a00" stroke-width="2"/></svg><b id="menuCoins">0</b></span><button class="chip hudcloud" id="menuCloud" type="button"></button></div>
     <div class="stagepick">
       <button class="step" id="stagePrev" type="button" aria-label="上一關" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
       <span class="eyebrow" id="menuLevel">STAGE 1</span>
@@ -450,7 +467,7 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
       <div class="trow bonus" id="resBonusRow">
         <span class="chestwrap"><svg class="chest" id="resChest" viewBox="0 0 48 40" aria-hidden="true"><g class="lid"><path d="M4 16 Q4 4 24 4 Q44 4 44 16Z" fill="#a8641f" stroke="#5e330c" stroke-width="2"/><rect x="21" y="9" width="6" height="8" rx="1" fill="#ffd34d"/></g><rect class="glow" x="8" y="12" width="32" height="6" rx="3" fill="#fff3a6"/><path d="M4 16h40v20a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" fill="#c0792b" stroke="#5e330c" stroke-width="2"/><rect x="4" y="22" width="40" height="4" fill="#8c531a"/><rect x="20" y="19" width="8" height="10" rx="1.5" fill="#ffd34d" stroke="#a86a00" stroke-width="1.5"/></svg><span id="resBonusLbl">星等獎勵</span></span><b class="gold" id="resBonus">+0</b>
       </div>
-      <div class="trow total"><span>錢包</span><b class="gold" id="resWallet">0</b></div>
+      <div class="trow total"><span>錢包</span><span class="walletval"><b class="gold" id="resWallet">0</b><button class="chip hudcloud" id="resCloud" type="button"></button></span></div>
     </div>
     <div class="btnstack">
       <button class="btn" id="resMain" type="button">下一關</button>
@@ -463,7 +480,7 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 
 <section class="overlay" id="shop" hidden role="dialog" aria-modal="true" aria-label="強化">
   <div class="card shopc">
-    <div class="shophead"><h2>強化</h2><span class="chip coin"><svg class="cico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="#ffd34d" stroke="#a86a00" stroke-width="2"/><circle cx="12" cy="12" r="6.2" fill="none" stroke="#c98a00" stroke-width="2"/></svg><b id="shopCoins">0</b></span></div>
+    <div class="shophead"><h2>強化</h2><div class="hchips"><span class="chip coin"><svg class="cico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="#ffd34d" stroke="#a86a00" stroke-width="2"/><circle cx="12" cy="12" r="6.2" fill="none" stroke="#c98a00" stroke-width="2"/></svg><b id="shopCoins">0</b></span><button class="chip hudcloud" id="shopCloud" type="button"></button></div></div>
     <ul class="upl" id="shopList"></ul>
     <button class="btn ghost wide" id="shopBack" type="button">返回</button>
   </div>
@@ -5056,6 +5073,60 @@ function frame(now) {
   render(Math.min(dt, 0.05));
 }
 document.addEventListener('visibilitychange', () => { last = performance.now(); acc = 0; });
+
+// ---------------------------------------------------------------- cloud sync chip (menu, shop, result). Display only: it shows the state the engine
+// reports on bus 'cloudSync' ({ state, lastSyncAt }); G.cloud is read once on load. It never reads or writes save data.
+const HUD_CLOUD_CLOUD = '<path d="M7 18h10.5a4.5 4.5 0 0 0 .4-8.98A6 6 0 0 0 6.3 8.6 4 4 0 0 0 7 18z"/>';
+const HUD_CLOUD_PHONE = '<rect x="7.5" y="3" width="9" height="18" rx="2"/><path d="M11 18h2"/>';
+const HUD_CLOUD_SYNCED_NOTE = '進度會同步到你的 claude.ai 帳號，換裝置也能接著玩。';
+const HUD_CLOUD_LOCAL_NOTE = '目前只存在這台裝置的瀏覽器。登入並擁有編輯權限時會自動同步到雲端。';
+const HUD_CLOUD = {
+  synced:  { label: '已同步雲端', icon: HUD_CLOUD_CLOUD + '<path d="M9.3 13.1l1.9 1.9 3.6-3.8"/>', note: HUD_CLOUD_SYNCED_NOTE },
+  syncing: { label: '同步中…', icon: HUD_CLOUD_CLOUD + '<path class="hudcloud-spin" d="M12 10.8a2.4 2.4 0 1 1-2.4 2.4"/>', note: HUD_CLOUD_SYNCED_NOTE },
+  pending: { label: '稍後同步', icon: HUD_CLOUD_CLOUD + '<circle cx="17.6" cy="16.6" r="3.2"/><path d="M17.6 15.1v1.7l1 .7"/>', note: HUD_CLOUD_SYNCED_NOTE },
+  local:   { label: '僅存本機', icon: HUD_CLOUD_PHONE, note: HUD_CLOUD_LOCAL_NOTE },
+  off:     { label: '僅存本機', icon: HUD_CLOUD_PHONE, note: HUD_CLOUD_LOCAL_NOTE },
+  error:   { label: '雲端暫停', icon: HUD_CLOUD_CLOUD + '<path d="M4 4l16 16"/>', note: '雲端暫時無法使用，進度仍存在本機。' },
+};
+let hudCloudFrom = null, hudCloudSt = 'off';
+// Updates every chip. An unknown state is shown as 'off'. The title (tooltip) carries the time only for a synced state.
+function hudCloudChip(state, lastSyncAt) {
+  const st = HUD_CLOUD[state] ? state : 'off', def = HUD_CLOUD[st];
+  let when = '';
+  if (st === 'synced' && lastSyncAt) { const d = new Date(lastSyncAt); if (!isNaN(d.getTime())) when = '上次同步：' + d.toLocaleString('zh-TW'); }
+  for (const el of document.querySelectorAll('.hudcloud')) {
+    el.dataset.state = st;
+    el.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + def.icon + '</svg><span>' + def.label + '</span>';
+    if (when) el.title = when; else el.removeAttribute('title');
+  }
+  hudCloudSt = st;
+  if (!$('#hudCloudPop').hidden) $('#hudCloudPopText').textContent = def.note;
+}
+function hudCloudOpen(btn) {
+  const pop = $('#hudCloudPop');
+  hudCloudFrom = btn;
+  $('#hudCloudPopText').textContent = HUD_CLOUD[hudCloudSt].note;
+  pop.hidden = false;
+  const r = btn.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+  const below = r.bottom + 8;
+  pop.style.left = clamp(r.left, 12, window.innerWidth - w - 12) + 'px';
+  pop.style.top = (below + h > window.innerHeight - 12 ? Math.max(12, r.top - h - 8) : below) + 'px';
+}
+function hudCloudClose() { $('#hudCloudPop').hidden = true; hudCloudFrom = null; }
+// Tap a chip to open its note (tap it again to close); a tap anywhere else closes the note.
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('.hudcloud');
+  if (!b) return;
+  if (hudCloudFrom === b && !$('#hudCloudPop').hidden) hudCloudClose(); else hudCloudOpen(b);
+});
+document.addEventListener('pointerdown', e => {
+  if ($('#hudCloudPop').hidden) return;
+  if (e.target.closest && (e.target.closest('#hudCloudPop') || e.target.closest('.hudcloud'))) return;
+  hudCloudClose();
+});
+const hudCloudInit = G.cloud || { state: 'off' };
+hudCloudChip(hudCloudInit.state, hudCloudInit.lastSyncAt);
+bus.on('cloudSync', e => hudCloudChip(e.state, e.lastSyncAt));
 
 prepare(G.level);
 syncMenu();
