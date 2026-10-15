@@ -5164,7 +5164,7 @@ async function cloudRun() {
           if (remote.epoch >= SAVE.epoch) { SAVE.epoch = remote.epoch + 1; SAVE.rev = Math.max(SAVE.rev, remote.rev) + 1; SAVE.updatedAt = Date.now(); persistLocal(); }
           CLOUD.base = saveCore(remote); need = true;
         } else need = cloudMeet(remote);
-      } else { CLOUD.resetPending = false; CLOUD.base = ''; need = saveHasProgress(SAVE); }
+      } else { CLOUD.resetPending = false; need = saveHasProgress(SAVE); CLOUD.base = need ? '' : saveCore(SAVE); }
       CLOUD.readOk = true;
       cloudSubscribe();
     } else need = saveCore(SAVE) !== CLOUD.base;
@@ -5236,10 +5236,14 @@ window.addEventListener('pagehide', () => { if (CLOUD.ref && !CLOUD.dead) { clea
 const cloudApi = {
   flush: async () => {
     const nap = ms => new Promise(r => setTimeout(r, ms));
+    const idle = async () => { for (let i = 0; i < 400 && (CLOUD.writing || CLOUD.retried); i++) await nap(10); };
     clearTimeout(CLOUD.timer); await CLOUD.ready;
     for (let i = 0; i < 100 && CLOUD.writing; i++) await nap(10);
     cloudApplyQueued();
-    if (CLOUD.ref && !CLOUD.dead) { await cloudRun(); for (let i = 0; i < 300 && (CLOUD.writing || CLOUD.retried); i++) await nap(10); }
+    if (CLOUD.ref && !CLOUD.dead) {
+      if (CLOUD.retried) await idle();                        // a retry is already on its way: that is the next attempt
+      else { clearTimeout(CLOUD.timer); await cloudRun(); await idle(); }
+    }
     cloudApplyQueued();
   },
   state: () => G.cloud.state, _inject: c => cloudInit(c), merge: mergeSaves, internal: CLOUD,
