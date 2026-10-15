@@ -462,7 +462,7 @@ async function page_campaign() {
   await browser.close();
   process.exit(errors.length ? 1 : 0);
 }
-const ENTRY_AUTO = [1, 1, 45, 85, 80, 80, 80];   // typical survivors carried into stage n (index = n) for single-stage runs
+const ENTRY_AUTO = [1, 1, 50, 90, 80, 70, 70];   // typical survivors carried into stage n (index = n) for single-stage runs
 const GUNS = ['pistol', 'rifle', 'shotgun', 'gatling', 'sniper', 'flamer', 'rocket'];
 const gunIndex = v => { const i = GUNS.indexOf(v); return i >= 0 ? i : Number(v); };
 // one row per strategy: { label, opening, hold }
