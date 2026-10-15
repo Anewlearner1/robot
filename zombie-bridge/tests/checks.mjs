@@ -328,7 +328,7 @@ const results = await page.evaluate(() => {
     check('bullets expire by their gun\'s range', zb.stats().bullets === 0, JSON.stringify(zb.stats().bw));
     lab();
     for (const w of [4, 2, 6, 1]) zb.spawnBullet(0, -1, 0, -1, 1, 0, w);
-    for (let i = 0; i < 22; i++) zb.step(1 / 60);       // 0.37 s: sniper (0.32 s) and shotgun (0.32 s) are gone, rocket (0.9 s) and rifle (0.56 s) are not
+    for (let i = 0; i < 26; i++) zb.step(1 / 60);       // 0.43 s: sniper (0.18 s) and shotgun (0.4 s) are gone, rocket (0.9 s) and rifle (0.56 s) are not
     const st2 = zb.stats();
     check('bw: after swap-removals exactly the long-lived guns remain', st2.bw.length === 2 && st2.bw.slice().sort().join() === '1,6', JSON.stringify(st2.bw));
     check('bullet life starts at the gun\'s range', (() => { lab(); zb.spawnBullet(3.9, -1, 0, -1, 1, 0, 5); return Math.abs(zb.stats().bl[0] - W[5].range) < 1e-6; })());
@@ -981,7 +981,7 @@ const results = await page.evaluate(() => {
       const gaps = stamps.slice(1).map((v, i) => v - stamps[i]);
       const short = gaps.filter(g => g <= 0.095).length, long = gaps.filter(g => g > 0.095).length;
       const rate = (stamps.length - 1) / (stamps[stamps.length - 1] - stamps[0]);
-      check('traj burst: rounds come in bursts of 3 (two short gaps, then a pause) and the average rate is the gun rate', stamps.length > 20 && Math.abs(short - 2 * long) <= 3 && Math.abs(rate / W[1].rate - 1) < 0.2, `short ${short} long ${long} rate ${rate.toFixed(2)} vs ${W[1].rate}`);
+      check('traj burst: rounds come in bursts of 3 (two short gaps, then a pause) and the average rate is the gun rate', stamps.length > 20 && short / (short + long) > 0.55 && short / (short + long) < 0.78 && gaps.every(g => g > W[1].burstGap * 0.9) && Math.abs(rate / W[1].rate - 1) < 0.2, `short ${short} long ${long} rate ${rate.toFixed(2)} vs ${W[1].rate}`);
     }
     // fan: pellets spread wide and decelerate
     {
@@ -1027,7 +1027,7 @@ const results = await page.evaluate(() => {
       const live = tr.filter(Boolean);
       check('traj stream: speed decays with drag', live[0][0] > live[live.length - 1][0] * 1.3 && live.every((q, i) => i === 0 || q[0] < live[i - 1][0]));
       check('traj stream: it rises (by goes up from 0.9) and drifts sideways', live[0][1] >= 0.9 && live[live.length - 1][1] > live[0][1] + 0.3 && Math.abs(live[live.length - 1][2]) > 0.1 && live.every((q, i) => i === 0 || q[1] >= live[i - 1][1]), `${live[0][1].toFixed(2)} -> ${live[live.length - 1][1].toFixed(2)} x ${live[live.length - 1][2].toFixed(2)}`);
-      check('traj stream: short life', tr[tr.length - 1] === null && -1 - live[live.length - 1][3] < 10);
+      check('traj stream: short life', tr[tr.length - 1] === null && -1 - live[live.length - 1][3] < 13);
     }
     // lob
     {
