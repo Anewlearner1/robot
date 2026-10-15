@@ -803,26 +803,114 @@ function boxes(parts) {
   return geo;
 }
 
-// Zombie faces +z (toward the squad), arms out.
-const ZGEO = boxes([
-  [0.2, 0.78, 0.24, -0.13, 0.39, 0, 0x3d3a40],
-  [0.2, 0.78, 0.24, 0.13, 0.39, 0, 0x3d3a40],
-  [0.56, 0.7, 0.32, 0, 1.13, 0, 0x6b5a4a],
-  [0.36, 0.36, 0.34, 0, 1.67, 0.04, 0x9aa58a],
-  [0.14, 0.14, 0.62, -0.34, 1.36, 0.28, 0x8f9a80],
-  [0.14, 0.14, 0.62, 0.34, 1.36, 0.28, 0x8f9a80],
-]);
-// Soldier faces -z.
-const SGEO = boxes([
-  [0.2, 0.75, 0.24, -0.12, 0.375, 0, 0x1f2f63],
-  [0.2, 0.75, 0.24, 0.12, 0.375, 0, 0x1f2f63],
-  [0.5, 0.64, 0.3, 0, 1.07, 0, 0x2f5fd0],
-  [0.56, 0.4, 0.36, 0, 1.18, 0, 0x22314d],
-  [0.3, 0.3, 0.3, 0, 1.56, 0, 0xd7a982],
-  [0.36, 0.14, 0.38, 0, 1.75, 0, 0x1d2733],
-  [0.12, 0.12, 0.42, -0.27, 1.2, -0.18, 0x2f5fd0],
-  [0.12, 0.12, 0.42, 0.29, 1.2, -0.18, 0x2f5fd0],
-]);
+// ---- characters (round 5): part lists -> merged low-poly geometry. Faces that can never face the camera (bottoms, and the
+// side away from the camera: -z for both soldiers and zombies, since both are seen from behind / from the front of the horde)
+// are dropped, and every part gets a baked AO-like darkening toward its bottom edge (feet, joints, belts).
+// part: { b:[w,h,d,x,y,z] } or { s:[x1,y1,z1,x2,y2,z2,thickness] } (angled limb), c: colour hex (soldier) or palette slot (zombie),
+//       t: animation tag (+-1 leg, +-2 arm, 3 upper body, 4 head, 0 rigid)
+function fxChBuild(parts, zombie) {
+  const pos = [], nor = [], col = [], tag = [], prt = [];
+  const qt = new T.Quaternion(), vz = new T.Vector3(0, 0, 1), cc = new T.Color();
+  for (const p of parts) {
+    let g;
+    if (p.s) {
+      const a = new T.Vector3(p.s[0], p.s[1], p.s[2]), b = new T.Vector3(p.s[3], p.s[4], p.s[5]), d = b.clone().sub(a);
+      g = new T.BoxGeometry(p.s[6], p.s[6], d.length()).toNonIndexed();
+      g.applyMatrix4(new T.Matrix4().makeRotationFromQuaternion(qt.setFromUnitVectors(vz, d.normalize())));
+      const m = a.add(b).multiplyScalar(0.5);
+      g.translate(m.x, m.y, m.z);
+    } else {
+      g = new T.BoxGeometry(p.b[0], p.b[1], p.b[2]).toNonIndexed();
+      g.translate(p.b[3], p.b[4], p.b[5]);
+    }
+    g.computeBoundingBox();
+    const y0 = g.boundingBox.min.y, hy = Math.max(1e-3, g.boundingBox.max.y - y0);
+    const a = g.attributes.position.array, n = g.attributes.normal.array;
+    if (!zombie) cc.setHex(p.c);
+    for (let i = 0; i < a.length; i += 9) {       // one triangle
+      if (n[i + 1] < -0.7 || n[i + 2] < -0.7) continue;
+      for (let k = 0; k < 9; k += 3) {
+        pos.push(a[i + k], a[i + k + 1], a[i + k + 2]); nor.push(n[i + k], n[i + k + 1], n[i + k + 2]);
+        const f = 1 - 0.28 * (1 - (a[i + k + 1] - y0) / hy);
+        if (zombie) col.push(f, f, f); else col.push(cc.r * f, cc.g * f, cc.b * f);
+        tag.push(p.t || 0); prt.push(zombie ? p.c : 0);
+      }
+    }
+    g.dispose();
+  }
+  const geo = new T.BufferGeometry();
+  geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new T.Float32BufferAttribute(nor, 3));
+  geo.setAttribute('color', new T.Float32BufferAttribute(col, 3));
+  geo.setAttribute('aAnim', new T.Float32BufferAttribute(tag, 1));
+  geo.setAttribute('aPart', new T.Float32BufferAttribute(prt, 1));
+  geo.computeBoundingSphere();
+  geo.userData.shared = true;
+  return geo;
+}
+const fxB = (w, h, d, x, y, z, c, t) => ({ b: [w, h, d, x, y, z], c, t });
+const fxS = (x1, y1, z1, x2, y2, z2, th, c, t) => ({ s: [x1, y1, z1, x2, y2, z2, th], c, t });
+// zombie palette slots: 0 skin, 1 hair / headgear, 2 top, 3 bottoms, 4 shoes, 5 wound, 6 accessory A, 7 accessory B, 8 glowing eyes, 9 bone
+// variants: 0 civilian shirt, 1 worker overalls, 2 hoodie, 3 police, 4 brute (boss = brute + extras)
+const ZPAL = [
+  [0x9aa58a, 0x3a2f2a, 0x8c4f3f, 0x3d3f4a, 0x24262a, 0x8a1f1f, 0x000000, 0x8a7a50, 0xffffff, 0xe3d9c3],
+  [0x94a083, 0x2a2622, 0x6d747c, 0x2f4a78, 0x25272b, 0x7a1f1f, 0x2f4a78, 0xc9a227, 0xffffff, 0xe3d9c3],
+  [0x98a387, 0x2a2622, 0x56616d, 0x2a2d33, 0x1d1f23, 0x8a1f1f, 0x46515d, 0x8a8f96, 0xffffff, 0xe3d9c3],
+  [0x9aa58a, 0x15192b, 0x2a3f78, 0x161e33, 0x111318, 0x8a1f1f, 0x2c3140, 0xd8b23a, 0xffffff, 0xe3d9c3],
+  [0x7e9272, 0x2a241f, 0x5d4a3a, 0x3a3028, 0x1f1c1a, 0x9a2a1f, 0x6a625a, 0xb6a58f, 0xffffff, 0xe3d9c3],
+];
+function fxZombieParts(v, boss) {
+  const P = [], mir = (w, h, d, x, y, z, c, tl, tr) => { P.push(fxB(w, h, d, -x, y, z, c, tl)); P.push(fxB(w, h, d, x, y, z, c, tr)); };
+  mir(0.2, 0.62, 0.24, 0.13, 0.47, 0, 3, 1, -1);                    // legs
+  mir(0.22, 0.16, 0.36, 0.13, 0.08, 0.05, 4, 1, -1);                // shoes
+  P.push(fxB(0.56, 0.66, 0.32, 0, 1.13, 0, 2, 3));                  // torso
+  P.push(fxB(0.58, 0.08, 0.34, 0, 0.84, 0, 7, 3));                  // belt
+  P.push(fxB(0.34, 0.34, 0.32, 0, 1.68, 0.04, 0, 4));               // head
+  P.push(fxB(0.16, 0.06, 0.02, 0, 1.58, 0.215, 5, 4));              // torn jaw
+  mir(0.075, 0.055, 0.02, 0.09, 1.72, 0.215, 8, 4, 4);              // eyes
+  // arms: uneven lengths (the shader lifts / swings them differently per instance)
+  P.push(fxB(0.14, 0.14, 0.34, -0.36, 1.4, 0.1, 2, 2), fxB(0.12, 0.12, 0.38, -0.36, 1.37, 0.44, 0, 2));
+  P.push(fxB(0.14, 0.14, 0.3, 0.36, 1.38, 0.08, 2, -2), fxB(0.12, 0.12, 0.3, 0.36, 1.35, 0.38, 0, -2));
+  if (v === 0 || v === 2 || v === 4) { P.push(fxB(0.28, 0.3, 0.02, 0.1, 1.2, 0.17, 5, 3)); P.push(fxB(0.24, 0.045, 0.026, 0.1, 1.27, 0.18, 9, 3)); }   // torn shirt: ribs
+  if (v === 0 || v === 1 || v === 4) P.push(fxB(0.36, 0.1, 0.34, 0, 1.89, 0.02, 1, 4));                               // hair
+  if (v === 1) { P.push(fxB(0.4, 0.4, 0.03, 0, 1.12, 0.17, 6, 3)); mir(0.07, 0.46, 0.03, 0.17, 1.3, 0.17, 6, 3, 3); }    // overalls: bib + straps
+  if (v === 2) { P.push(fxB(0.5, 0.3, 0.34, 0, 1.62, -0.1, 6, 4)); P.push(fxB(0.32, 0.14, 0.03, 0, 0.98, 0.17, 6, 3)); } // hoodie: hood + pocket
+  if (v === 3) { P.push(fxB(0.4, 0.1, 0.42, 0, 1.9, 0.03, 1, 4), fxB(0.36, 0.04, 0.18, 0, 1.85, 0.23, 1, 4)); P.push(fxB(0.4, 0.42, 0.03, 0, 1.12, 0.17, 6, 3)); P.push(fxB(0.09, 0.09, 0.03, -0.15, 1.3, 0.18, 7, 3)); }  // police cap, vest, badge
+  if (v === 4) { mir(0.26, 0.18, 0.42, 0.4, 1.5, 0, 6, 3, 3); mir(0.06, 0.2, 0.06, 0.42, 1.68, 0, 7, 3, 3); }          // scrap shoulder plates + spikes
+  if (boss) {
+    mir(0.09, 0.4, 0.09, 0.46, 1.86, 0, 7, 3, 3); mir(0.08, 0.3, 0.08, 0.3, 1.8, -0.12, 7, 3, 3);                        // shoulder / back spikes
+    for (let i = -1; i <= 1; i++) P.push(fxB(0.07, 0.2, 0.07, i * 0.1, 1.98, 0.02, 7, 4));                               // horns on the head
+    P.push(fxS(-0.2, 1.0, -0.2, -0.38, 1.95, -0.2, 0.05, 7, 3), fxS(0.15, 0.9, -0.22, 0.32, 1.85, -0.18, 0.05, 7, 3));  // rebar sticking out of the back
+    P.push(fxB(0.34, 0.4, 0.1, 0.0, 1.15, -0.2, 6, 3));                                                                  // concrete slab on the back
+    mir(0.1, 0.08, 0.03, 0.1, 1.73, 0.22, 8, 4, 4);                                                                       // bigger glowing eyes
+    P.push(fxB(0.34, 0.12, 0.03, 0, 1.05, 0.17, 5, 3));                                                                  // chest wound
+  }
+  return P;
+}
+const ZGEOV = [0, 1, 2, 3, 4].map(v => fxChBuild(fxZombieParts(v, false), true));
+const BOSS_GEO = fxChBuild(fxZombieParts(4, true), true);
+const ZGEO = ZGEOV[0];
+// Soldier faces -z. Jacket + vest two-tone, backpack, shoulder and knee pads, boots, helmet with a strap and visor, both arms on the gun.
+const SGEO = fxChBuild((() => {
+  const P = [], mir = (w, h, d, x, y, z, c, tl, tr) => { P.push(fxB(w, h, d, -x, y, z, c, tl)); P.push(fxB(w, h, d, x, y, z, c, tr)); };
+  mir(0.2, 0.62, 0.24, 0.12, 0.47, 0, 0x1f2f63, 1, -1);               // legs
+  mir(0.22, 0.16, 0.34, 0.12, 0.08, -0.02, 0x15181c, 1, -1);          // boots
+  mir(0.23, 0.12, 0.27, 0.12, 0.52, 0, 0x3a4a78, 1, -1);              // knee pads
+  P.push(fxB(0.52, 0.36, 0.3, 0, 0.98, 0, 0x2f5fd0, 3));              // jacket (lower)
+  P.push(fxB(0.54, 0.4, 0.34, 0, 1.2, 0, 0x22314d, 3));               // tactical vest
+  P.push(fxB(0.54, 0.07, 0.32, 0, 0.78, 0, 0x8a7a50, 3));             // belt
+  mir(0.1, 0.14, 0.1, 0.31, 0.92, 0.02, 0x3c4a2a, 3, 3);              // side pouches
+  P.push(fxB(0.4, 0.5, 0.22, 0, 1.14, 0.27, 0x4a5a3a, 3));            // backpack
+  P.push(fxB(0.36, 0.1, 0.2, 0, 1.44, 0.27, 0x59693f, 3));            // pack roll
+  mir(0.2, 0.12, 0.3, 0.33, 1.4, 0, 0x1a2a55, 3, 3);                  // shoulder pads
+  P.push(fxB(0.26, 0.26, 0.26, 0, 1.56, 0, 0xd7a982, 4));             // head
+  P.push(fxB(0.34, 0.18, 0.34, 0, 1.72, 0, 0x1d2733, 4));             // helmet
+  P.push(fxB(0.36, 0.05, 0.36, 0, 1.62, 0, 0x2a3646, 4));             // helmet strap / rim
+  P.push(fxB(0.26, 0.06, 0.04, 0, 1.6, -0.15, 0x54dcff, 4));          // visor
+  P.push(fxS(-0.3, 1.38, 0, -0.3, 1.12, -0.02, 0.13, 0x2f5fd0, 3), fxS(0.3, 1.38, 0, 0.3, 1.12, -0.02, 0.13, 0x2f5fd0, 3));   // upper arms
+  P.push(fxS(-0.3, 1.12, -0.02, 0.1, 1.27, -0.5, 0.1, 0x2a2a2a, 3), fxS(0.3, 1.12, -0.02, 0.16, 1.28, -0.28, 0.1, 0x2a2a2a, 3)); // forearms to the gun
+  return P;
+})(), false);
 // Mech faces -z.
 const MGEO = boxes([
   [0.5, 1.3, 0.6, -0.45, 0.65, 0, 0x55606e],
@@ -884,14 +972,6 @@ WEAPONS.forEach((W, w) => {
   PICK_GEO[w] = g;
   HELD_GEO[w].userData.shared = PICK_GEO[w].userData.shared = true;
 });
-// Per-vertex tag for the shader walk cycle (36 vertices per box): +-1 = leg swinging about the hip, 2 = arm bob, 0 = rigid.
-function tagParts(geo, tags) {
-  const a = new Float32Array(geo.attributes.position.count);
-  tags.forEach((t, i) => a.fill(t, i * 36, i * 36 + 36));
-  geo.setAttribute('aAnim', new T.BufferAttribute(a, 1));
-}
-tagParts(ZGEO, [1, -1, 0, 0, 2, 2]);
-tagParts(SGEO, [1, -1, 0, 0, 0, 0, 0, 0]);
 // Tracer: white-hot core plus a dim wide halo; drawn additively so overlapping volleys bloom instead of z-fighting.
 const BULLET_GEO = boxes([
   [0.07, 0.07, 1.3, 0, 0, 0, 0xffffff],
@@ -937,41 +1017,78 @@ function disposeTree(o) {
 
 // Shared shader clock (seconds of game time; freezes while paused).
 const CLOCK = { uTime: { value: 0 } };
-// Walk cycle in the vertex shader: legs swing about the hip, arms bob. Per instance (aWalk = phase, amplitude, speed)
-// so one InstancedMesh draw call animates the whole horde; non-instanced meshes (boss) use a fixed phase.
-function walkify(mat, hip, freq) {
+// Character shader (zombies, soldiers, boss): per-instance walk / lurch / hunch / head tilt / recoil, zombie palette slots with glowing
+// eyes, and a cheap rim (fresnel) term tinted by the theme's fog colour. All through onBeforeCompile on a Lambert material.
+const RIM = { color: { value: new T.Color(0x9fb4c8) } };
+function fxChar(mat, o) {
+  const pal = o.pal ? o.pal.map(h => { const c = new T.Color(h); return new T.Vector3(c.r, c.g, c.b); }) : null;
+  const zombie = !!pal;
   mat.onBeforeCompile = sh => {
-    sh.uniforms.uTime = CLOCK.uTime;
-    sh.uniforms.uHip = { value: hip };
-    sh.uniforms.uFreq = { value: freq };
+    sh.uniforms.uTime = CLOCK.uTime; sh.uniforms.uHip = { value: o.hip }; sh.uniforms.uFreq = { value: o.freq };
+    sh.uniforms.uRimC = RIM.color; sh.uniforms.uRim = { value: o.rim };
+    sh.uniforms.uEyeC = { value: new T.Color(o.eye || 0xffd24a) };
+    sh.uniforms.uWalk = { value: new T.Vector4(0, 1, 1, 0) }; sh.uniforms.uStyle = { value: new T.Vector4(o.hunch || 0, 0, 0, 0.5) };
+    if (pal) sh.uniforms.uPal = { value: pal };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
-attribute float aAnim;
+attribute float aAnim; attribute float aPart;
 #ifdef USE_INSTANCING
-attribute vec3 aWalk;
+attribute vec4 aWalk; attribute vec4 aStyle;
+#else
+uniform vec4 uWalk; uniform vec4 uStyle;
 #endif
-uniform float uTime; uniform float uHip; uniform float uFreq;`)
+uniform float uTime; uniform float uHip; uniform float uFreq;
+${zombie ? 'uniform vec3 uPal[10];' : ''}
+varying float vRim; varying float vGlow;
+vec3 fxRotX(vec3 p, float a, float py, float pz) { float c = cos(a); float s = sin(a); float y = p.y - py; float z = p.z - pz; return vec3(p.x, py + y * c - z * s, pz + y * s + z * c); }
+vec3 fxRotZ(vec3 p, float a, float px, float py) { float c = cos(a); float s = sin(a); float x = p.x - px; float y = p.y - py; return vec3(px + x * c - y * s, py + x * s + y * c, p.z); }`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
 {
   #ifdef USE_INSTANCING
-  vec3 wk = aWalk;
+  vec4 wk = aWalk; vec4 st = aStyle;
   #else
-  vec3 wk = vec3(0.0, 1.0, 1.0);
+  vec4 wk = uWalk; vec4 st = uStyle;
   #endif
   float k = abs(aAnim);
-  if (k > 0.5 && wk.y > 0.0) {
-    float th = uTime * uFreq * wk.z + wk.x;
-    float a; float py;
-    if (k < 1.5) { a = sin(th) * 0.72 * sign(aAnim) * wk.y; py = uHip; }
-    else { a = sin(th * 2.0 + 1.0) * 0.16 * wk.y; py = 1.36; }
-    float c = cos(a); float sn = sin(a);
-    float yy = transformed.y - py; float zz = transformed.z;
-    transformed.y = py + yy * c - zz * sn;
-    transformed.z = yy * sn + zz * c;
+  float th = uTime * uFreq * wk.z + wk.x;
+  float amp = wk.y;
+  float lean = ${zombie ? 'st.x * 0.3' : 'wk.w * 0.14'};
+  vec3 p = transformed;
+  if (k > 0.5 && k < 1.5) {                                   // legs: swing about the hip, zombies lurch (a second harmonic)
+    float a = (sin(th) + ${zombie ? '0.35 * st.x * sin(2.0 * th + st.w * 6.283)' : '0.0'}) * 0.68 * sign(aAnim) * amp;
+    p = fxRotX(p, a, uHip, 0.0);
+  } else if (k > 1.5 && k < 2.5) {                            // arms (zombies): bob + one raised higher than the other, then follow the lean
+    float a = sin(th * 0.5 + sign(aAnim) * 0.8) * 0.14 * amp + st.z * 0.5 * sign(aAnim) * ${zombie ? '1.0' : '0.0'};
+    p = fxRotX(p, a, 1.36, 0.0);
+    p = fxRotX(p, lean, uHip, 0.0);
+  } else if (k > 2.5 && k < 3.5) {                            // torso (and soldier arms, backpack...)
+    p = fxRotX(p, lean, uHip, 0.0);
+  } else if (k > 3.5) {                                       // head: tilt, then follow the lean
+    ${zombie ? 'p = fxRotZ(p, st.y * 0.3, 0.0, 1.52);' : ''}
+    p = fxRotX(p, lean, uHip, 0.0);
   }
-}`);
+  transformed = p;
+}`)
+      .replace('#include <color_vertex>', `#include <color_vertex>
+${zombie ? `{ vec3 pc = uPal[int(aPart + 0.5)] * color.xyz;
+  #ifdef USE_INSTANCING_COLOR
+  pc *= instanceColor.xyz;
+  #endif
+  vColor.xyz = pc; }` : ''}`)
+      .replace('#include <fog_vertex>', `#include <fog_vertex>
+vRim = pow(1.0 - clamp(dot(normalize(transformedNormal), normalize(-mvPosition.xyz)), 0.0, 1.0), 2.2);
+vGlow = ${zombie ? '(aPart > 7.5 && aPart < 8.5) ? 1.0 : 0.0' : '0.0'};`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vRim; varying float vGlow; uniform vec3 uRimC; uniform float uRim; uniform vec3 uEyeC;')
+      .replace('#include <dithering_fragment>', `#include <dithering_fragment>
+{ float rm = vRim * uRim;
+  #ifdef USE_FOG
+  rm *= 1.0 - fogFactor;
+  #endif
+  gl_FragColor.rgb += uRimC * rm;
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, uEyeC, vGlow); }`);
   };
-  mat.customProgramCacheKey = () => 'walk1';
+  mat.customProgramCacheKey = () => 'char2' + (zombie ? 'z' : 's');
   return mat;
 }
 // Hologram: horizontal scan lines, a bright sweep climbing the mech, and an occasional sideways glitch.
@@ -999,17 +1116,21 @@ holoify(M.holo); holoify(M.holoWire);
 const dummy = new T.Object3D();
 const tmpC = new T.Color();
 
-// aWalk (phase, amplitude, speed) per instance drives the shader walk cycle; the geometry is a private clone so the boss's
-// non-instanced use of ZGEO never sees the instanced attribute.
-const zWalk = new T.InstancedBufferAttribute(new Float32Array(MAXZ * 3), 3).setUsage(T.DynamicDrawUsage);
-const zGeoI = ZGEO.clone();
-zGeoI.setAttribute('aWalk', zWalk);
-const zMesh = new T.InstancedMesh(zGeoI, walkify(new T.MeshLambertMaterial({ vertexColors: true }), 0.78, 4), MAXZ);
-zMesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
-zMesh.frustumCulled = false;
-for (let i = 0; i < MAXZ; i++) zMesh.setColorAt(i, tmpC.setRGB(1, 1, 1));
-zMesh.count = 0;
-scene.add(zMesh);
+// Zombies: one InstancedMesh per look (civilian shirt / worker overalls / hoodie / police / brute) so each geometry only carries its own
+// parts. aWalk = phase, amplitude, speed, 0; aStyle = hunch, head tilt, arm lift, seed (per instance, set in drawZombies).
+const ZV = ZGEOV.map((g, v) => {
+  const walk = new T.InstancedBufferAttribute(new Float32Array(MAXZ * 4), 4).setUsage(T.DynamicDrawUsage);
+  const style = new T.InstancedBufferAttribute(new Float32Array(MAXZ * 4), 4).setUsage(T.DynamicDrawUsage);
+  const geo = g.clone();
+  geo.setAttribute('aWalk', walk); geo.setAttribute('aStyle', style);
+  const mesh = new T.InstancedMesh(geo, fxChar(new T.MeshLambertMaterial({ vertexColors: true }), { pal: ZPAL[v], hip: 0.78, freq: 4, rim: 0.2, hunch: 0.5 }), MAXZ);
+  mesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
+  mesh.frustumCulled = false;
+  mesh.setColorAt(0, tmpC.setRGB(1, 1, 1)); mesh.instanceColor.setUsage(T.DynamicDrawUsage);
+  mesh.count = 0; mesh.visible = false;
+  scene.add(mesh);
+  return { mesh, walk, style, n: 0 };
+});
 const Z = [];
 
 const bMesh = new T.InstancedMesh(BULLET_GEO, new T.MeshBasicMaterial({ vertexColors: true, fog: false, transparent: true, blending: T.AdditiveBlending, depthWrite: false }), MAXB);
@@ -1867,6 +1988,7 @@ function spawnBullet(x, z, dx, dz, dmg, kind, w) {
   nb++;
 }
 function removeBullet(i) {
+  fxBulletEnd(i);   // [frontend] one line: end-of-flight FX hook (beam impact, rocket landing)
   const j = --nb;
   if (i === j) return;
   bw[i] = bw[j];
@@ -2572,7 +2694,8 @@ function updateBullets(dt) {
 
 // ---------------------------------------------------------------- boss
 const bossMat = new T.MeshLambertMaterial({ vertexColors: true, emissive: 0x000000 });
-const bossMesh = new T.Mesh(ZGEO, bossMat);
+fxChar(bossMat, { pal: ZPAL[4], hip: 0.78, freq: 1.5, rim: 0.3, hunch: 0.5, eye: 0xff5a2a });
+const bossMesh = new T.Mesh(BOSS_GEO, bossMat);
 bossMesh.scale.setScalar(3.2);
 bossMesh.visible = false;
 scene.add(bossMesh);
@@ -2628,7 +2751,6 @@ function updateBoss(dt) {
 }
 
 // ---------------------------------------------------------------- rendering
-const zWalkArr = zWalk.array;
 // Special zombies. The engine's marker fields (exploder `ex`, shield `sh`) are read only here, so a rename is a one-line change.
 const zIsExploder = zb => !!(zb.ex || zb.exploder);
 const zIsShield = zb => !!(zb.sh || zb.shield);
@@ -2644,10 +2766,13 @@ shZMesh.frustumCulled = false; shZMesh.setColorAt(0, tmpC.setRGB(1, 1, 1)); shZM
 scene.add(shZMesh);
 function drawZombies(t) {
   nBelly = 0; nShield = 0;
+  for (const V of ZV) V.n = 0;
   const moving = G.phase === 'run' || G.phase === 'boss';
   for (let i = 0; i < Z.length; i++) {
     const zb = Z[i];
     // gait phase: legs are tagged in the vertex shader; body bob/roll below use the same angle so steps and bounce line up
+    if (zb.fxv === undefined) zb.fxv = zb.big ? 4 : (Math.random() * 4) | 0;      // look: 0 civilian, 1 worker, 2 hoodie, 3 police, 4 brute
+    const ZVi = ZV[zb.fxv], j = ZVi.n++;
     const spd = clamp(zb.sp / 1.35, 0.55, 1.3), th0 = zb.ph * 0.5 - 0.785;
     const th = t * 4 * spd + th0;
     let y = 0, rx = 0, sq = 1;
@@ -2655,16 +2780,16 @@ function drawZombies(t) {
     else y = Math.abs(Math.cos(th)) * 0.07;
     dummy.position.set(zb.x, y, zb.z);
     dummy.rotation.set(rx, Math.atan2(zb.vx, zb.sp) * 0.8, Math.sin(th) * 0.07);
-    dummy.scale.set(zb.s, zb.s * sq, zb.s);
+    if (zb.fxv === 4) dummy.scale.set(zb.s * 1.3, zb.s * sq, zb.s * 1.18); else dummy.scale.set(zb.s, zb.s * sq, zb.s);     // brutes are broad
     dummy.updateMatrix();
-    zMesh.setMatrixAt(i, dummy.matrix);
+    ZVi.mesh.setMatrixAt(j, dummy.matrix);
     if (zb.flash > 0) tmpC.setRGB(0.6, 2.6, 0.4);
     else if (zIsExploder(zb) && zb.dying <= 0) {            // exploder: pulsing red-hot body, glowing belly (sprite pushed in drawBullets)
       const pu = 0.5 + 0.5 * Math.sin(t * 9 + zb.ph);
       tmpC.setRGB(1.35 + 0.8 * pu, 0.55, 0.5);
       if (nBelly < BELLY_MAX) { bellyX[nBelly] = zb.x; bellyY[nBelly] = 0.95 * zb.s; bellyZ[nBelly] = zb.z + 0.2 * zb.s; bellyP[nBelly] = pu; nBelly++; }
     } else tmpC.setRGB(zb.tint[0], zb.tint[1], zb.tint[2]);
-    zMesh.setColorAt(i, tmpC);
+    ZVi.mesh.setColorAt(j, tmpC);
     if (zIsShield(zb) && zb.dying <= 0 && nShield < SHZ_CAP) {   // riot shield held in front (+z faces the squad)
       const yaw = Math.atan2(zb.vx, zb.sp) * 0.8;
       if (zb.fxShFlash > 0) zb.fxShFlash -= renderDt;
@@ -2675,24 +2800,32 @@ function drawZombies(t) {
       shZMesh.instanceColor.array[nShield * 3] = fl; shZMesh.instanceColor.array[nShield * 3 + 1] = fl; shZMesh.instanceColor.array[nShield * 3 + 2] = fl;
       nShield++;
     }
-    zWalkArr[i * 3] = th0; zWalkArr[i * 3 + 1] = moving && zb.dying <= 0 ? 1 : 0; zWalkArr[i * 3 + 2] = spd;
+    const h1 = zb.ph * 3.17 % 1, h2 = zb.ph * 5.31 % 1, h3 = zb.ph * 7.77 % 1, wa = ZVi.walk.array, sa = ZVi.style.array;
+    wa[j * 4] = th0; wa[j * 4 + 1] = moving && zb.dying <= 0 ? 0.8 + 0.4 * h2 : 0; wa[j * 4 + 2] = spd; wa[j * 4 + 3] = 0;
+    sa[j * 4] = zb.fxv === 4 ? 0.25 + 0.3 * h1 : 0.35 + 0.65 * h1; sa[j * 4 + 1] = (h2 - 0.5) * 2; sa[j * 4 + 2] = (h3 - 0.5) * 2; sa[j * 4 + 3] = h3;
   }
   dummy.scale.setScalar(1);
-  zMesh.count = Z.length;
-  zMesh.instanceMatrix.needsUpdate = true;
-  zMesh.instanceColor.needsUpdate = true;
-  zWalk.needsUpdate = true;
+  for (const V of ZV) {
+    const m = V.mesh;
+    m.count = V.n; m.visible = V.n > 0;
+    m.instanceMatrix.needsUpdate = true; m.instanceMatrix.updateRange.offset = 0; m.instanceMatrix.updateRange.count = V.n * 16;
+    m.instanceColor.needsUpdate = true; m.instanceColor.updateRange.offset = 0; m.instanceColor.updateRange.count = V.n * 3;
+    V.walk.needsUpdate = true; V.walk.updateRange.offset = 0; V.walk.updateRange.count = V.n * 4;
+    V.style.needsUpdate = true; V.style.updateRange.offset = 0; V.style.updateRange.count = V.n * 4;
+  }
   shZMesh.count = nShield; shZMesh.visible = nShield > 0;
   shZMesh.instanceMatrix.needsUpdate = true; shZMesh.instanceColor.needsUpdate = true;
 }
 
 // Soldiers: logic keeps a transform carrier (Object3D) per soldier; this renders them all in one instanced draw call.
 const SOLDIER_CAP = MAXVIS + 24;
-const sWalk = new T.InstancedBufferAttribute(new Float32Array(SOLDIER_CAP * 3), 3).setUsage(T.DynamicDrawUsage);
+const sWalk = new T.InstancedBufferAttribute(new Float32Array(SOLDIER_CAP * 4), 4).setUsage(T.DynamicDrawUsage);
 const sGeoI = SGEO.clone();
 sGeoI.setAttribute('aWalk', sWalk);
-const sMesh = new T.InstancedMesh(sGeoI, walkify(new T.MeshLambertMaterial({ vertexColors: true }), 0.75, 5.5), SOLDIER_CAP);
+sGeoI.setAttribute('aStyle', new T.InstancedBufferAttribute(new Float32Array(SOLDIER_CAP * 4), 4));
+const sMesh = new T.InstancedMesh(sGeoI, fxChar(new T.MeshLambertMaterial({ vertexColors: true }), { hip: 0.75, freq: 5.5, rim: 0.25 }), SOLDIER_CAP);
 sMesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
+sMesh.setColorAt(0, tmpC.setRGB(1, 1, 1)); sMesh.instanceColor.setUsage(T.DynamicDrawUsage);
 sMesh.frustumCulled = false;
 sMesh.count = 0;
 scene.add(sMesh);
@@ -2717,15 +2850,17 @@ function drawSoldiers() {
     dummy.rotation.set(0, ry, 0);
     dummy.updateMatrix();
     sMesh.setMatrixAt(i, dummy.matrix);
-    sWalk.array[i * 3] = i * 0.5 - 0.785; sWalk.array[i * 3 + 1] = stepping; sWalk.array[i * 3 + 2] = 1;
     const since = per - so.cd;                                   // time since this soldier last fired
-    const kick = since >= 0 && since < 0.07 ? (1 - since / 0.07) * kmax : 0;
+    const kn = since >= 0 && since < 0.09 ? 1 - since / 0.09 : 0, kick = kn * kmax;
+    sWalk.array[i * 4] = i * 0.5 - 0.785; sWalk.array[i * 4 + 1] = stepping; sWalk.array[i * 4 + 2] = 1; sWalk.array[i * 4 + 3] = kn;   // kn: upper-body recoil
+    if (!so.fxc) { const h = Math.random(), h2 = Math.random(), h3 = Math.random(); so.fxc = [0.9 + 0.2 * h * (0.9 + 0.2 * h2), 0.92 + 0.16 * h, 0.9 + 0.2 * h * (0.9 + 0.2 * h3)]; }   // small per-soldier colour variance
+    sMesh.instanceColor.array[i * 3] = so.fxc[0]; sMesh.instanceColor.array[i * 3 + 1] = so.fxc[1]; sMesh.instanceColor.array[i * 3 + 2] = so.fxc[2];
     dummy.position.x += Math.sin(ry) * kick; dummy.position.z += Math.cos(ry) * kick;
     dummy.updateMatrix();
     gm.setMatrixAt(i, dummy.matrix);
   }
   sMesh.count = n;
-  sMesh.instanceMatrix.needsUpdate = true;
+  sMesh.instanceMatrix.needsUpdate = true; sMesh.instanceColor.needsUpdate = true;
   sWalk.needsUpdate = true;
   for (let k = 0; k < gunMeshes.length; k++) gunMeshes[k].visible = k === w && n > 0;
   gm.count = n;
@@ -2763,6 +2898,7 @@ function drawShadows() {
   }
   for (let i = 0; i < G.soldiers.length; i++) shadowAt(G.soldiers[i].x, G.soldiers[i].z, 0.78);
   if (G.mech) shadowAt(G.mech.x, G.mech.z, 2.1);
+  for (let i = 0; i < lobN; i++) shadowAt(lobX[i], lobZ[i], 0.5 + Math.max(0, 2.4 - lobY[i]) * 0.1);   // where the rocket is over the deck
   const b = G.boss;
   if (b && bossMesh.visible && (b.alive || b.deadT < 1.2)) shadowAt(b.x, b.z, 4.6);
   shMesh.count = shN;
@@ -2856,7 +2992,7 @@ const rkMesh = projMesh(boxes([
   [0.4, 0.04, 0.2, 0, 0, 0.26, 0x7a8088], [0.04, 0.4, 0.2, 0, 0, 0.26, 0x7a8088]]),
   new T.MeshBasicMaterial({ vertexColors: true }));
 // Rail beams: instant bright lines along the shot, fading over BEAM_LIFE.
-const BEAM_MAX = 24, BEAM_LIFE = 0.22;
+const BEAM_MAX = 24, BEAM_LIFE = 0.15;   // crisp line + ~150 ms afterglow
 const beamMesh = new T.InstancedMesh(boxes([[0.12, 0.12, 1, 0, 0, 0.5, 0xffffff], [0.5, 0.08, 1, 0, 0, 0.5, 0x3a5560], [0.08, 0.5, 1, 0, 0, 0.5, 0x3a5560]]),
   new T.MeshBasicMaterial({ vertexColors: true, fog: false, transparent: true, blending: T.AdditiveBlending, depthWrite: false }), BEAM_MAX);
 beamMesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
@@ -2868,7 +3004,7 @@ const beams = Array.from({ length: BEAM_MAX }, () => ({ t: 99, x: 0, z: 0, dx: 0
 let beamHead = 0;
 function addBeam(x, z, dx, dz, len, rgb) {
   const b = beams[beamHead]; beamHead = (beamHead + 1) % BEAM_MAX;
-  b.t = 0; b.x = x; b.z = z; b.dx = dx; b.dz = dz; b.len = len; b.c = rgb;
+  b.t = reduced ? BEAM_LIFE * 0.45 : 0; b.x = x; b.z = z; b.dx = dx; b.dz = dz; b.len = len; b.c = rgb; b.cut = false;
 }
 function drawBeams(dt) {
   let n = 0;
@@ -2877,7 +3013,7 @@ function drawBeams(dt) {
     if (b.t >= BEAM_LIFE) continue;
     b.t += dt;
     if (b.t >= BEAM_LIFE) continue;
-    const f = 1 - b.t / BEAM_LIFE, wid = 0.5 + 0.9 * f;
+    const f = 1 - b.t / BEAM_LIFE, wid = 0.22 + 0.7 * f * f;
     dummy.position.set(b.x, 1.25, b.z);
     dummy.rotation.set(0, Math.atan2(b.dx, b.dz), 0);
     dummy.scale.set(wid, wid, b.len);
@@ -2893,36 +3029,186 @@ function drawBeams(dt) {
   beamMesh.instanceColor.needsUpdate = true;
 }
 
+// ---- trajectories (round 5): which flight model a gun has. Logic adds WEAPONS[w].traj; until then it is derived from the gun id.
+const TRAJ_FALLBACK = { pistol: 'straight', rifle: 'burst', shotgun: 'fan', gatling: 'spray', sniper: 'beam', flamer: 'stream', rocket: 'lob' };
+const TRAJ = WEAPONS.map(W => W.traj || TRAJ_FALLBACK[W.id] || 'straight');
+
+// ---- ribbons: flat (horizontal) triangle strips in one dynamic buffer per blend mode. Trails are built from a short position
+// history per bullet SLOT. The bullet arrays are swap-compacted by logic, so a slot's history restarts whenever the bullet in it
+// changes (detected by a position jump or a different gun), and `by` / `bt` from logic are used when present.
+function ribbonSys(maxSeg, additive) {
+  const pos = new Float32Array(maxSeg * 12), col = new Float32Array(maxSeg * 16), idx = new Uint16Array(maxSeg * 6);
+  for (let s = 0; s < maxSeg; s++) { const v = s * 4; idx.set([v, v + 1, v + 2, v + 2, v + 1, v + 3], s * 6); }
+  const geo = new T.BufferGeometry();
+  geo.setAttribute('position', new T.BufferAttribute(pos, 3).setUsage(T.DynamicDrawUsage));
+  geo.setAttribute('aCol', new T.BufferAttribute(col, 4).setUsage(T.DynamicDrawUsage));
+  geo.setIndex(new T.BufferAttribute(idx, 1));
+  const mat = new T.ShaderMaterial({
+    uniforms: { uBend: BEND },
+    vertexShader: 'attribute vec4 aCol; uniform vec3 uBend; varying vec4 vCol;\n' +
+      'void main() { vCol = aCol; vec4 mv = modelViewMatrix * vec4(position, 1.0); float bd = min(max(-mv.z - 6.0, 0.0), 80.0); mv.xy += uBend.xy * bd * bd; gl_Position = projectionMatrix * mv; }',
+    fragmentShader: 'varying vec4 vCol; void main() { gl_FragColor = vCol; }',
+    transparent: true, depthWrite: false, side: T.DoubleSide, blending: additive ? T.AdditiveBlending : T.NormalBlending,
+  });
+  const mesh = new T.Mesh(geo, mat);
+  mesh.frustumCulled = false; mesh.visible = false;
+  scene.add(mesh);
+  let n = 0;
+  return {
+    mesh,
+    reset() { n = 0; },
+    full() { return n >= maxSeg; },
+    seg(x0, y0, z0, w0, x1, y1, z1, w1, c0, a0, c1, a1) {
+      if (n >= maxSeg) return;
+      let dx = x1 - x0, dz = z1 - z0; const l = Math.hypot(dx, dz);
+      if (l > 1e-4) { dx /= l; dz /= l; } else { dx = 0; dz = 1; }
+      const px = -dz, pz = dx, o = n * 12, c = n * 16;
+      pos[o] = x0 - px * w0 * 0.5; pos[o + 1] = y0; pos[o + 2] = z0 - pz * w0 * 0.5;
+      pos[o + 3] = x0 + px * w0 * 0.5; pos[o + 4] = y0; pos[o + 5] = z0 + pz * w0 * 0.5;
+      pos[o + 6] = x1 - px * w1 * 0.5; pos[o + 7] = y1; pos[o + 8] = z1 - pz * w1 * 0.5;
+      pos[o + 9] = x1 + px * w1 * 0.5; pos[o + 10] = y1; pos[o + 11] = z1 + pz * w1 * 0.5;
+      for (let k = 0; k < 4; k++) { const e = k < 2; col[c + k * 4] = e ? c0[0] : c1[0]; col[c + k * 4 + 1] = e ? c0[1] : c1[1]; col[c + k * 4 + 2] = e ? c0[2] : c1[2]; col[c + k * 4 + 3] = (e ? a0 : a1) * trA; }
+      n++;
+    },
+    flush() {
+      mesh.visible = n > 0;
+      mesh.geometry.setDrawRange(0, n * 6);
+      const gp = geo.attributes.position, gc = geo.attributes.aCol;
+      gp.needsUpdate = true; gp.updateRange.offset = 0; gp.updateRange.count = n * 12;
+      gc.needsUpdate = true; gc.updateRange.offset = 0; gc.updateRange.count = n * 16;
+    },
+  };
+}
+const ribAdd = ribbonSys(4200, true), ribSmoke = ribbonSys(2400, false);
+ribSmoke.mesh.renderOrder = 1; ribAdd.mesh.renderOrder = 2;
+const RIB_H = 12;
+const hHx = new Float32Array(MAXB * RIB_H), hHy = new Float32Array(MAXB * RIB_H), hHz = new Float32Array(MAXB * RIB_H);
+const hBt = new Float32Array(MAXB), hN = new Uint8Array(MAXB), hPx = new Float32Array(MAXB), hPy = new Float32Array(MAXB), hPz = new Float32Array(MAXB), hAge = new Float32Array(MAXB), hW = new Uint8Array(MAXB).fill(255);
+const TRAJ_DS = { straight: 0.5, burst: 0.4, fan: 0.22, spray: 0.3, stream: 0.4, lob: 0.9 };
+function fxHist(i, x, y, z, w, ds, dtr) {
+  const o = i * RIB_H, d = Math.hypot(x - hPx[i], y - hPy[i], z - hPz[i]);
+  const tj = bt[i] > 0 || hBt[i] > 0 ? Math.abs(bt[i] - hBt[i] - dtr) > 0.06 : false;      // logic's age says it is not the same bullet
+  hBt[i] = bt[i];
+  if (hN[i] === 0 || hW[i] !== w || tj || d > WEAPONS[w].speed * Math.max(dtr, 0.025) * 1.5 + 0.4) {      // a different bullet is in this slot now
+    hW[i] = w; hN[i] = 1; hAge[i] = 0; hHx[o] = x; hHy[o] = y; hHz[o] = z;
+  } else {
+    hAge[i] += dtr;
+    const lx = hHx[o], ly = hHy[o], lz = hHz[o], dd = Math.hypot(x - lx, y - ly, z - lz);
+    if (dd >= ds) {
+      // trail points sit ds apart whatever the frame rate: a fast bullet that moved several ds this frame gets several points
+      const m = Math.min(RIB_H - 1, Math.floor(dd / ds)), n = Math.min(hN[i], RIB_H - m);
+      for (let k = n - 1; k >= 0; k--) { hHx[o + k + m] = hHx[o + k]; hHy[o + k + m] = hHy[o + k]; hHz[o + k + m] = hHz[o + k]; }
+      for (let q = 1; q <= m; q++) { const f = q * ds / dd, r = o + m - q; hHx[r] = lx + (x - lx) * f; hHy[r] = ly + (y - ly) * f; hHz[r] = lz + (z - lz) * f; }
+      hN[i] = Math.min(hN[i] + m, RIB_H);
+    }
+  }
+  hPx[i] = x; hPy[i] = y; hPz[i] = z;
+}
+const C_FLAME_HOT = [1, 0.8, 0.4], C_WHITE = [1, 0.97, 0.85], C_FLAME = [1, 0.62, 0.18], C_FLAME2 = [0.7, 0.18, 0.05], C_SMOKE = [0.55, 0.55, 0.58], C_SMOKE2 = [0.3, 0.3, 0.33];
+const C_LT = [0.85, 0.85, 0.85], S1 = [0, 0, 0], S2 = [0, 0, 0];     // scratch colours: no allocation in the per-bullet loop
+const cm = (o, a, b, t) => { o[0] = a[0] + (b[0] - a[0]) * t; o[1] = a[1] + (b[1] - a[1]) * t; o[2] = a[2] + (b[2] - a[2]) * t; return o; };
+let trK = 1, trA = 1;      // trail density: with hundreds of bullets in flight the ribbons shorten and thin out (one white wall helps nobody)
+let lobN = 0; const lobX = new Float32Array(MAXB), lobZ = new Float32Array(MAXB), lobY = new Float32Array(MAXB);
+// Draws one bullet's trail from its history. Every traj looks different on purpose: thin tracer / bright triple burst / short fat
+// fading pellets / weaving ribbon / (beam is drawn by drawBeams) / flame ribbon that widens with height into smoke / smoke arc.
+function fxTrail(i, traj, rgb, k) {
+  const o = i * RIB_H, short = (reduced ? 0.5 : 1) * trK;
+  const hx0 = hPx[i], hy0 = hPy[i], hz0 = hPz[i];
+  let nmax = 0;
+  switch (traj) {
+    case 'straight': nmax = 6; break;
+    case 'burst': nmax = 6; break;
+    case 'fan': nmax = 5; break;
+    case 'spray': nmax = 10; break;
+    case 'stream': nmax = 7; break;
+    case 'lob': nmax = 12; break;
+    default: return;
+  }
+  nmax = Math.max(1, Math.round(nmax * short));
+  if (hN[i] < 2) return;
+  const n = Math.min(hN[i], nmax);
+  let px = hx0, py = hy0, pz = hz0;
+  for (let s = 0; s < n; s++) {
+    const qx = hHx[o + s], qy = hHy[o + s], qz = hHz[o + s], t0 = s / nmax, t1 = (s + 1) / nmax;
+    if (ribAdd.full() || ribSmoke.full()) return;
+    switch (traj) {
+      case 'straight': ribAdd.seg(px, py, pz, 0.17 * k * (1 - t0 * 0.7), qx, qy, qz, 0.17 * k * (1 - t1 * 0.7), cm(S1, C_WHITE, rgb, 0.4), 1 - t0 * 0.8, rgb, 1 - t1); break;
+      case 'burst': ribAdd.seg(px, py, pz, 0.22 * k * (1 - t0 * 0.7), qx, qy, qz, 0.22 * k * (1 - t1 * 0.7), C_WHITE, 1 - t0 * 0.6, rgb, 1 - t1); break;
+      case 'fan': { const f = clamp(1 - hAge[i] / 0.22, 0.12, 1); ribAdd.seg(px, py, pz, 0.26 * k * (1 - t0 * 0.6), qx, qy, qz, 0.26 * k * (1 - t1 * 0.6), cm(S1, C_WHITE, rgb, 0.7), 0.6 * f * (1 - t0), rgb, 0.6 * f * (1 - t1)); break; }
+      case 'spray': ribAdd.seg(px, py, pz, 0.14 * k, qx, qy, qz, 0.06 * k, cm(S1, C_WHITE, rgb, 0.65), 0.7 * (1 - t0), rgb, 0.7 * (1 - t1)); break;
+      case 'stream': {
+        const w0 = 0.1 + (py - 1.0) * 0.3 + t0 * 0.18, w1 = 0.1 + (qy - 1.0) * 0.3 + t1 * 0.18;     // widens with height and age
+        ribAdd.seg(px, py, pz, w0 * k, qx, qy, qz, w1 * k, cm(S1, C_FLAME_HOT, C_FLAME, Math.min(1, t0 * 2)), 0.1 * (1 - t0 * 0.7), cm(S2, C_FLAME, C_FLAME2, t1), 0.1 * (1 - t1));
+        if (s >= n - 3) ribSmoke.seg(px, py + 0.1, pz, w0 * 1.3, qx, qy + 0.14, qz, w1 * 1.5, C_SMOKE, 0.12 * (1 - (s - (n - 3)) / 3), C_SMOKE2, 0);
+        break;
+      }
+      case 'lob':
+        ribSmoke.seg(px, py, pz, 0.16 + t0 * 0.5, qx, qy, qz, 0.16 + t1 * 0.5, cm(S1, C_SMOKE, C_LT, 0.4 * (1 - t0)), 0.62 * (1 - t0), C_SMOKE2, 0.6 * (1 - t1));
+        if (s < 2) ribAdd.seg(px, py, pz, 0.16 * (1 - s * 0.5), qx, qy, qz, 0.1 * (1 - s * 0.5), C_FLAME, 0.9 - s * 0.4, C_FLAME2, 0.4 - s * 0.2);
+        break;
+    }
+    px = qx; py = qy; pz = qz;
+  }
+}
+// called from removeBullet (one added line in logic) before the bullet is removed: mirrors the swap for the history, ends beams
+function fxBulletEnd(i) {
+  // logic removes slot i by moving the LAST bullet into it: mirror that for the trail history so every trail follows its own bullet
+  const j = nb - 1, o = i * RIB_H, q = j * RIB_H;
+  if (i !== j) {
+    for (let k = 0, n = hN[j]; k < n; k++) { hHx[o + k] = hHx[q + k]; hHy[o + k] = hHy[q + k]; hHz[o + k] = hHz[q + k]; }
+    hN[i] = hN[j]; hPx[i] = hPx[j]; hPy[i] = hPy[j]; hPz[i] = hPz[j]; hAge[i] = hAge[j]; hW[i] = hW[j]; hBt[i] = hBt[j];
+  }
+  hN[j] = 0;
+  if (bk[i]) return;
+  const w = bw[i];
+  if (TRAJ[w] === 'beam') {
+    // shorten the matching beam to where the shot actually ended, and spark there
+    let best = null, bd = 1.2;
+    for (const b of beams) {
+      if (b.t >= BEAM_LIFE || b.cut) continue;
+      const rx = bx[i] - b.x, rz = bz[i] - b.z, al = rx * b.dx + rz * b.dz, perp = Math.abs(rx * b.dz - rz * b.dx);
+      if (al > 0 && al < b.len + 1 && perp < bd) { bd = perp; best = b; best.al = al; }
+    }
+    if (best) { best.len = Math.max(0.5, best.al); best.cut = true; }
+    flashAt(bx[i], by[i], bz[i], 0.1, 0.7, 1, 1.2);
+  }       // lob: the explode event (blast) already draws the impact ring, flash and smoke
+}
+
 const WRGB = WEAPONS.map(W => { const c = new T.Color(W.color); return [c.r, c.g, c.b]; });
-const TRACER = { pistol: [0.8, 0.8], rifle: [1.0, 1.0], gatling: [0.85, 0.75] };   // [length, width] multipliers
+const TRACER = { pistol: [0.55, 0.7], rifle: [0.6, 0.9], gatling: [0.5, 0.7] };   // short heads: the ribbon trail carries the length   // [length, width] multipliers
 let bFrame = 0, lastFlames = 0;
-// One pass over the live bullets: each is drawn by its weapon's fx. Counts are capped by MAXB; sprite output by the sprite systems.
+// One pass over the live bullets: each head is drawn by its weapon's fx at its real height (`by`), and fxTrail adds the ribbon for its
+// trajectory. Counts are capped by MAXB; ribbons and sprites by their own systems.
 function drawBullets(dt) {
   bFrame++;
   let nt = 0, np_ = 0, nr = 0, nf = 0;
+  lobN = 0;
   const tc = bMesh.instanceColor.array, pc = pelMesh.instanceColor.array, rc = rkMesh.instanceColor.array;
-  fireSys.reset(); smokeSys.reset();
-  const flameA = 0.6 * clamp(110 / (lastFlames + 1), 0.12, 1);
+  fireSys.reset(); smokeSys.reset(); ribAdd.reset(); ribSmoke.reset();
+  trK = clamp(200 / Math.max(nb, 1), 0.15, 1); trA = 0.22 + 0.78 * trK;
+  const flameA = 0.45 * clamp(110 / (lastFlames + 1), 0.12, 1);
   const lvK = (1 + 0.2 * (G.weaponLv - 1)) * TH.cur.tracer;      // night / storm: brighter, fatter tracers
   for (let i = 0; i < nb; i++) {
-    const dx = bdx[i], dz = bdz[i], ang = Math.atan2(dx, dz);
+    const dx = bdx[i], dz = bdz[i], ang = Math.atan2(dx, dz), yb = by[i];
     if (bk[i]) {      // mech shell
+      hN[i] = 0;
       dummy.position.set(bx[i], 2.0, bz[i]); dummy.rotation.set(0, ang, 0); dummy.scale.setScalar(2.6); dummy.updateMatrix();
       bMesh.setMatrixAt(nt, dummy.matrix); tc[nt * 3] = 1; tc[nt * 3 + 1] = 0.5; tc[nt * 3 + 2] = 0.15; nt++;
       continue;
     }
-    const w = bw[i] < WEAPONS.length ? bw[i] : 0, W = WEAPONS[w], rgb = WRGB[w], k = w === G.weapon ? lvK : 1;
+    const w = bw[i] < WEAPONS.length ? bw[i] : 0, W = WEAPONS[w], rgb = WRGB[w], k = w === G.weapon ? lvK : 1, traj = TRAJ[w];
+    if (traj !== 'beam') fxHist(i, bx[i], yb, bz[i], w, TRAJ_DS[traj] || 0.4, dt);
     switch (W.fx) {
       case 'pellet': {
         const f = clamp(bl[i] / W.range, 0, 1);        // fades fast: bright near the muzzle, gone by the end of range
-        dummy.position.set(bx[i], 1.25, bz[i]); dummy.rotation.set(0, ang, 0); dummy.scale.setScalar(k * (0.6 + 0.5 * f)); dummy.updateMatrix();
+        dummy.position.set(bx[i], yb, bz[i]); dummy.rotation.set(0, ang, 0); dummy.scale.setScalar(k * (0.6 + 0.5 * f)); dummy.updateMatrix();
         pelMesh.setMatrixAt(np_, dummy.matrix);
         const g = Math.pow(f, 0.7); pc[np_ * 3] = rgb[0] * g; pc[np_ * 3 + 1] = rgb[1] * g; pc[np_ * 3 + 2] = rgb[2] * g; np_++;
-        if (!fireSys.full()) fireSys.push(bx[i], 1.25, bz[i], rgb[0], rgb[1] * 0.8, rgb[2] * 0.5, 0.55 * g, 0.85 * k);
+        if (!fireSys.full()) fireSys.push(bx[i], yb, bz[i], rgb[0], rgb[1] * 0.8, rgb[2] * 0.5, 0.45 * g, 0.7 * k);
         break;
       }
       case 'rail': {
-        dummy.position.set(bx[i], 1.25, bz[i]); dummy.rotation.set(0, ang, 0); dummy.scale.set(1.5 * k, 1.5 * k, 3); dummy.updateMatrix();
+        dummy.position.set(bx[i], yb, bz[i]); dummy.rotation.set(0, ang, 0); dummy.scale.set(1.2 * k, 1.2 * k, 2.4); dummy.updateMatrix();
         bMesh.setMatrixAt(nt, dummy.matrix); tc[nt * 3] = 0.9; tc[nt * 3 + 1] = 1; tc[nt * 3 + 2] = 1; nt++;
         break;
       }
@@ -2930,30 +3216,34 @@ function drawBullets(dt) {
         nf++;
         const age = clamp(1 - bl[i] / W.range, 0, 1);
         const wob = Math.sin(i * 12.9898 + G.time * 18) * 0.16 * age;
-        const x = bx[i] + dz * wob, z = bz[i] - dx * wob, y = 1.05 + age * 0.45;
+        const x = bx[i] + dz * wob, z = bz[i] - dx * wob, y = Math.abs(yb - 1.25) < 1e-4 ? 1.05 + age * 0.45 : yb;     // logic's `by` when it drives the rise
         const hot = Math.max(0, 1 - age * 2.6), mid = clamp(1.6 - age * 1.7, 0, 1);
         if (!fireSys.full()) fireSys.push(x, y, z, 1, 0.32 + 0.55 * hot + 0.1 * mid, 0.05 + 0.3 * hot, flameA * (age > 0.7 ? (1 - age) / 0.3 : 1), (0.32 + age * 1.15) * k);
-        if (age > 0.4 && !smokeSys.full()) smokeSys.push(x, y + 0.25 + (age - 0.4) * 0.8, z, 0.2, 0.2, 0.22, 0.17 * Math.sin(Math.PI * (age - 0.4) / 0.6), 0.6 + age * 1.0);
+        if (age > 0.4 && !smokeSys.full()) smokeSys.push(x, y + 0.25 + (age - 0.4) * 0.8, z, 0.2, 0.2, 0.22, 0.14 * Math.sin(Math.PI * (age - 0.4) / 0.6), 0.6 + age * 1.0);
         break;
       }
       case 'rocket': {
-        dummy.position.set(bx[i], 1.25, bz[i]); dummy.rotation.set(0, ang, 0); dummy.scale.setScalar(1 + 0.6 * (k - 1)); dummy.updateMatrix();
+        // pitch from the history (nose follows the arc); `by` is the real height
+        let pitch = 0;
+        if (hN[i] > 1) { const o = i * RIB_H, hy = hHy[o] - hHy[o + 1], hh = Math.hypot(hHx[o] - hHx[o + 1], hHz[o] - hHz[o + 1]) || 1; pitch = Math.atan2(hy, hh); }
+        dummy.rotation.order = 'YXZ'; dummy.position.set(bx[i], yb, bz[i]); dummy.rotation.set(pitch, ang, 0); dummy.scale.setScalar(1 + 0.6 * (k - 1)); dummy.updateMatrix(); dummy.rotation.order = 'XYZ';
         rkMesh.setMatrixAt(nr, dummy.matrix); rc[nr * 3] = rc[nr * 3 + 1] = rc[nr * 3 + 2] = 1; nr++;
-        if (!fireSys.full()) fireSys.push(bx[i] - dx * 0.5, 1.25, bz[i] - dz * 0.5, 1, 0.62, 0.2, 0.95, 0.85);
-        if (dt > 0 && ((bFrame + i) & 1) === 0) smokeSys.add(bx[i] - dx * 0.6, 1.25, bz[i] - dz * 0.6, rr(-0.25, 0.25), rr(0.2, 0.6), rr(-0.25, 0.25), 0.6, 0.5, 1.7, [0.8, 0.78, 0.74], [0.3, 0.3, 0.32], 0.5, 1.2);
-        break;
+        if (!fireSys.full()) fireSys.push(bx[i] - dx * 0.5, yb - Math.sin(pitch) * 0.5, bz[i] - dz * 0.5, 1, 0.62, 0.2, 0.95, 0.85);
+        lobX[lobN] = bx[i]; lobZ[lobN] = bz[i]; lobY[lobN] = yb; lobN++;                     // ground dot under the rocket (drawShadows) + landing marker
+                break;
       }
       default: {
         const t = TRACER[W.id] || TRACER.rifle;
-        dummy.position.set(bx[i], 1.25, bz[i]); dummy.rotation.set(0, ang, 0); dummy.scale.set(t[1] * k, t[1] * k, t[0]); dummy.updateMatrix();
-        bMesh.setMatrixAt(nt, dummy.matrix); tc[nt * 3] = rgb[0]; tc[nt * 3 + 1] = rgb[1]; tc[nt * 3 + 2] = rgb[2]; nt++;
+        dummy.position.set(bx[i], yb, bz[i]); dummy.rotation.set(0, ang, 0); dummy.scale.set(t[1] * k, t[1] * k, t[0]); dummy.updateMatrix();
+        bMesh.setMatrixAt(nt, dummy.matrix); tc[nt * 3] = rgb[0] * (0.6 + 0.4 * trK); tc[nt * 3 + 1] = rgb[1] * (0.6 + 0.4 * trK); tc[nt * 3 + 2] = rgb[2] * (0.6 + 0.4 * trK); nt++;
         if (BUFFV.split && nt + (nb - i) < MAXB - 1) {       // split buff: a ghost twin beside every tracer
           const sd = (i & 1) ? 0.24 : -0.24;
-          dummy.position.set(bx[i] + dz * sd, 1.25, bz[i] - dx * sd); dummy.scale.set(t[1] * 0.7, t[1] * 0.7, t[0] * 0.9); dummy.updateMatrix();
+          dummy.position.set(bx[i] + dz * sd, yb, bz[i] - dx * sd); dummy.scale.set(t[1] * 0.7, t[1] * 0.7, t[0] * 0.9); dummy.updateMatrix();
           bMesh.setMatrixAt(nt, dummy.matrix); tc[nt * 3] = 0.3; tc[nt * 3 + 1] = 1; tc[nt * 3 + 2] = 0.85; nt++;
         }
       }
     }
+    if (traj !== 'beam') fxTrail(i, traj, rgb, k);
   }
   dummy.scale.setScalar(1);
   lastFlames = nf;
@@ -2965,7 +3255,7 @@ function drawBullets(dt) {
   fin(bMesh, nt); fin(pelMesh, np_); fin(rkMesh, nr);
   drawBeams(dt);
   worldSprites();
-  fireSys.flush(dt); smokeSys.flush(dt);
+  fireSys.flush(dt); smokeSys.flush(dt); ribAdd.flush(); ribSmoke.flush();
   SPR_SCALE.value = renderer.domElement.height * 0.5;
 }
 function drawParticles(dt) {
@@ -3816,6 +4106,7 @@ function fxUpdateTheme(dt) {
     if (TH.again > 0) { TH.again -= dt; if (TH.again <= 0) TH.flash = 0.9; }
     TH.flash = Math.max(0, TH.flash - dt * 3.2);
   } else TH.flash = 0;
+  RIM.color.value.copy(scene.fog.color).lerp(LIGHTNING, 0.35);
   const f = Math.round(TH.flash * 50) / 50;
   if (f !== TH.fApplied) {
     TH.fApplied = f;
@@ -4068,7 +4359,7 @@ function fxLampSprites() {
   for (const l of ROUTE.lamps) { const d = G.z - l[2]; if (d < -4 || d > 62) continue; if (fireSys.full()) break; fireSys.push(l[0], l[1], l[2], 1, 0.82, 0.45, 0.55, 2.6); }
 }
 
-let lastBoomRing = 0;
+let lastBoomRing = 0, burstN = 0;
 // ---- event wiring
 bus.on('shot', d => {
   flashLifeK = BUFFV.frenzy ? 0.55 : 1;      // frenzy: shorter, hotter muzzle flashes
@@ -4093,6 +4384,11 @@ function shotFx(d) {
       smokeSys.add(x, 1.0, d.z + 0.5, rr(-0.4, 0.4), 0.3, rr(0.6, 1.4), 0.7, 0.5, 1.8, [0.85, 0.82, 0.78], [0.35, 0.35, 0.37], 0.5, 1.5);
       break;
     default:
+      if (TRAJ[w] === 'burst') {       // 3-round rhythm: two small flashes, then a big one
+        burstN = (burstN + 1) % 3;
+        flashAt(x, 1.28, z, burstN === 2 ? 0.1 : 0.05, (burstN === 2 ? 1.1 : 0.55) + c[0] * 0.3, (burstN === 2 ? 1 : 0.5) + c[1] * 0.2, 0.3 + c[2] * 0.2);
+        break;
+      }
       flashAt(x, 1.28, z, W.id === 'gatling' ? 0.06 : 0.075, 0.5 + c[0] * 0.5 * gl, 0.5 + c[1] * 0.4 * gl, 0.3 + c[2] * 0.2);
   }
 }
@@ -4209,6 +4505,24 @@ function perfTick() {
   }
 }
 
+// ---- squad framing: a deep formation (100 soldiers = ~15 rows) would run off the bottom of the screen, so the camera slides back
+// along its own view line (the aim point stays put, so gates and pickups keep their place on screen, only a little smaller).
+const CAM_DY = 12 / Math.hypot(12, 14), CAM_DZ = 14 / Math.hypot(12, 14);       // unit step along the view line, away from the aim point
+let camPull = 0;
+function fxCamPull(dt) {
+  const n = G.soldiers.length;
+  let want = 0;
+  if (n > 10 && G.phase !== 'menu') {
+    const rows = Math.ceil(n / perRow(n)), depth = (rows - 1) * SP + 0.9;                    // how far behind the squad's front line the last row stands
+    const th = Math.atan2(12, 14), tf = Math.tan(camera.fov * Math.PI / 360);
+    const tanA = Math.tan(th + Math.atan(0.74 * tf));                                      // the last row should land about 87% of the way down the screen
+    const den = CAM_DZ - CAM_DY / tanA;
+    if (den > 0.05) want = clamp((depth - 10 + 12 / tanA) / den, 0, 15);
+  }
+  camPull += (want - camPull) * Math.min(1, dt * (want > camPull ? 2.2 : 1.2));
+  if (Math.abs(want - camPull) < 0.01) camPull = want;
+  return reduced ? want : camPull;
+}
 const pauseBtn = $('#pause');
 let pauseShown = true;
 function render(dt) {
@@ -4230,7 +4544,8 @@ function render(dt) {
   const sh = reduced || G.paused ? 0 : Math.max(G.shake, FX.shake);
   const sway = G.phase === 'menu' ? Math.sin(G.time * 0.4) * 0.6 : 0;
   const cx = G.x * 0.35 + sway;
-  camera.position.set(cx + (Math.random() - 0.5) * sh, 12 + (Math.random() - 0.5) * sh, G.z + 10);
+  const cE = fxCamPull(dt);
+  camera.position.set(cx + (Math.random() - 0.5) * sh, 12 + cE * CAM_DY + (Math.random() - 0.5) * sh, G.z + 10 + cE * CAM_DZ);
   camera.lookAt(cx * 0.6, 0, G.z - 4);
   camera.updateMatrixWorld();   // so popups/hints project with this frame's camera, not last frame's
   updatePops(rdt);
@@ -4667,7 +4982,7 @@ function resetSave() {
 }
 // Start stage n from the beginning with its entry squad (same as prepare(n) + startRun()).
 function startStage(n) { prepare(n); startRun(); }
-window.__zb = { BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
+window.__zb = { fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
   stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0), bw: Array.from(bw.subarray(0, nb)), bl: Array.from(bl.subarray(0, nb)) }),
   perf: () => ({ pr: PR_STEPS[prIdx], steps: PR_STEPS, avg: Perf.avg, fxScale }) };
 })();
