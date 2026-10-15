@@ -4519,7 +4519,7 @@ function fxCamPull(dt) {
     const den = CAM_DZ - CAM_DY / tanA;
     if (den > 0.05) want = clamp((depth - 10 + 12 / tanA) / den, 0, 15);
   }
-  camPull += (want - camPull) * Math.min(1, dt * (want > camPull ? 2.2 : 1.2));
+  camPull += (want - camPull) * Math.min(1, dt * (want > camPull ? 3 : 1.5));
   if (Math.abs(want - camPull) < 0.01) camPull = want;
   return reduced ? want : camPull;
 }
