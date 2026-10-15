@@ -198,10 +198,10 @@ const results = await page.evaluate(() => {
     check('zombie pool capped at 900', Z.length === 900, Z.length);
     for (let i = 0; i < 240; i++) { G.shield = 1e9; zb.step(1 / 60); if (i % 30 === 0) zb.render(1 / 60); }
     for (let i = 0; i < 5000; i++) zb.spawnBullet(0, G.z - 3, 0, -1, 1, 0);
-    check('bullet pool capped at 700', zb.stats().bullets === 700, zb.stats().bullets);
+    check('bullet pool capped at 1200', zb.stats().bullets === 1200, zb.stats().bullets);
     for (let i = 0; i < 120; i++) { G.shield = 1e9; zb.step(1 / 60); if (i % 20 === 0) zb.render(1 / 60); }
     const st = zb.stats();
-    check('particle pool capped at 1400, still running', st.particles <= 1400 && st.bullets <= 700 && Z.length <= 900, JSON.stringify(st));
+    check('particle pool capped at 1400, still running', st.particles <= 1400 && st.bullets <= 1200 && Z.length <= 900, JSON.stringify(st));
     check('pools degrade without breaking the run', G.phase === 'run' && G.soldiers.length === 40);
   }
   // ---------------------------------------------------------------- 8. guns: pickups, levels, swap, pairs
@@ -443,6 +443,10 @@ const results = await page.evaluate(() => {
     check('stars: entry 20 -> 19 survivors 1 star, 20 -> 2, 29 -> 2, 30 -> 3', st.join() === '1,2,2,3', st.join());
     zb.SAVE.stages[2] = { entry: 50, stars: 0 };
     const hi = [playWin(2, 74).r.stars, playWin(2, 75).r.stars, playWin(2, 49).r.stars];
+    zb.SAVE.stages[2] = { entry: 94, stars: 0 };
+    const top = [playWin(2, 94).r.stars, playWin(2, 95).r.stars];
+    check('stars: with an entry of 94 the 3-star bar is 95% of the cap (95 survivors), not an impossible 100+', top.join() === '2,3', top.join());
+    zb.SAVE.stages[2] = { entry: 50, stars: 0 };
     check('stars: with the cap at 100 the 3-star bar for entry 50 is 75 survivors (>= 1.5 x entry); below the entry is 1 star', hi.join() === '2,3,1', hi.join());
     zb.resetSave();
   }

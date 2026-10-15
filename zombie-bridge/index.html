@@ -539,7 +539,7 @@ const rint = (a, b) => Math.floor(rnd(a, b + 1));
 const ROAD = 4;          // half width of the deck
 const BULLET_SPEED = 42;
 // Round 5 (owner): squad cap raised; every soldier is drawn (MAXVIS = cap). Logic owns TUNE.maxSquad and keeps it <= MAXVIS.
-const MAXZ = 900, MAXB = 700, MAXP = 1400, MAXVIS = 100, SP = 0.62;
+const MAXZ = 900, MAXB = 1200, MAXP = 1400, MAXVIS = 100, SP = 0.62;
 const STEP = 1 / 60, MAX_STEPS = 4;   // fixed simulation step and the catch-up cap per rendered frame
 
 // Every balance number lives here (read at use time, so tests can override them through __zb.TUNE before prepare()).
@@ -551,13 +551,13 @@ const TUNE = {
   hpPerStage: 0.5,                // ... ordinary zombies +0.5 hp per step (fractions are rolled per zombie) ...
   stagePow: 0.9,                  // ... where a stage's step count is (stage-1)^stagePow
   stageMul: [3.55, 2.1, 2.5],     // trim of the far-end horde growth (`ramp`) per stage; the last entry covers every later stage
-  stageHp: [1.35, 1.25, 1.45, 0.68, 0.81],       // extra zombie hp factor per stage (campaign tuning: counts are capped by MAXZ, so late stages get tougher, not more numerous); the last entry covers every later stage
+  stageHp: [1.35, 1.5, 1.75, 1.0, 0.95],       // extra zombie hp factor per stage (campaign tuning: counts are capped by MAXZ, so late stages get tougher, not more numerous); the last entry covers every later stage
   early: 0.35, rampPow: 2, ramp: 13, hpRamp: 15.5, bruteRamp: 6,   // along the bridge (position p = 0..1): size x (early + ramp*p^rampPow), hp x (1 + hpRamp*p^rampPow), brute count likewise
   count: { open: 3, wall: 50, blob: 30, line: 20, swarm: 24, runners: 20 },
   bruteBase: 3, brutePerStage: 1, bruteHp: 10, bruteHpPerStage: 4,
   // --- layout spacing (units of empty bridge)
   spawnAhead: 58,                 // a horde is released when the squad is this far from its start line
-  lobG: 30, lobPeak: 2.6, lobHoming: 0.14, lobGroundK: 0.7,   // rocket lob: gravity (u/s^2), apex height, how far it re-aims per retarget, blast strength when it lands on the ground
+  lobG: 45, lobPeak: 2.4, lobHoming: 0.14, lobGroundK: 1.0,   // rocket lob: gravity (u/s^2), apex height, how far it re-aims per retarget, blast strength when it lands on the ground
   ambushAhead: 40,                // ambush hordes are released later (closer): no time to shoot them from afar
   openingGap: 24,                 // between the opening cluster and the first pattern event
   hordeGap: [5, 8],               // after a horde (plus the horde's depth)
@@ -624,10 +624,10 @@ const TUNE = {
 const WEAPONS = [
   { id: 'pistol',  name: '手槍',   desc: '基本配槍',         fx: 'bullet', color: 0xffe08a, rate: 8,    traj: 'straight', pellets: 1, spread: 0.04, dmg: 2.5,    speed: 42, range: 0.56, pierce: 0, splash: 0,   knock: 0,   bossEff: 0.93,    lvMul: 1.6, maxLv: 3, ui: { power: 1, rate: 4, range: 3 } },
   { id: 'rifle',   name: '步槍',   desc: '射速快、射程長',   fx: 'bullet', color: 0xffd060, rate: 10.5, traj: 'burst', burst: 3, burstGap: 0.07, pellets: 1, spread: 0.05, dmg: 1,   speed: 46, range: 0.56, pierce: 1, splash: 0,   knock: 0,   bossEff: 1,    lvMul: 1.3, maxLv: 3, ui: { power: 2, rate: 3, range: 4 } },
-  { id: 'shotgun', name: '散彈槍', desc: '近距離一次轟一片', fx: 'pellet', color: 0xffb070, rate: 6.9, traj: 'fan', drag: 2.4, minSpeed: 0.3, pellets: 5, spread: 0.22, dmg: 1,   speed: 40, range: 0.36, pierce: 0, splash: 0,   knock: 0.6, bossEff: 0.3, lvMul: 1.3, maxLv: 3, ui: { power: 4, rate: 2, range: 2 } },
+  { id: 'shotgun', name: '散彈槍', desc: '近距離一次轟一片', fx: 'pellet', color: 0xffb070, rate: 6.9, traj: 'fan', drag: 2.2, minSpeed: 0.3, pellets: 5, spread: 0.22, dmg: 1,   speed: 48, range: 0.4, pierce: 0, splash: 0,   knock: 0.6, bossEff: 0.3, lvMul: 1.3, maxLv: 3, ui: { power: 4, rate: 2, range: 2 } },
   { id: 'gatling', name: '加特林', desc: '火力全開的彈幕',   fx: 'bullet', color: 0xfff0a0, rate: 22,  traj: 'spray', weaveAmp: 0.45, weaveHz: 2.4, pellets: 1, spread: 0.08, dmg: 1,   speed: 44, range: 0.5,  pierce: 0, splash: 0,   knock: 0,   bossEff: 0.62,    lvMul: 1.3, maxLv: 3, ui: { power: 1, rate: 5, range: 3 } },
   { id: 'sniper',  name: '狙擊槍', desc: '一發貫穿整排',     fx: 'rail',   color: 0x9fe8ff, rate: 1.75, traj: 'beam', pellets: 1, spread: 0.01, dmg: 3.5,   speed: 160, range: 0.18, pierce: 5, splash: 0,   knock: 0.3, bossEff: 0.95,    lvMul: 1.3, maxLv: 3, ui: { power: 5, rate: 1, range: 5 } },
-  { id: 'flamer',  name: '火焰槍', desc: '燒穿整群，射程短', fx: 'flame',  color: 0xff7a2a, rate: 7,    traj: 'stream', drag: 2.0, rise: 1.3, drift: 0.9, pellets: 2, spread: 0.3,  dmg: 1.0, speed: 26, range: 0.6, pierce: 2, splash: 0,   knock: 0,   bossEff: 0.22,  lvMul: 1.3, maxLv: 3, ui: { power: 2, rate: 4, range: 1 } },
+  { id: 'flamer',  name: '火焰槍', desc: '燒穿整群，射程短', fx: 'flame',  color: 0xff7a2a, rate: 7,    traj: 'stream', drag: 1.6, rise: 1.3, drift: 0.9, pellets: 2, spread: 0.3,  dmg: 1.0, speed: 30, range: 0.6, pierce: 2, splash: 0,   knock: 0,   bossEff: 0.22,  lvMul: 1.3, maxLv: 3, ui: { power: 2, rate: 4, range: 1 } },
   { id: 'rocket',  name: '火箭筒', desc: '爆炸範圍傷害',     fx: 'rocket', color: 0xff9a40, rate: 0.9,  traj: 'lob', pellets: 1, spread: 0.03, dmg: 5,   speed: 26, range: 0.9,  pierce: 0, splash: 1.6, knock: 1,   bossEff: 0.83,  lvMul: 1.3, maxLv: 3, ui: { power: 5, rate: 1, range: 4 } },
 ];
 
@@ -1880,7 +1880,7 @@ function spawnBullet(x, z, dx, dz, dmg, kind, w, ph, tx, tz) {
   bpr[nb] = kind ? 0 : W.pierce; bhn[nb] = 0;
   bx[nb] = x; bz[nb] = z; bdx[nb] = dx; bdz[nb] = dz; bl[nb] = kind ? 0.75 : W.range; bd[nb] = dmg; bk[nb] = kind;
   bs[nb] = kind ? BULLET_SPEED : W.speed; by[nb] = 1.25; bt[nb] = 0; bph[nb] = ph === undefined ? 0 : ph; bvy[nb] = 0;
-  if (W && W.traj === 'stream') { by[nb] = 0.9; bvy[nb] = W.rise; if (ph === undefined) bph[nb] = Math.random() * 2 - 1; }
+  if (W && W.traj === 'stream') { by[nb] = 0.9; bvy[nb] = W.rise; bph[nb] = ph === undefined ? Math.random() * 2 - 1 : Math.sin(ph * 2.3); }   // bph in [-1, 1]: which way and how much it drifts
   else if (W && W.traj === 'lob') {
     const dist = clamp(tx === undefined ? 14 : Math.hypot(tx - x, tz - z), 3, 40);
     by[nb] = 1.6; bvy[nb] = Math.sqrt(2 * TUNE.lobG * Math.max(0.2, TUNE.lobPeak - 1.6));
@@ -4376,7 +4376,8 @@ function settleStage(won) {
   const n = G.level, entry = G.entrySquad, survivors = won ? G.squad : 0;
   let stars = 0, bonus = 0, coins;
   if (won) {
-    const thr3 = Math.min(TUNE.maxSquad, Math.max(Math.ceil(entry * 1.5), entry + 10));
+    // 3 stars: 1.5 x the entry squad (at least +10), but never more than 95% of the cap - with squads of 90+ the bar is "nearly full"
+    const thr3 = Math.min(Math.ceil(TUNE.maxSquad * 0.95), Math.max(Math.ceil(entry * 1.5), entry + 10));
     stars = 1 + (survivors >= entry ? 1 : 0) + (survivors >= thr3 ? 1 : 0);
     bonus = stars * Math.round(TUNE.starCoins * (1 + TUNE.coinStage * (n - 1)));
     coins = G.coins + bonus;

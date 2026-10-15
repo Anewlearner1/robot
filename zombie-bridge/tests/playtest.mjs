@@ -266,7 +266,7 @@ function botRun(cfg) {
           const inLane = Math.max(0, 1 - Math.abs(x - e.x) / (1.85 + h));
           const noShoot = (mode !== 'auto' && opening.has(e) && mode !== 'gate') || weaponsRoute;
           const t = Math.min(5, Math.max(0, (dz - 1)) / RUN);
-          const perEff = (e.per + (zb.TUNE ? zb.TUNE.gatePerSquad : 0) * Math.min(G.squad, 40)) * (e.pf || 1);
+          const perEff = (e.per + (zb.TUNE ? zb.TUNE.gatePerSquad : 0) * Math.min(G.squad, zb.TUNE.gateSquadRef || 40)) * (e.pf || 1);
           const extra = noShoot ? 0 : hps * t * 0.55 * inLane / perEff;
           v = e.val + Math.floor((e.hits / perEff) + extra);
         }
@@ -462,7 +462,7 @@ async function page_campaign() {
   await browser.close();
   process.exit(errors.length ? 1 : 0);
 }
-const ENTRY_AUTO = [1, 1, 48, 59, 58, 54, 54];   // typical survivors carried into stage n (index = n) for single-stage runs
+const ENTRY_AUTO = [1, 1, 45, 85, 80, 80, 80];   // typical survivors carried into stage n (index = n) for single-stage runs
 const GUNS = ['pistol', 'rifle', 'shotgun', 'gatling', 'sniper', 'flamer', 'rocket'];
 const gunIndex = v => { const i = GUNS.indexOf(v); return i >= 0 ? i : Number(v); };
 // one row per strategy: { label, opening, hold }
