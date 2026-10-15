@@ -551,7 +551,7 @@ const TUNE = {
   hpPerStage: 0.5,                // ... ordinary zombies +0.5 hp per step (fractions are rolled per zombie) ...
   stagePow: 0.9,                  // ... where a stage's step count is (stage-1)^stagePow
   stageMul: [3.55, 2.1, 2.5],     // trim of the far-end horde growth (`ramp`) per stage; the last entry covers every later stage
-  stageHp: [1.25, 1.6, 1.8, 1.3, 1.15],       // extra zombie hp factor per stage (campaign tuning: counts are capped by MAXZ, so late stages get tougher, not more numerous); the last entry covers every later stage
+  stageHp: [1.4, 1.8, 1.8, 1.22, 1.15],       // extra zombie hp factor per stage (campaign tuning: counts are capped by MAXZ, so late stages get tougher, not more numerous); the last entry covers every later stage
   early: 0.35, rampPow: 2, ramp: 13, hpRamp: 15.5, bruteRamp: 6,   // along the bridge (position p = 0..1): size x (early + ramp*p^rampPow), hp x (1 + hpRamp*p^rampPow), brute count likewise
   count: { open: 3, wall: 50, blob: 30, line: 20, swarm: 24, runners: 20 },
   bruteBase: 3, brutePerStage: 1, bruteHp: 10, bruteHpPerStage: 4,
