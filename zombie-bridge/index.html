@@ -3143,7 +3143,7 @@ function fxTrail(i, traj, rgb, k) {
         break;
       }
       case 'lob':
-        ribSmoke.seg(px, py, pz, 0.16 + t0 * 0.5, qx, qy, qz, 0.16 + t1 * 0.5, cm(S1, C_SMOKE, C_LT, 0.4 * (1 - t0)), 0.62 * (1 - t0), C_SMOKE2, 0.6 * (1 - t1));
+        ribSmoke.seg(px, py, pz, 0.16 + t0 * 0.5, qx, qy, qz, 0.16 + t1 * 0.5, cm(S1, C_SMOKE, C_LT, 0.4 * (1 - t0)), 0.85 * (1 - t0 * 0.8), C_SMOKE2, 0.7 * (1 - t1 * 0.8));
         if (s < 2) ribAdd.seg(px, py, pz, 0.16 * (1 - s * 0.5), qx, qy, qz, 0.1 * (1 - s * 0.5), C_FLAME, 0.9 - s * 0.4, C_FLAME2, 0.4 - s * 0.2);
         break;
     }
