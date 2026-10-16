@@ -4454,7 +4454,7 @@ function fxProp2(name) {
     case 'bld1': return fxBuilding(9, 16, 10, 23);
     case 'bld2': return fxBuilding(8, 24, 11, 37);
     case 'bld3': return fxBuilding(10, 33, 9, 53);
-    case 'alley': return boxes([[0.05, 0.02, 5.2, 0, 0.03, 0, 0x16191e], [0.5, 7, 0.4, 3.2, 3.5, 2.7, 0x3a3d44], [0.5, 7, 0.4, 3.2, 3.5, -2.7, 0x3a3d44], [0.9, 0.7, 0.9, 1.2, 0.35, -1.0, 0x4a6a4a]]);
+    case 'alley': return boxes([[6.5, 0.03, 5.2, -2.6, 0.02, 0, 0x14171c], [1.1, 0.8, 1.0, -1.4, 0.4, -1.2, 0x3f6a44], [0.8, 0.5, 0.8, -3.2, 0.25, 1.4, 0x6a5a48], [0.6, 0.12, 4.4, -5.4, 2.2, 0, 0x7b3a3a]]);
     case 'tlight': return boxes([[0.16, 5.2, 0.16, 0, 2.6, 0, 0x2f3338], [3.8, 0.14, 0.14, -1.9, 5.0, 0, 0x2f3338], [0.5, 1.3, 0.34, -3.7, 4.5, 0, 0x22262b], [0.26, 0.26, 0.14, -3.7, 4.85, 0.2, 0xe2363b], [0.26, 0.26, 0.14, -3.7, 4.5, 0.2, 0x5a4a14], [0.26, 0.26, 0.14, -3.7, 4.15, 0.2, 0x2fbf5a]]);
     case 'ctn1': return fxContainer(0, 0, 0, 0xe8e8e8);
     case 'ctn2': return fxMerge([fxContainer(0, 0, 0, 0xe8e8e8), fxContainer(0, 2.6, 0, 0xdcdcdc)]);
@@ -4466,6 +4466,7 @@ function fxProp2(name) {
     case 'tree2': return fxTree(2);
     case 'bush': return fxTree(3);
     case 'puddle': return fxColored(new T.CircleGeometry(1, 9).rotateX(-Math.PI / 2).translate(0, 0.03, 0), 0x6f8ea0);
+    case 'arrowf': return fxColored(new T.CircleGeometry(0.9, 3).rotateX(-Math.PI / 2).rotateY(Math.PI / 2).translate(0, 0.045, 0), 0xffffff);
     case 'logd': return boxes([[0.5, 0.5, 3.2, 0, 0.25, 0, 0x5b4330], [0.3, 0.3, 0.2, 0, 0.3, 1.65, 0x8a6a48]]);
     default: return boxes([[1, 1, 1, 0, 0.5, 0, 0xffffff]]);
   }
@@ -4590,9 +4591,63 @@ function fxDecor(sc, side, z0, z1, c) {
     default: break;            // bridge: the base scenery is the look
   }
 }
+// ---- split segments: one road becomes two. Gameplay keeps the same coordinates (each side is a half of the deck), so the picture only
+// opens a narrow gap down the middle (void, water or a wall, with a low barrier on each lip) and gives every half its own scene.
+const FX_SIGNS = [];
+const fxFontOk = () => !!(document.fonts && document.fonts.check && document.fonts.check('900 40px "Noto Sans TC"'));
+function fxSplitSign(seg, grp) {
+  const ln = SCENES[fxSegScene(seg, -1)] || SCENES.bridge, rn = SCENES[fxSegScene(seg, 1)] || SCENES.bridge;
+  const cp = canvasPlane(9.4, 2.35, 1024, 256);
+  const draw = () => {
+    const x = cp.ctx;
+    x.clearRect(0, 0, 1024, 256);
+    x.fillStyle = 'rgba(16,21,27,.93)'; rrect(x, 4, 4, 1016, 248, 26); x.fill();
+    x.lineWidth = 8; x.strokeStyle = '#ffb020'; x.stroke();
+    x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round';
+    x.font = '900 74px "Noto Sans TC", sans-serif'; x.fillStyle = '#ffd34d'; x.fillText('選擇路線', 512, 76);
+    x.strokeStyle = 'rgba(255,255,255,.3)'; x.lineWidth = 4; x.beginPath(); x.moveTo(512, 128); x.lineTo(512, 236); x.stroke();
+    x.font = '900 56px "Noto Sans TC", sans-serif';
+    x.fillStyle = MAP_SC[fxSegScene(seg, -1)] || '#fff'; x.fillText('← ' + ln.name, 256, 184);
+    x.fillStyle = MAP_SC[fxSegScene(seg, 1)] || '#fff'; x.fillText(rn.name + ' →', 768, 184);
+    cp.tex.needsUpdate = true;
+  };
+  draw();
+  FX_SIGNS.push(draw);
+  cp.mesh.material.userData.own = true; cp.mesh.material.opacity = 0.96; cp.mesh.renderOrder = 3;
+  cp.mesh.position.set(0, 5.6, seg.z0 - 3); cp.mesh.frustumCulled = false;
+  grp.add(cp.mesh);
+  const posts = new T.Mesh(boxes([[0.3, 5.6, 0.3, -4.7, 2.8, 0, 0x555b63], [0.3, 5.6, 0.3, 4.7, 2.8, 0, 0x555b63], [9.8, 0.3, 0.3, 0, 6.85, -0.05, 0x555b63]]), M.vc);
+  posts.position.set(0, 0, seg.z0 - 3.15); posts.frustumCulled = false; grp.add(posts);
+}
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { for (const d of FX_SIGNS) d(); }).catch(() => {});
 function fxSplitBuild(seg, ctx, grp) {
-  fxDecor(fxSegScene(seg, -1), -1, seg.z0, seg.z1, ctx);
-  fxDecor(fxSegScene(seg, 1), 1, seg.z0, seg.z1, ctx);
+  const z0 = seg.z0, z1 = seg.z1, len = z0 - z1, add = ctx.add;
+  fxDecor(fxSegScene(seg, -1), -1, z0, z1, ctx);
+  fxDecor(fxSegScene(seg, 1), 1, z0, z1, ctx);
+  // the gap: a lens down the middle that opens over the first quarter and closes over the last
+  const GMAX = 0.5, N = Math.max(8, Math.ceil(len / 2)), g = t => GMAX * Math.min(1, Math.min(t, 1 - t) / 0.22) ** 0.8;
+  const water = fxSegScene(seg, -1) === 'harbor' || fxSegScene(seg, 1) === 'harbor', col = new T.Color(water ? 0x2c6076 : 0x0c1015);
+  const pos = [], nor = [], cl = [];
+  for (let i = 0; i < N; i++) {
+    const za = z0 - len * i / N, zb = z0 - len * (i + 1) / N, ga = g(i / N) + 0.03, gb = g((i + 1) / N) + 0.03;
+    const q = [[-ga, za], [ga, za], [-gb, zb], [gb, zb]];
+    for (const k of [0, 2, 1, 1, 2, 3]) { pos.push(q[k][0], 0.04, q[k][1]); nor.push(0, 1, 0); cl.push(col.r, col.g, col.b); }
+  }
+  const geo = new T.BufferGeometry();
+  geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); geo.setAttribute('normal', new T.Float32BufferAttribute(nor, 3)); geo.setAttribute('color', new T.Float32BufferAttribute(cl, 3));
+  geo.computeBoundingSphere();
+  const gm = new T.Mesh(geo, M.vc); gm.frustumCulled = false; grp.add(gm);
+  // a low barrier on each lip, and chevrons painted on each half at the entry
+  for (let i = 1; i < N - 1; i++) {
+    const z = z0 - len * (i + 0.5) / N, gg = g((i + 0.5) / N);
+    if (gg < 0.05) continue;
+    for (const s of [-1, 1]) add('jersey', s * (gg + 0.3), 0, z, 0, 0, 1);
+  }
+  for (const s of [-1, 1]) {
+    const c = new T.Color(MAP_SC[fxSegScene(seg, s)] || '#ffffff').getHex();
+    for (let k = 0; k < 3; k++) add('arrowf', s * 2.2, 0, z0 - 6 - k * 2.2, 0, 0, 1, c);
+  }
+  fxSplitSign(seg, grp);
 }
 const ROUTE = { route: null, lg: null, theme: null, group: null, lamps: [] };
 const hashF = n => { const x = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return x - Math.floor(x); };
@@ -4788,10 +4843,16 @@ function fxIntro() {
     introPhase = G.phase;
   }
 }
-const SEG_LABEL = { narrow: ['窄橋', '隊伍被擠在中間'], fork: ['分岔路', '選一條路'], gauntlet: ['火線走廊', '小心油桶'], ambush: ['伏擊！', '兩側有屍群'], arena: ['決戰廣場', '巨屍就在前方'] };
+const SEG_LABEL = { split: ['選擇路線', ''], narrow: ['窄橋', '隊伍被擠在中間'], fork: ['分岔路', '選一條路'], gauntlet: ['火線走廊', '小心油桶'], ambush: ['伏擊！', '兩側有屍群'], arena: ['決戰廣場', '巨屍就在前方'] };
+let lastSegScene = null;
 bus.on('routeSegment', d => {
   const seg = d.seg || {}, l = SEG_LABEL[seg.type];
-  if (l) bannerPush(l[0], '#ffd34d', l[1], 1);
+  if (d.index === 0) lastSegScene = null;
+  if (seg.type === 'split') bannerPush('選擇路線', '#ffd34d', '左：' + (SCENES[fxSegScene(seg, -1)] || SCENES.bridge).name + '　右：' + (SCENES[fxSegScene(seg, 1)] || SCENES.bridge).name, 1);
+  else if (l) bannerPush(l[0], '#ffd34d', l[1], 1);
+  const sc = seg.type === 'split' ? null : fxSegScene(seg, 0);       // crossing into another scene: say where we are
+  if (sc && lastSegScene && sc !== lastSegScene && !l) bannerPush((SCENES[sc] || SCENES.bridge).name, '#9fd0ff', (SCENES[sc] || SCENES.bridge).desc, 1);
+  if (seg.type !== 'split') lastSegScene = sc;
 });
 
 // ---- extra world sprites for the theme (street lamp glows)
