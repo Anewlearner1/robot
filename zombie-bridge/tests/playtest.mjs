@@ -73,7 +73,7 @@ function botRun(cfg) {
     zb.bus.on('bossDied', () => { window.__log.bossDeadT = G.time; });
     zb.bus.on('gameOver', d => { const L = window.__log; L.reason = d.reason; L.cause = d.cause; L.kind = d.kind; L.overT = G.time; L.overPhase = d.phase; });
     zb.bus.on('win', () => { window.__log.won = true; });
-    zb.bus.on('obstacleHit', d => { const L = window.__log; L.obsLost = (L.obsLost || 0) + d.n; });
+    zb.bus.on('obstacleHit', d => { const L = window.__log; L.obsLost = (L.obsLost || 0) + d.n; (L.hitLog = L.hitLog || []).length < 12 && L.hitLog.push(`${d.kind}@${d.x.toFixed(1)},${d.z.toFixed(0)} n${d.n} Gx${G.x.toFixed(2)} gap${G.gap ? G.gap.lo.toFixed(2) + '..' + G.gap.hi.toFixed(2) : '-'} sq${G.squad} cols${zb.pathBounds().cols}`); });
     zb.bus.on('obstacleBreak', () => { const L = window.__log; L.obsBroken = (L.obsBroken || 0) + 1; });
     zb.bus.on('heroActivated', () => { window.__log.hero = true; });
     // --hold: a forced gun stays no matter which pickup the squad walks over (other guns are ignored, the same gun still levels up)
@@ -205,7 +205,7 @@ function botRun(cfg) {
   function decide() {
     const h = half();
     const pb = zb.pathBounds ? zb.pathBounds() : { lo: -ROAD + 0.45, hi: ROAD - 0.45 };
-    const xLo = Math.min(pb.lo + h, (pb.lo + pb.hi) / 2), xHi = Math.max(pb.hi - h, (pb.lo + pb.hi) / 2);
+    let xLo = Math.min(pb.lo + h, (pb.lo + pb.hi) / 2), xHi = Math.max(pb.hi - h, (pb.lo + pb.hi) / 2);
     // a fork ahead that the squad has not entered yet: how good is each side (gates and barrels up, hordes down)?
     let fork = null;
     if (zb.G.route) for (const sg of zb.G.route) {
@@ -249,6 +249,7 @@ function botRun(cfg) {
         ogW = dmin < 22 ? 1 : Math.max(0, (30 - dmin) / 8);
       }
     }
+    if (og && ogW > 0) { xLo = pb.lo + 0.3; xHi = pb.hi - 0.3; }       // the formation will be squeezed: any centre in the road is possible
     const reach = Math.round((h + 0.5) / GRID);
     // collect upcoming events
     const gates = [], others = [];
@@ -325,12 +326,12 @@ function botRun(cfg) {
         c += dsum * 0.09 * persona.dodge;
       }
       if (og && ogW > 0) {
-        let pen = 80;
+        let pen = 300;
         for (const g of og) {
-          const hsq = Math.min(h, Math.floor((g[1] - g[0]) / SP + 1e-6) * SP / 2);
+          const hsq = Math.min(h, Math.max(0, Math.floor((g[1] - g[0] - zb.TUNE.obsSlack) / SP + 1e-6)) * SP / 2);
           const a = g[0] + hsq, b = g[1] - hsq, d = x < a ? a - x : x > b ? x - b : 0;
           const mid = (g[0] + g[1]) / 2;
-          pen = Math.min(pen, d * 40 + Math.abs(x - mid) * 1.5);
+          pen = Math.min(pen, d * 150 + Math.abs(x - mid) * 4);
         }
         c += ogW * pen;
       }
@@ -371,7 +372,7 @@ function botRun(cfg) {
     bossKilled: LOG.bossDeadT !== undefined,
     bossHpLeft: G.boss ? Math.max(0, G.boss.hp / G.boss.max) : null,
     entry: G.entrySquad, stars: G.result ? G.result.stars : 0, coinsRun: G.result ? G.result.coins : 0, comboBest: G.comboBest, stage: cfg.stage,
-    gateDiffs: LOG.gateDiffs || [], obsLost: LOG.obsLost || 0, obsBroken: LOG.obsBroken || 0, deathZ: G.z, trace: cfg.trace ? trace : undefined, hero: !!LOG.hero, heroCharge: (() => { const h = G.events.find(e => e.type === 'hero'); return h ? Math.round(h.charge) + '/' + h.need : null; })(), tier: LOG.tier || 0, pickups: LOG.pickups || 0, badGates: LOG.badGates || 0,
+    gateDiffs: LOG.gateDiffs || [], obsLost: LOG.obsLost || 0, hitLog: LOG.hitLog, obsBroken: LOG.obsBroken || 0, deathZ: G.z, trace: cfg.trace ? trace : undefined, hero: !!LOG.hero, heroCharge: (() => { const h = G.events.find(e => e.type === 'hero'); return h ? Math.round(h.charge) + '/' + h.need : null; })(), tier: LOG.tier || 0, pickups: LOG.pickups || 0, badGates: LOG.badGates || 0,
   };
   return res;
 }
@@ -433,7 +434,7 @@ async function newPage() {
   await page.evaluate(([a, b]) => { window.__botRun = (0, eval)('(' + a + ')'); window.__botCampaign = (0, eval)('(' + b + ')'); }, [botRun.toString(), botCampaign.toString()]);
   await page.evaluate(tune => {
     for (const [k, v] of Object.entries(tune)) {
-      const parts = k.split('.'); let o = parts[0] === 'WEAPONS' || parts[0] === 'UPGRADES' ? window.__zb : window.__zb.TUNE;   // e.g. WEAPONS.1.rate, UPGRADES.0.per
+      const parts = k.split('.'); let o = parts[0] === 'WEAPONS' || parts[0] === 'UPGRADES' || parts[0] === 'MAP' || parts[0] === 'SCENES' ? window.__zb : window.__zb.TUNE;   // e.g. WEAPONS.1.rate, UPGRADES.0.per, SCENES.forest.fx.bruteMul, MAP.2.diffMul (index into the authored MAP: n1 0, n2 1, n3a 2, n3b 3, n4a 4, n4b 5, n5 6)
       for (let i = 0; i < parts.length - 1; i++) o = o[parts[i]];
       if (!(parts[parts.length - 1] in o)) throw new Error('unknown TUNE key ' + k);
       o[parts[parts.length - 1]] = v;
@@ -514,6 +515,7 @@ for (const stage of opt.stages) {
     for (let i = 0; i < opt.n; i++) jobs.push({ fork: opt.fork, entry: opt.entry === 'auto' ? ENTRY_AUTO[Math.min(depthOf(stage), ENTRY_AUTO.length - 1)] : Number(opt.entry), obsAvoid: opt.obsAvoid, ups: opt.ups, noise: opt.noise, trace: opt.trace && i < 3, stage, opening: row.opening, hold: row.hold, holdTake: opt.holdTake, seed: opt.seed * 100003 + depthOf(stage) * 1009 + (typeof stage === 'string' ? stage.charCodeAt(stage.length - 1) : 0) * 31 + i * 7919 + 1, maxSeconds: opt.maxSeconds, dodge: opt.dodge });
     const res = await runJobs(jobs);
     if (opt.trace) for (const r of res) if (r.trace) { console.log(`--- stage ${stage} ${opening} won=${r.won} cause=${r.cause} gates=${r.gateDiffs.join(',')}`); console.log(r.trace.join('\n')); }
+    if (args.hits) for (const r of res.slice(0, 6)) if (r.hitLog) console.log(`--- ${stage} won=${r.won} lost=${r.obsLost}\n  ` + r.hitLog.join('\n  '));
     if (opt.dump) fs.appendFileSync(opt.dump, res.map((r, i) => JSON.stringify({ stage, opening, seed: jobs[i].seed, ...r })).join('\n') + '\n');
     const wins = res.filter(r => r.won);
     const atBoss = res.filter(r => r.reachedBoss);

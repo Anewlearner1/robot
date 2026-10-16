@@ -1164,7 +1164,7 @@ const results = await page.evaluate(() => {
     const N = zb.nodeDef;
     check('map: the authored graph - n2 branches into n3a / n3b, they lead on to n4a / n4b, both converge on n5, n5 continues to p6',
       N('n2').next.join() === 'n3a,n3b' && N('n3a').next.join() === 'n4a' && N('n3b').next.join() === 'n4b' && N('n4a').next.join() === 'n5' && N('n4b').next.join() === 'n5' && N('n5').next.join() === 'p6');
-    check('map: the a-branch is harder and pays more (city / tunnel), the b-branch is easier (harbor / forest)', N('n3a').diffMul > 1 && N('n3a').coinMul > 1 && N('n3b').diffMul < 1 && N('n3a').scene === 'city' && N('n4a').scene === 'tunnel' && N('n3b').scene === 'harbor' && N('n4b').scene === 'forest');
+    check('map: the a-branch is harder and pays more (city / tunnel), the b-branch is easier (harbor / forest)', N('n3a').diffMul > N('n3b').diffMul && N('n4a').diffMul > N('n4b').diffMul && N('n3a').coinMul > N('n3b').coinMul && N('n4a').coinMul > N('n4b').coinMul && N('n3a').scene === 'city' && N('n4a').scene === 'tunnel' && N('n3b').scene === 'harbor' && N('n4b').scene === 'forest');
     zb.resetSave();
     const st = id => zb.nodeState(id);
     check('unlocks: a fresh save has only n1 open', st('n1') === 'open' && st('n2') === 'locked' && st('n3a') === 'locked');
@@ -1270,8 +1270,8 @@ const results = await page.evaluate(() => {
     check('squeeze: no obstacle near -> G.gap is null', G.gap === null && zb.pathBounds().gap === null);
     run(75);
     const gp = G.gap, pb = zb.pathBounds();
-    check('squeeze: with obstacles ahead G.gap = the gap that holds the squad centre (obstacle edges + margin), pathBounds().gap is the same', gp && Math.abs(gp.lo + 1.3) < 1e-6 && Math.abs(gp.hi - 1.3) < 1e-6 && pb.gap && pb.gap.lo === gp.lo, JSON.stringify(gp));
-    check('squeeze: the formation narrows to the gap (at most 5 columns for a 2.6 wide gap) and every soldier fits in it', pb.cols <= 5 && G.soldiers.every(s => Math.abs(s.x) < 1.3 + 0.05), `${pb.cols} cols, max |x| ${Math.max(...G.soldiers.map(s => Math.abs(s.x))).toFixed(2)}`);
+    check('squeeze: with obstacles ahead G.gap = the gap that holds the squad centre (obstacle edges + margin), pathBounds().gap is the same', gp && Math.abs(gp.lo + 1.4) < 1e-6 && Math.abs(gp.hi - 1.4) < 1e-6 && pb.gap && pb.gap.lo === gp.lo, JSON.stringify(gp));
+    check('squeeze: the formation narrows to the gap (2.8 wide gap minus the 0.5 slack = 4 columns) and every soldier fits in it', pb.cols <= 4 && G.soldiers.every(s => Math.abs(s.x) < 1.4 + 0.05), `${pb.cols} cols, max |x| ${Math.max(...G.soldiers.map(s => Math.abs(s.x))).toFixed(2)}`);
     run(320);
     check('squeeze: a centred squad passes between two wrecks without a loss, then G.gap is null again and the formation widens', G.phase === 'run' && lostSum() === 0 && G.squad === 40 && G.gap === null && zb.pathBounds().cols > 5, `${G.phase} lost ${lostSum()} cols ${zb.pathBounds().cols}`);
     clr(); labO(40); G.x = G.tx = 0; addO('wreck', 0, -14);
@@ -1321,7 +1321,7 @@ const results = await page.evaluate(() => {
           sideN += so.length;
           if (so.length > sgm[sk].obs) sideBad++;
           for (const o of so) if (o.kind !== SCn7[sgm[sk].scene].obstacle || o.w !== T.splitObsW) sideBad++;
-          if (so.length && !zb.obstacleGaps(so, lo, hi, T.obsPad).some(q => q[1] - q[0] >= T.obsMinGap)) sideBad++;
+          if (so.length && !zb.obstacleGaps(so, lo, hi, T.obsPad).some(q => q[1] - q[0] >= T.splitMinGap)) sideBad++;
         }
         zb.prepareNode(id); if (sigO() !== sg) nondet++;
         T.obsOn = 0; zb.prepareNode(id); T.obsOn = 1;
@@ -1337,7 +1337,7 @@ const results = await page.evaluate(() => {
           for (const e of pickups) if (o.z + o.d / 2 > e.z - T.obsClear[0] && o.z - o.d / 2 < e.z + T.obsClear[1]) nearGun++;
           for (const dz of [-8, 0, 9]) { const s = zb.segAt(o.z + dz); if (!s || (s.type !== 'straight' && s.type !== 'ambush')) badSeg++; }
           if (o.kind !== zb.SCENES[G.node.scene].obstacle) badKind++;
-          if (!zb.LANES.includes(o.x)) offLane++;
+          if (!zb.LANES.includes(o.x) || o.x === 0) offLane++;           // only the side lanes are ever blocked
           if (o.z - o.d / 2 < -G.L + 20) endBad++;
         }
       }
@@ -1345,8 +1345,8 @@ const results = await page.evaluate(() => {
       check('obstacle placement: every row leaves a gap >= obsMinGap (never blocks all 3 lanes), rows are >= 24 apart', rowsBad === 0 && closeRows === 0, `${rowsBad} ${closeRows}`);
       check('obstacle placement: never inside the keep-out zone of a gun row / gate / mech cluster (so a gun row\'s blank lane stays open)', nearGun === 0, nearGun);
       check('obstacle placement: only on straight / ambush ground (never in a narrow, fork, split side, gauntlet or arena), never near the arena', badSeg === 0 && endBad === 0, `${badSeg} ${endBad}`);
-      check('obstacle placement: kind follows the scene (SCENES[scene].obstacle), x is a lane centre', badKind === 0 && offLane === 0 && total > 0, `${badKind} ${offLane} total ${total}`);
-      check('split obstacles: each side holds at most its seg.<side>.obs half-width obstacles of its own scene kind, and the side keeps a gap >= obsMinGap', sideBad === 0 && sideN > 0, `${sideBad} bad, ${sideN} placed`);
+      check('obstacle placement: kind follows the scene (SCENES[scene].obstacle), x is a SIDE lane centre (the middle lane is never blocked)', badKind === 0 && offLane === 0 && total > 0, `${badKind} ${offLane} total ${total}`);
+      check('split obstacles: each side holds at most its seg.<side>.obs half-width obstacles of its own scene kind, and the side keeps a gap >= splitMinGap', sideBad === 0 && sideN > 0, `${sideBad} bad, ${sideN} placed`);
       check('obstacle placement: n1 (the tutorial) has none', (zb.prepareNode('n1'), zb.levelObstacles.length === 0));
     }
     o1(); o2(); o3();
@@ -1390,7 +1390,7 @@ const results = await page.evaluate(() => {
     const rh = sp('n5', 'runners', 5), rb = sp('n2', 'runners', 5);
     check('highway: runner packs are 1.3x bigger and 1.1x faster than on a bridge', Math.abs(rh.count / rb.count - 1.3) < 0.06 && Math.abs(rh.fast / rb.fast - 1.1) < 1e-9, `${rh.count} ${rb.count}`);
     const bf = sp('n4b', 'brutes', 4), bh = sp('n3b', 'brutes', 4);
-    check('forest: brute groups are 1.35x bigger', Math.abs(bf.count / bh.count - 1.35) < 0.1, `${bf.count} ${bh.count}`);
+    check('forest: brute groups are SCENES.forest.fx.bruteMul (2x) bigger', Math.abs(bf.count / bh.count - zb.SCENES.forest.fx.bruteMul) < 0.15, `${bf.count} ${bh.count}`);
     G.node = keepNode;
     const barrels = id => info(id).ev.filter(e => e.type === 'barrel').length;
     const bc = barrels('n3a'), others = [barrels('n3b'), barrels('n4b'), barrels('n2')];
@@ -1455,7 +1455,7 @@ const results = await page.evaluate(() => {
       const zl = mkS(-1.0, G.z - 5, 100), zr = mkS(1.0, G.z - 5, 100); zl.sp = zr.sp = 0.3;
       for (let i = 0; i < 60; i++) { G.shield = 1e9; zb.step(1 / 60); }
       if (want > 0) check('split: zombies stay on their own side (the 0.6 wall)', zl.x <= -sg.margin + 1e-6 && zr.x >= sg.margin - 1e-6, `${zl.x.toFixed(2)} ${zr.x.toFixed(2)}`);
-      G.z = sg.z1 - 3; G.tx = -want * 3.5; for (let i = 0; i < 90; i++) { G.shield = 1e9; zb.step(1 / 60); }
+      G.z = sg.z1 - 14; for (let i = 0; i < 90; i++) { G.tx = -want * 3.5; G.shield = 1e9; zb.step(1 / 60); }       // (the pointer keeps dragging: the rail around a side obstacle may overwrite a one-off tx)
       check(`split: after the split the full deck is back (${label})`, want > 0 ? G.x < sg.split : G.x > sg.split, `x ${G.x.toFixed(2)}`);
     }
     // a side obstacle: squeeze inside the half, no loss for a squad in the gap
@@ -1474,7 +1474,7 @@ const results = await page.evaluate(() => {
         zb.step(1 / 60);
       }
       off();
-      check('split side obstacle: the squeeze works inside the half - G.gap lies within the side, >= obsMinGap wide, the formation narrows to it, and steering to its middle loses nobody', sawGap && sawGap.lo >= sg.split + sg.margin - 1e-6 && sawGap.hi - sawGap.lo >= T.obsMinGap && minCols <= Math.floor((sawGap.hi - sawGap.lo) / 0.62) + 1 && hitsS.length === 0 && G.squad === squad0, JSON.stringify(sawGap) + ` cols ${minCols} hits ${hitsS.length}`);
+      check('split side obstacle: the squeeze works inside the half - G.gap lies within the side, >= splitMinGap wide, the formation narrows to it, and steering to its middle loses nobody', sawGap && sawGap.lo >= sg.split + sg.margin - 1e-6 && sawGap.hi - sawGap.lo >= T.splitMinGap && minCols <= Math.floor((sawGap.hi - sawGap.lo) / 0.62) + 1 && hitsS.length === 0 && G.squad === squad0, JSON.stringify(sawGap) + ` cols ${minCols} hits ${hitsS.length}`);
     }
     // procedural splits
     {
