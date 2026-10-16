@@ -353,6 +353,67 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 }
 @media (prefers-reduced-motion: reduce) { .upi .tot.fresh, .upi .pp i.fresh { animation: none; } .star.on, .newbest, .carry, .resc.go h2, .upi .pp i.fresh, .cico.bump, .chest.shake { animation: none; } .resc h2 { opacity: 1; } .chest .lid { transition: none; } .trow.bonus { transition: none; } #combo { transition: none; } }
 
+/* ---- round 7: world map (replaces the stage stepper on the menu) ---- */
+#menu { display: block; padding: 0; background: linear-gradient(180deg, rgba(12,16,22,.9), rgba(12,16,22,.94)); }
+.stagepick, #entryLine, #bestLine { display: none !important; }
+.mapv { position: absolute; inset: 0; display: flex; flex-direction: column; box-sizing: border-box; max-width: 520px; margin: 0 auto; }
+.mapv-top { display: flex; align-items: center; gap: 8px; padding: calc(env(safe-area-inset-top, 0px) + 10px) 14px 6px; }
+.mapv-brand { display: grid; gap: 0; margin-right: auto; text-align: left; min-width: 0; }
+.mapv-brand b { font: 900 22px/1.1 var(--body); letter-spacing: .08em; text-shadow: 0 2px 0 var(--ink), 0 0 14px rgba(226,54,59,.5); white-space: nowrap; }
+.mapv-brand small { font: 400 12px var(--display); letter-spacing: .18em; color: var(--hazard); }
+.mapv-top .walletrow { display: flex; align-items: center; gap: 6px; }
+.mapv-help { pointer-events: auto; cursor: pointer; border: 0; width: 32px; height: 32px; border-radius: 50%; background: var(--panel); color: var(--paper); font: 900 15px var(--body); padding: 0; flex: none; }
+.mapv-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; position: relative; touch-action: pan-y; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 22px, #000 calc(100% - 14px), transparent 100%); mask-image: linear-gradient(180deg, transparent 0, #000 22px, #000 calc(100% - 14px), transparent 100%); }
+.mapv-inner { position: relative; width: 100%; }
+.mapv-inner svg.mapbg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.mnode { position: absolute; transform: translate(-50%, -26px); display: grid; justify-items: center; gap: 2px; width: 132px; padding: 0; border: 0; background: none; color: var(--paper); font-family: var(--body); cursor: pointer; text-align: center; }
+.mnode .mdisc { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--sc, #8fa3b3); box-shadow: 0 0 0 3px var(--ink), 0 0 0 5px rgba(255,255,255,.35), 0 6px 12px rgba(0,0,0,.45); position: relative; }
+.mnode .mdisc svg { width: 28px; height: 28px; fill: none; stroke: #10151b; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.mnode .mname { background: rgba(16,21,27,.62); border-radius: 8px; padding: 1px 8px; font: 900 13px/1.25 var(--body); letter-spacing: .06em; text-shadow: 0 2px 0 var(--ink), 0 0 8px rgba(0,0,0,.6); white-space: nowrap; }
+.mnode .msub { background: rgba(16,21,27,.5); border-radius: 8px; padding: 0 7px; display: flex; gap: 5px; align-items: center; font: 900 11px var(--body); color: var(--muted); text-shadow: 0 1px 2px #000; min-height: 14px; }
+.mnode .msub .ms { color: #ffd34d; letter-spacing: 1px; } .mnode .msub .ms i { color: rgba(255,255,255,.25); font-style: normal; }
+.mnode .mchip { font: 900 10.5px var(--body); letter-spacing: .04em; border-radius: 999px; padding: 2px 8px; background: rgba(16,21,27,.85); color: #ffd0d0; box-shadow: 0 0 0 1.5px #e2363b; white-space: nowrap; }
+.mnode .mchip.gold { color: #ffe08a; box-shadow: 0 0 0 1.5px #ffb020; }
+.nc-pill.gold { background: rgba(255,176,32,.16); color: #ffe08a; box-shadow: inset 0 0 0 1.5px #ffb020; }
+.mnode .mchip.easy { color: #bfe8ff; box-shadow: 0 0 0 1.5px #54a7d8; }
+.mnode.locked { cursor: default; } .mnode.locked .mdisc { background: #3a4350; box-shadow: 0 0 0 3px var(--ink), 0 0 0 5px rgba(255,255,255,.12); }
+.mnode.locked .mdisc svg { stroke: rgba(255,255,255,.45); } .mnode.locked .mname { color: rgba(255,255,255,.5); }
+.mnode.locked .mchip { opacity: .55; }
+.mnode.open .mdisc { animation: mpulse 1.6s ease-in-out infinite; }
+.mnode.cleared .mdisc::after { content: ''; position: absolute; right: -4px; bottom: -4px; width: 20px; height: 20px; border-radius: 50%; background: #3fcf6a url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2310151b' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/14px no-repeat; box-shadow: 0 0 0 2.5px var(--ink); }
+.mnode.sel .mdisc { box-shadow: 0 0 0 3px var(--ink), 0 0 0 6px var(--hazard), 0 0 18px rgba(255,176,32,.7); }
+.mnode:focus-visible .mdisc { outline: 3px solid var(--holo); outline-offset: 6px; }
+@keyframes mpulse { 50% { transform: scale(1.07); } }
+.mfork { position: absolute; transform: translate(0, -50%); font: 900 11px var(--body); letter-spacing: .12em; color: #10151b; background: var(--hazard); border-radius: 6px; padding: 2px 7px; box-shadow: 0 2px 0 var(--hazard-deep); pointer-events: none; white-space: nowrap; }
+.mfork::after { content: ''; position: absolute; right: 100%; top: 50%; margin-top: -5px; border: 5px solid transparent; border-right-color: var(--hazard); }
+.mapv-more { position: absolute; left: 0; right: 0; text-align: center; font: 900 12px var(--body); letter-spacing: .2em; color: rgba(255,255,255,.4); pointer-events: none; }
+.mapv-card { margin: 4px 12px calc(env(safe-area-inset-bottom, 0px) + 12px); padding: 12px 14px; border-radius: 16px; background: rgba(22,28,36,.96); box-shadow: 0 0 0 2px rgba(255,255,255,.14), 0 10px 24px rgba(0,0,0,.5); display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; align-items: center; text-align: left; }
+.mapv-card .nc-h { display: flex; align-items: center; gap: 8px; min-width: 0; grid-column: 1 / -1; }
+.mapv-card .nc-ico { width: 34px; height: 34px; border-radius: 50%; background: var(--sc, #8fa3b3); display: grid; place-items: center; flex: none; }
+.mapv-card .nc-ico svg { width: 22px; height: 22px; fill: none; stroke: #10151b; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.mapv-card .nc-t { display: grid; min-width: 0; }
+.mapv-card .nc-t small { font: 400 11px var(--display); letter-spacing: .16em; color: var(--hazard); }
+.mapv-card .nc-t b { font: 900 19px/1.15 var(--body); letter-spacing: .06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mapv-card .nc-d { grid-column: 1 / -1; font: 500 13px/1.4 var(--body); color: var(--muted); }
+.mapv-card .nc-m { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; grid-column: 1; }
+.nc-pill { font: 900 13px var(--body); border-radius: 999px; padding: 3px 10px; background: rgba(255,255,255,.1); white-space: nowrap; letter-spacing: .04em; }
+.nc-pill.st { color: #ffd34d; } .nc-pill.st i { font-style: normal; color: rgba(255,255,255,.28); }
+.nc-pill.hard { background: rgba(226,54,59,.2); color: #ffc4c4; box-shadow: inset 0 0 0 1.5px #e2363b; }
+.nc-pill.easy { background: rgba(84,167,216,.18); color: #bfe8ff; box-shadow: inset 0 0 0 1.5px #54a7d8; }
+.mapv-card .nc-b { grid-column: 2; grid-row: 3 / span 2; display: grid; gap: 6px; justify-items: stretch; }
+.mapv-card .btn { padding: 11px 22px; font-size: 19px; border-radius: 12px; box-shadow: 0 4px 0 var(--hazard-deep), 0 8px 16px rgba(0,0,0,.35); }
+.mapv-card .btn.ghost { padding: 7px 14px; font-size: 14px; box-shadow: inset 0 0 0 2px rgba(243,241,236,.45); }
+.mapv-card .btn:disabled { background: rgba(255,255,255,.14); color: rgba(255,255,255,.45); box-shadow: none; cursor: default; transform: none; }
+#rulesOv { z-index: 6; background: rgba(12,16,22,.88); }
+@media (max-height: 700px) { .mapv-top { padding-top: calc(env(safe-area-inset-top, 0px) + 6px); } .mapv-brand b { font-size: 19px; } .mapv-card { padding: 9px 12px; gap: 4px 10px; margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); } .mapv-card .nc-d { font-size: 12px; } .mapv-card .nc-t b { font-size: 17px; } .mapv-card .btn { padding: 9px 20px; font-size: 17px; } }
+@media (max-height: 520px) and (min-width: 560px) {
+  .mapv { max-width: none; display: grid; grid-template-columns: 1fr 330px; grid-template-rows: auto 1fr; }
+  .mapv-top { grid-column: 1 / -1; } .mapv-scroll { grid-column: 1; grid-row: 2; } .mapv-card { grid-column: 2; grid-row: 2; align-self: center; margin: 0 14px; }
+  .mapv-card .nc-b { grid-row: auto; grid-column: 1 / -1; grid-template-columns: 1fr auto; }
+}
+@media (prefers-reduced-motion: reduce) { .mnode.open .mdisc { animation: none; } }
+
 </style>
 </head>
 <body>
@@ -395,28 +456,40 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 <div id="hudCloudPop" class="cloudpop" role="status" hidden><p id="hudCloudPopText"></p></div>
 
 <section class="overlay" id="menu">
-  <div class="card">
-    <div class="walletrow menu-wallet"><span class="chip coin" id="menuWallet"><svg class="cico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="#ffd34d" stroke="#a86a00" stroke-width="2"/><circle cx="12" cy="12" r="6.2" fill="none" stroke="#c98a00" stroke-width="2"/></svg><b id="menuCoins">0</b></span><button class="chip hudcloud" id="menuCloud" type="button"></button></div>
-    <div class="stagepick">
-      <button class="step" id="stagePrev" type="button" aria-label="上一關" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
-      <span class="eyebrow" id="menuLevel">STAGE 1</span>
-      <button class="step" id="stageNext" type="button" aria-label="下一關" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
+  <div class="mapv">
+    <div class="mapv-top">
+      <div class="mapv-brand"><small>WORLD MAP</small><b>屍潮斷橋</b></div>
+      <div class="walletrow menu-wallet"><span class="chip coin" id="menuWallet"><svg class="cico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="#ffd34d" stroke="#a86a00" stroke-width="2"/><circle cx="12" cy="12" r="6.2" fill="none" stroke="#c98a00" stroke-width="2"/></svg><b id="menuCoins">0</b></span><button class="chip hudcloud" id="menuCloud" type="button"></button></div>
+      <button class="mapv-help" id="btnRules" type="button" aria-label="玩法說明">?</button>
     </div>
-    <div class="entryline" id="entryLine"></div>
-    <h1>屍潮斷橋</h1>
-    <p class="lede">已經有很多人倒在這座橋上。你能帶著小隊衝到對岸嗎？</p>
+    <div class="stagepick">
+      <button class="step" id="stagePrev" type="button" aria-label="上一關" hidden></button>
+      <span class="eyebrow" id="menuLevel">STAGE 1</span>
+      <button class="step" id="stageNext" type="button" aria-label="下一關" hidden></button>
+    </div>
+    <div class="entryline" id="entryLine"></div><span class="best" id="bestLine"></span>
+    <div class="mapv-scroll" id="mapScroll"><div class="mapv-inner" id="mapInner"></div></div>
+    <div class="mapv-card" id="nodeCard">
+      <div class="nc-h"><span class="nc-ico" id="ncIco"></span><span class="nc-t"><small id="ncStage">STAGE 1</small><b id="ncName">新手橋</b></span></div>
+      <div class="nc-d" id="ncDesc"></div>
+      <div class="nc-m" id="ncMeta"></div>
+      <div class="nc-b"><button class="btn" id="btnStart" type="button">出發</button><button class="btn ghost" id="btnShop" type="button">強化</button></div>
+    </div>
+  </div>
+</section>
+
+<section class="overlay" id="rulesOv" hidden role="dialog" aria-modal="true" aria-label="玩法說明">
+  <div class="card">
+    <h2>玩法</h2>
     <ul class="rules">
       <li><span><strong>左右拖曳</strong>移動，小隊會自動朝前方開火。</span></li>
       <li style="--c: var(--ally)"><span><strong>射擊數字門</strong>讓數字變大，穿過去就能補兵。紅色負數會扣人。</span></li>
       <li style="--c: var(--holo)"><span><strong>打滿電池</strong>召喚機甲；<strong>撿槍</strong>換武器（共 <span id="ruleGuns">7</span> 種），撿到同一把就<strong>升級</strong>，最高 Lv<span id="ruleLv">3</span>。</span></li>
       <li style="--c: #c06bff"><span><strong>連殺</strong>拿金幣、炸<strong>油桶</strong>清一片；金色、紫色、<strong>?</strong> 門有特殊獎勵。</span></li>
       <li style="--c: var(--blood)"><span><strong>擊倒巨屍</strong>才算過關，活下來的隊員<strong>帶到下一關</strong>。</span></li>
+      <li style="--c: var(--hazard)"><span><strong>世界地圖</strong>上遇到岔路可以二選一：難度高的那條金幣也比較多。</span></li>
     </ul>
-    <div class="btnrow">
-      <button class="btn" id="btnStart" type="button">出發</button>
-      <button class="btn ghost" id="btnShop" type="button">強化</button>
-    </div>
-    <span class="best" id="bestLine"></span>
+    <button class="btn ghost wide" id="rulesBack" type="button">知道了</button>
   </div>
 </section>
 
@@ -4837,6 +4910,7 @@ function goMenu() {
   hideResult(); shopEl.hidden = true;
   $('#menu').hidden = false;
   syncMenu();
+  MAPV.built = true; mapOpen();
 }
 function syncMenu() {
   $('#menuCoins').textContent = String(SAVE.coins | 0);
@@ -4847,6 +4921,7 @@ function syncMenu() {
   prev.hidden = next.hidden = !multi;
   prev.style.visibility = G.level > 1 ? 'visible' : 'hidden';
   next.style.visibility = G.level < best ? 'visible' : 'hidden';
+  if (typeof mapRefresh === 'function' && MAPV.built) mapRefresh();
 }
 function pickStage(n) {
   if (G.phase !== 'menu') return;
@@ -4856,7 +4931,183 @@ function pickStage(n) {
 }
 $('#stagePrev').addEventListener('click', () => pickStage(G.level - 1));
 $('#stageNext').addEventListener('click', () => pickStage(G.level + 1));
-$('#btnStart').addEventListener('click', startRun);
+// ================================================================ round 7: world map (replaces the stage stepper)
+// All map data goes through mapNodeStates(): [{ id, depth, name, scene, next[], diffMul, coinMul, x, y, state: 'locked'|'open'|'cleared', stars, entry }].
+// The engine's mapNodes() (same shape) replaces the fallback below at merge; this is the only place that knows how states are derived.
+const MAP_SC = { bridge: '#8fa3b3', highway: '#e39a64', tunnel: '#7f8fd0', city: '#efc29f', harbor: '#5cb0d4', forest: '#7cc863' };
+const MAP_ICON = {
+  bridge: '<path d="M2 17h20M5 17V9m14 8V9M5 9c3 6 11 6 14 0M3 21h18"/>',
+  highway: '<path d="M4 21L9 3m11 18L15 3M12 4v3m0 4v3m0 4v3"/>',
+  tunnel: '<path d="M3 21V12a9 9 0 0 1 18 0v9M7 21v-8a5 5 0 0 1 10 0v8"/>',
+  city: '<path d="M4 21V9h6v12M10 21V4h7v17M17 21v-9h3v9M13 8h1m-1 4h1m-1 4h1M6 13h2m-2 4h2M3 21h18"/>',
+  harbor: '<path d="M12 4v13m-4-9h8M12 4a1.6 1.6 0 1 0 0 .1M4 14c0 4 4 6 8 6s8-2 8-6M4 14l3 1m13-1l-3 1"/>',
+  forest: '<path d="M12 3l5 7h-3l4 6H6l4-6H7zM12 16v5"/>',
+};
+const mapIcon = id => '<svg viewBox="0 0 24 24" aria-hidden="true">' + (MAP_ICON[id] || MAP_ICON.bridge) + '</svg>';
+const MAP_SCENE_IDS = Object.keys(SCENES);
+// procedural nodes after the last authored one (engine ids 'p<depth>'; a two-way branch every other depth: 'p<depth>a' / 'p<depth>b')
+function mapProcNodes(fromDepth, toDepth, authoredLast) {
+  const out = [];
+  let prev = authoredLast;
+  const lastY = Math.min.apply(null, MAP.map(n => n.y));
+  for (let d = fromDepth; d <= toDepth; d++) {
+    const y = lastY - 0.17 * (d - fromDepth + 1), sc = k => MAP_SCENE_IDS[(d * 7 + k * 3 + (d >> 1)) % MAP_SCENE_IDS.length];
+    const mk = (id, k, x, hard) => ({ id, depth: d, name: SCENES[sc(k)].name, scene: sc(k), next: [], diffMul: hard === 1 ? 1.15 : hard === 0 ? 0.95 : 1, coinMul: hard === 1 ? 1.35 : 1, x, y, proc: true });
+    const cur = d % 2 === 1 ? [mk('p' + d + 'a', 0, 0.28, 1), mk('p' + d + 'b', 1, 0.72, 0)] : [mk('p' + d, 2, 0.5)];
+    for (const p of prev) p.next = cur.map(c => c.id);
+    out.push(...cur); prev = cur;
+  }
+  return out;
+}
+function mapNodeStates() {
+  if (typeof mapNodes === 'function') { try { const r = mapNodes(); if (r && r.length) return r; } catch (e) {} }
+  const sv = SAVE.nodes && typeof SAVE.nodes === 'object' ? SAVE.nodes : null;
+  const main = ['n1', 'n2', 'n3a', 'n4a', 'n5'];
+  const info = id => {                                        // v1 saves (stage numbers) read through the main path
+    if (sv) return sv[id] || null;
+    const i = main.indexOf(id);
+    if (i < 0) return null;
+    const st = SAVE.stages && SAVE.stages[i + 1], nx = SAVE.stages && SAVE.stages[i + 2];
+    return st ? { entry: st.entry, stars: st.stars, cleared: !!(nx && nx.entry) || (st.stars | 0) > 0 } : null;
+  };
+  let nodes = MAP.map(n => Object.assign({}, n));
+  const lastDepth = Math.max.apply(null, MAP.map(n => n.depth));
+  let clearedMax = lastDepth;
+  if (sv) for (const k of Object.keys(sv)) if (sv[k] && sv[k].cleared && /^p\d+/.test(k)) clearedMax = Math.max(clearedMax, parseInt(k.slice(1), 10) || 0);
+  const reach = Math.max(MAPV.procDepth, clearedMax + 3);
+  nodes.push(...mapProcNodes(lastDepth + 1, reach, nodes.filter(n => !n.next.length)));
+  const byId = {}; nodes.forEach(n => { byId[n.id] = n; });
+  const parents = {}; nodes.forEach(n => n.next.forEach(c => (parents[c] = parents[c] || []).push(n.id)));
+  nodes.forEach((n, i) => {
+    const s = info(n.id) || {};
+    n.stars = s.stars | 0; n.cleared = !!s.cleared;
+    n.entry = s.entry ? Math.min(TUNE.maxSquad, s.entry) : TUNE.startSquad;
+    const ps = parents[n.id] || [];
+    n.state = n.cleared ? 'cleared' : (!ps.length || ps.some(p => (info(p) || {}).cleared)) ? 'open' : 'locked';
+  });
+  return nodes;
+}
+const MAPV = { sel: null, procDepth: 8, nodes: [], byId: {}, w: 0, built: false };
+const mapEl = { scroll: $('#mapScroll'), inner: $('#mapInner'), card: $('#nodeCard') };
+const mapStars = n => '<span class="ms">' + '★'.repeat(n) + '<i>' + '★'.repeat(3 - n) + '</i></span>';
+function mapTradeChip(n, siblings) {
+  if (n.diffMul > 1.001) return '<span class="mchip">難度↑ 金幣×' + +n.coinMul.toFixed(2) + '</span>';
+  if (siblings && n.diffMul < 0.999) return '<span class="mchip easy">穩健路線</span>';
+  if (n.coinMul > 1.001) return '<span class="mchip gold">金幣×' + +n.coinMul.toFixed(2) + '</span>';
+  return '';
+}
+function mapLayout(nodes, W, H) {
+  const minY = Math.min.apply(null, nodes.map(n => n.y)), CH = clamp(H * 1.6, 880, 1040), top = 84, padX = 70;
+  const pos = {};
+  for (const n of nodes) pos[n.id] = { x: padX + n.x * (W - padX * 2), y: top + (n.y - minY) * CH };
+  return { pos, height: top + (1 - minY) * CH + 96, top };
+}
+function mapRender(keepScroll) {
+  const W = Math.max(260, mapEl.scroll.clientWidth || 360), H = mapEl.scroll.clientHeight || 400;
+  const nodes = MAPV.nodes = mapNodeStates(); MAPV.byId = {}; nodes.forEach(n => { MAPV.byId[n.id] = n; });
+  const lay = mapLayout(nodes, W, H), pos = lay.pos;
+  MAPV.lay = lay; MAPV.w = W;
+  const parentsOf = {}; nodes.forEach(n => n.next.forEach(c => (parentsOf[c] = parentsOf[c] || []).push(n.id)));
+  const forkKids = new Set(); nodes.forEach(n => { if (n.next.length > 1) n.next.forEach(c => forkKids.add(c)); });
+  // background: land, a river under the bridge, a tinted pool behind every node, contour lines
+  let bg = '<defs><linearGradient id="mlnd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1f2a38"/><stop offset="1" stop-color="#2a3646"/></linearGradient></defs>';
+  bg += '<rect width="' + W + '" height="' + lay.height + '" fill="url(#mlnd)"/>';
+  for (let i = 0; i < 9; i++) { const y = 40 + i * (lay.height / 9); bg += '<path d="M0 ' + y + ' C' + W * 0.3 + ' ' + (y - 22) + ' ' + W * 0.6 + ' ' + (y + 26) + ' ' + W + ' ' + (y - 6) + '" fill="none" stroke="rgba(255,255,255,.05)" stroke-width="1.5"/>'; }
+  const n1 = pos.n1 || { x: W / 2, y: lay.height - 80 };
+  bg += '<path d="M-10 ' + (n1.y + 18) + ' C' + W * 0.25 + ' ' + (n1.y - 14) + ' ' + W * 0.7 + ' ' + (n1.y + 40) + ' ' + (W + 10) + ' ' + (n1.y + 8) + '" fill="none" stroke="#3f6f93" stroke-width="30" stroke-linecap="round" opacity=".55"/>';
+  for (const n of nodes) { const p = pos[n.id]; bg += '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + (n.state === 'locked' ? 46 : 62) + '" fill="' + MAP_SC[n.scene] + '" opacity="' + (n.state === 'locked' ? 0.05 : 0.14) + '"/>'; }
+  // scenery doodles per scene (small, quiet)
+  for (const n of nodes) {
+    const p = pos[n.id], o = n.state === 'locked' ? 0.12 : 0.3;
+    if (n.scene === 'forest') for (let k = 0; k < 6; k++) bg += '<path d="M' + (p.x + (k - 2.5) * 20) + ' ' + (p.y - 38 - (k % 2) * 10) + 'l5 11h-10z" fill="#5eb04a" opacity="' + o + '"/>';
+    if (n.scene === 'city') for (let k = 0; k < 5; k++) bg += '<rect x="' + (p.x + (k - 2) * 16 - 5) + '" y="' + (p.y - 52 + (k % 3) * 6) + '" width="10" height="' + (14 + (k % 2) * 8) + '" fill="#e8c9a8" opacity="' + o + '"/>';
+    if (n.scene === 'harbor') bg += '<path d="M' + (p.x - 50) + ' ' + (p.y - 44) + ' q12 -8 25 0 t25 0 t25 0 t25 0" fill="none" stroke="#6cc0e4" stroke-width="3" opacity="' + o + '"/>';
+    if (n.scene === 'tunnel') bg += '<path d="M' + (p.x - 24) + ' ' + (p.y - 38) + 'v-14a24 24 0 0 1 48 0v14" fill="none" stroke="#9aa8ee" stroke-width="3" opacity="' + o + '"/>';
+  }
+  // roads between nodes: a dark road with a dashed centre, lit up along cleared / open paths
+  let roads = '';
+  for (const n of nodes) for (const c of n.next) {
+    const a = pos[n.id], b = pos[c], k = MAPV.byId[c]; if (!b) continue;
+    const my = (a.y + b.y) / 2, d = 'M' + a.x + ' ' + a.y + ' C' + a.x + ' ' + my + ' ' + b.x + ' ' + my + ' ' + b.x + ' ' + b.y;
+    const lit = n.state === 'cleared' ? (k.state === 'locked' ? 'open' : 'done') : 'off';
+    roads += '<path d="' + d + '" fill="none" stroke="#10151b" stroke-width="15" stroke-linecap="round"/>' +
+      '<path d="' + d + '" fill="none" stroke="' + (lit === 'done' ? '#ffb020' : lit === 'open' ? '#ffd76a' : '#59626e') + '" stroke-width="11" stroke-linecap="round" opacity="' + (lit === 'off' ? 0.55 : 0.95) + '"/>' +
+      '<path d="' + d + '" fill="none" stroke="#10151b" stroke-width="3" stroke-dasharray="7 9" stroke-linecap="round" opacity=".75"/>';
+  }
+  mapEl.inner.style.height = lay.height + 'px';
+  let html = '<svg class="mapbg" viewBox="0 0 ' + W + ' ' + lay.height + '" aria-hidden="true">' + bg + roads + '</svg>';
+  for (const n of nodes) {
+    const p = pos[n.id], sib = forkKids.has(n.id);
+    if (n.next.length > 1) html += '<span class="mfork" style="left:' + (p.x + 62) + 'px;top:' + (p.y + 10) + 'px">岔路・二選一</span>';
+    html += '<button class="mnode ' + n.state + (MAPV.sel === n.id ? ' sel' : '') + '" type="button" data-id="' + n.id + '" style="left:' + p.x + 'px;top:' + p.y + 'px;--sc:' + MAP_SC[n.scene] + '" aria-label="' + n.name + (n.state === 'locked' ? '（未解鎖）' : '') + '">' +
+      '<span class="mdisc">' + mapIcon(n.scene) + '</span><span class="mname">' + n.name + '</span>' +
+      '<span class="msub">' + (n.state === 'locked' ? '未解鎖' : mapStars(n.stars) + '<span>×' + n.entry + '</span>') + '</span>' + (sib || n.coinMul > 1.001 ? mapTradeChip(n, sib) : '') + '</button>';
+  }
+  html += '<div class="mapv-more" style="top:12px">▲ 繼續向前 ▲</div>';
+  const st = keepScroll ? mapEl.scroll.scrollTop : null;
+  mapEl.inner.innerHTML = html;
+  if (st != null) mapEl.scroll.scrollTop = st;
+}
+function mapCard() {
+  const n = MAPV.byId[MAPV.sel]; if (!n) return;
+  const sc = SCENES[n.scene] || SCENES.bridge, sib = MAPV.nodes.some(q => q.next.length > 1 && q.next.includes(n.id));
+  mapEl.card.style.setProperty('--sc', MAP_SC[n.scene]);
+  $('#ncIco').innerHTML = mapIcon(n.scene); $('#ncStage').textContent = 'STAGE ' + n.depth + '　' + sc.name; $('#ncName').textContent = n.name;
+  $('#ncDesc').textContent = n.state === 'locked' ? '先通關前一關才能解鎖。' : sc.desc;
+  let m = '<span class="nc-pill">起始兵力 ×' + n.entry + '</span><span class="nc-pill st">' + '★'.repeat(n.stars) + '<i>' + '★'.repeat(3 - n.stars) + '</i></span>';
+  if (n.diffMul > 1.001) m += '<span class="nc-pill hard">難度↑ 金幣×' + +n.coinMul.toFixed(2) + '</span>';
+  else if (sib && n.diffMul < 0.999) m += '<span class="nc-pill easy">穩健路線</span>';
+  else if (n.coinMul > 1.001) m += '<span class="nc-pill gold">金幣×' + +n.coinMul.toFixed(2) + '</span>';
+  $('#ncMeta').innerHTML = m;
+  $('#btnStart').disabled = n.state === 'locked';
+  $('#btnStart').textContent = n.state === 'cleared' ? '再玩一次' : '出發';
+}
+// choosing a node: the engine's mapSelect handler prepares it; until it exists the same prepare happens here
+function mapPrepareFallback(n) {
+  if (G.node && G.node.id === n.id) return;
+  prepare(n.depth); G.node = n; G.scene = n.scene;
+}
+function mapSelect(id, fromUser) {
+  const n = MAPV.byId[id]; if (!n) return;
+  MAPV.sel = id;
+  for (const b of mapEl.inner.querySelectorAll('.mnode')) b.classList.toggle('sel', b.dataset.id === id);
+  mapCard();
+  if (n.state !== 'locked' && fromUser) { bus.emit('mapSelect', { id }); if (G.phase === 'menu') mapPrepareFallback(n); }
+}
+function mapCenter(id) {
+  const p = MAPV.lay && MAPV.lay.pos[id]; if (!p) return;
+  mapEl.scroll.scrollTop = Math.max(0, p.y - mapEl.scroll.clientHeight * 0.55);
+}
+function mapOpen() {                                           // called whenever the menu is (re)shown
+  MAPV.nodes = mapNodeStates();
+  const pick = (SAVE.cur && MAPV.nodes.find(n => n.id === SAVE.cur && n.state !== 'locked')) ||
+    MAPV.nodes.filter(n => n.state === 'open').sort((a, b) => b.depth - a.depth)[0] || MAPV.nodes[0];
+  const ok = id => id && MAPV.nodes.find(n => n.id === id && n.state !== 'locked');
+  MAPV.sel = ok(SAVE.cur) ? SAVE.cur : ok(MAPV.sel) ? MAPV.sel : pick.id;
+  mapRender(false);
+  mapSelect(MAPV.sel, false);
+  mapCenter(MAPV.sel);
+}
+function mapRefresh() { if ($('#menu').hidden) return; MAPV.nodes = mapNodeStates(); mapRender(true); mapSelect(MAPV.sel, false); }
+mapEl.inner.addEventListener('click', e => { const b = e.target.closest('.mnode'); if (b) mapSelect(b.dataset.id, true); });
+let mapGrowT = 0;
+mapEl.scroll.addEventListener('scroll', () => {          // procedural nodes keep appearing as the map scrolls up
+  if (mapEl.scroll.scrollTop < 120 && MAPV.procDepth < 60 && performance.now() - mapGrowT > 400) {
+    mapGrowT = performance.now(); MAPV.procDepth += 4;
+    const old = mapEl.inner.scrollHeight; mapRender(true); mapEl.scroll.scrollTop += mapEl.inner.scrollHeight - old;
+  }
+}, { passive: true });
+window.addEventListener('resize', () => { if (!$('#menu').hidden) mapRefresh(); });
+$('#btnRules').addEventListener('click', () => { $('#rulesOv').hidden = false; });
+$('#rulesBack').addEventListener('click', () => { $('#rulesOv').hidden = true; });
+function mapGo() {
+  const n = MAPV.byId[MAPV.sel];
+  if (!n || n.state === 'locked') return;
+  if (G.phase === 'menu') mapPrepareFallback(n);
+  startRun();
+}
+
+$('#btnStart').addEventListener('click', mapGo);
 $('#btnRetry').addEventListener('click', () => { prepare(G.level); startRun(); });
 $('#btnNext').addEventListener('click', () => { prepare(G.level + 1); startRun(); });
 $('#btnMenu1').addEventListener('click', goMenu);
@@ -5193,6 +5444,7 @@ bus.on('cloudSync', e => {
 
 prepare(G.level);
 syncMenu();
+MAPV.built = true; mapOpen();
 if (document.fonts && document.fonts.load) {
   Promise.all([document.fonts.load('96px Bungee'), document.fonts.load('900 40px "Noto Sans TC"')])
     .then(() => { for (const e of G.events) if (e.draw) e.draw(); })
@@ -5384,7 +5636,7 @@ function resetSave() {
 }
 // Start stage n from the beginning with its entry squad (same as prepare(n) + startRun()).
 function startStage(n) { prepare(n); startRun(); }
-window.__zb = { cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
+window.__zb = { mapOpen, mapSelect, mapRefresh, mapNodeStates, MAPV, MAP, SCENES, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
   stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0), bw: Array.from(bw.subarray(0, nb)), bl: Array.from(bl.subarray(0, nb)), by: Array.from(by.subarray(0, nb)), bt: Array.from(bt.subarray(0, nb)), bs: Array.from(bs.subarray(0, nb)), bx: Array.from(bx.subarray(0, nb)), bz: Array.from(bz.subarray(0, nb)) }),
   perf: () => ({ pr: PR_STEPS[prIdx], steps: PR_STEPS, avg: Perf.avg, fxScale }) };
 })();
