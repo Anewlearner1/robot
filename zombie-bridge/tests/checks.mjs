@@ -806,8 +806,8 @@ const results = await page.evaluate(() => {
     const sigs = []; for (let n = 1; n <= 12; n++) sigs.push(sigOf(n));
     const has = (n, ...types) => { zb.prepare(n); return types.every(t => G.route.some(s => s.type === t)); };
     const hasN = (id, ...types) => { zb.prepareNode(id); return types.every(t => G.route.some(s => s.type === t)); };
-    check('routes (round 7): n1 is a plain straight, n2 has forks, n3a (city) ambushes and a barrel gauntlet, n3b (harbor) narrows, n4a (tunnel) narrows, n4b (forest) a fork and an ambush, n5 a fork and an ambush',
-      sigs[0] === 'straight,arena' && hasN('n2', 'fork') && !hasN('n2', 'narrow') && hasN('n3a', 'ambush', 'gauntlet') && !hasN('n3a', 'narrow') && hasN('n3b', 'narrow') && !hasN('n3b', 'fork') && hasN('n4a', 'narrow') && hasN('n4b', 'fork', 'ambush') && hasN('n5', 'fork', 'ambush'), sigs.slice(0, 5).join(' | '));
+    check('routes (round 7): n1 is a plain straight, n2 has forks, n3a (city) ambushes and a barrel gauntlet, n3b (harbor) narrows, n4a (tunnel) narrows, n4b (forest) a fork and an ambush, n5 a split and an ambush, n2 a fork and a split',
+      sigs[0] === 'straight,arena' && hasN('n2', 'fork') && !hasN('n2', 'narrow') && hasN('n3a', 'ambush', 'gauntlet') && !hasN('n3a', 'narrow') && hasN('n3b', 'narrow') && !hasN('n3b', 'fork') && hasN('n4a', 'narrow') && hasN('n4b', 'fork', 'ambush') && hasN('n5', 'split', 'ambush') && hasN('n2', 'split'), sigs.slice(0, 5).join(' | '));
     check('routes: no two consecutive stages (1-12) on the main path share the same segment sequence', sigs.every((q, i) => i === 0 || q !== sigs[i - 1]), sigs.join(' | '));
     {
       const ids12 = zb.mapNodes ? (zb.nodeDef('p12'), Object.keys(zb.SAVE.nodes).length, []) : [];
@@ -1308,13 +1308,21 @@ const results = await page.evaluate(() => {
     {
       const ids = ['n1', 'n2', 'n3a', 'n3b', 'n4a', 'n4b', 'n5'];
       for (let d = 6; d <= 30; d++) { if (d % 2 === 0) ids.push('p' + d); else ids.push('p' + d + 'a', 'p' + d + 'b'); }
-      let total = 0, rowsBad = 0, nearGun = 0, badSeg = 0, badKind = 0, offLane = 0, closeRows = 0, endBad = 0, nondet = 0, abBad = 0;
+      const SCn7 = zb.SCENES; let sideN = 0, sideBad = 0; let total = 0, rowsBad = 0, nearGun = 0, badSeg = 0, badKind = 0, offLane = 0, closeRows = 0, endBad = 0, nondet = 0, abBad = 0;
       const sigO = () => JSON.stringify(zb.levelObstacles.map(o => [o.kind, o.x, +o.z.toFixed(3), o.hp, o.row]));
       const sigN = () => JSON.stringify(G.events.filter(e => e.type !== 'obstacle').map(e => [e.type, +e.z.toFixed(3), +(e.x || 0).toFixed(3), e.val || 0, e.kind || '', e.spec ? [e.spec.kind, e.spec.count, +e.spec.hp.toFixed(3)] : 0]));
       for (const id of ids) {
         zb.prepareNode(id);
-        const obs = zb.levelObstacles.slice(), sg = sigO(), sn = sigN();
+        const obsAll = zb.levelObstacles.slice(), obs = obsAll.filter(o => o.row < 1000), sg = sigO(), sn = sigN();
         total += obs.length;
+        for (const sgm of G.route.filter(q => q.type === 'split')) for (const [sk, side] of [['left', -1], ['right', 1]]) {
+          const lo = side < 0 ? -3.55 : sgm.split + sgm.margin, hi = side < 0 ? sgm.split - sgm.margin : 3.55;
+          const so = obsAll.filter(o => o.row >= 1000 && o.z <= sgm.z0 && o.z > sgm.z1 && (o.x < sgm.split) === (side < 0));
+          sideN += so.length;
+          if (so.length > sgm[sk].obs) sideBad++;
+          for (const o of so) if (o.kind !== SCn7[sgm[sk].scene].obstacle || o.w !== T.splitObsW) sideBad++;
+          if (so.length && !zb.obstacleGaps(so, lo, hi, T.obsPad).some(q => q[1] - q[0] >= T.obsMinGap)) sideBad++;
+        }
         zb.prepareNode(id); if (sigO() !== sg) nondet++;
         T.obsOn = 0; zb.prepareNode(id); T.obsOn = 1;
         if (zb.levelObstacles.length !== 0 || sigN() !== sn) abBad++;
@@ -1338,6 +1346,7 @@ const results = await page.evaluate(() => {
       check('obstacle placement: never inside the keep-out zone of a gun row / gate / mech cluster (so a gun row\'s blank lane stays open)', nearGun === 0, nearGun);
       check('obstacle placement: only on straight / ambush ground (never in a narrow, fork, split side, gauntlet or arena), never near the arena', badSeg === 0 && endBad === 0, `${badSeg} ${endBad}`);
       check('obstacle placement: kind follows the scene (SCENES[scene].obstacle), x is a lane centre', badKind === 0 && offLane === 0 && total > 0, `${badKind} ${offLane} total ${total}`);
+      check('split obstacles: each side holds at most its seg.<side>.obs half-width obstacles of its own scene kind, and the side keeps a gap >= obsMinGap', sideBad === 0 && sideN > 0, `${sideBad} bad, ${sideN} placed`);
       check('obstacle placement: n1 (the tutorial) has none', (zb.prepareNode('n1'), zb.levelObstacles.length === 0));
     }
     o1(); o2(); o3();
@@ -1388,11 +1397,97 @@ const results = await page.evaluate(() => {
     check('city: more explosive barrels than the other scenes of the same size', others.every(q => bc > q), bc + ' vs ' + others.join('/'));
     check('city: alley ambushes - hordes released late in left / right pairs', info('n3a').ev.filter(e => e.type === 'horde' && e.ahead).length >= 6);
     // harbor / forest / highway obstacle kinds (obstacles per node)
-    const kinds = id => { zb.prepareNode(id); return new Set(zb.levelObstacles.map(o => o.kind)); };
+    const kinds = id => { zb.prepareNode(id); return new Set(zb.levelObstacles.filter(o => o.row < 1000).map(o => o.kind)); };
     check('obstacles per scene: city/tunnel barriers, harbor containers, forest logs, highway/bridge wrecks; every authored node from n2 on has some', [['n2', 'wreck'], ['n3a', 'barrier'], ['n3b', 'container'], ['n4a', 'barrier'], ['n4b', 'log'], ['n5', 'wreck']].every(([id, k]) => { const kk = kinds(id); return kk.size === 1 && kk.has(k); }));
     check('obstacles: harbor containers come as narrows - pairs that leave one lane free, 1-3 deep', (() => { zb.prepareNode('n3b'); const o = zb.levelObstacles; const rows = {}; for (const q of o) (rows[q.row] = rows[q.row] || []).push(q); return Object.values(rows).every(r => r.length % 2 === 0 && r.length <= 6); })());
     check('plans: the same node gives the same plan and the same events twice (determinism incl. scene effects)', all.every(id => { zb.prepareNode(id); const a = sig(); zb.prepareNode(id); return a === sig(); }));
     zb.prepareNode('n1');
+  }
+
+
+  // ================================================================ round 7 step 4: split segments
+  {
+    const SCn = zb.SCENES;
+    const labS = id => {                                 // running, nothing spawns or triggers, the squad stands where we put it
+      zb.prepareNode(id); zb.start();
+      for (const e of G.events) { if (e.type === 'horde') e.spawned = true; else if (e.type === 'gate') e.used = true; else if (e.type === 'weapon') e.taken = true; else if (e.type === 'hero') e.missed = true; }
+      G.squad = 30; zb.syncSoldiers(); G.shield = 1e9;
+      for (const s of G.soldiers) s.cd = 1e9;
+    };
+    const mkS = (x, z, hp) => { zb.spawnHorde({ kind: 'lab', cx: x, w: 0, d: 0, count: 1, hp }, z); const q = Z[Z.length - 1]; q.x = x; q.sp = 0; q.hp = hp; return q; };
+    const splitsOf = id => { zb.prepareNode(id); return G.route.filter(q => q.type === 'split'); };
+    const sp2 = splitsOf('n2'), sp5 = splitsOf('n5');
+    check('split: n2 and n5 each have exactly one split; n2 also keeps a fork', sp2.length === 1 && sp5.length === 1 && (zb.prepareNode('n2'), G.route.filter(q => q.type === 'fork').length === 1));
+    const sg0 = sp2[0];
+    check('split: seg has split (median x = 0), margin 0.6, left.scene / right.scene (two different known scenes), scene = the node scene', sg0.split === 0 && sg0.margin === T.splitMargin && SCn[sg0.left.scene] && SCn[sg0.right.scene] && sg0.left.scene !== sg0.right.scene && sg0.scene === 'bridge', JSON.stringify([sg0.left, sg0.right]));
+    check('split: left is tunnel-like (dense head-on hordes), right harbor-like (containers and barrels)', sg0.left.scene === 'tunnel' && sg0.right.scene === 'harbor' && sg0.left.dense === T.splitDense);
+    // contents
+    {
+      zb.prepareNode('n2'); const sg = G.route.find(q => q.type === 'split');
+      const inS = G.events.filter(e => e.z <= sg.z0 && e.z > sg.z1);
+      const sideOf = e => ((e.type === 'horde' ? e.spec.cx : e.x) >= sg.split ? 1 : -1);
+      const hordes = side => inS.filter(e => e.type === 'horde' && sideOf(e) === side), obsS = side => inS.filter(e => e.type === 'obstacle' && sideOf(e) === side);
+      const bars = side => inS.filter(e => e.type === 'barrel' && sideOf(e) === side).length;
+      const hl = hordes(-1), hr = hordes(1);
+      check('split contents: both sides have hordes (cx on their own side) and a gate, no gun rows inside', hl.length && hr.length && hl.every(e => e.spec.cx < 0) && hr.every(e => e.spec.cx > 0) && inS.filter(e => e.type === 'gate').length === 2 && !inS.some(e => e.type === 'weapon'));
+      check('split contents: the left side has no obstacles and fewer barrels, the right side has 2 containers (half-width) and barrels', obsS(-1).length === 0 && bars(-1) < bars(1) && obsS(1).length === 2 && obsS(1).every(o => o.kind === 'container' && o.w === T.splitObsW) && bars(1) >= 2, `${obsS(-1).length} ${bars(-1)} ${obsS(1).length} ${bars(1)}`);
+      const avgDense = hl.reduce((a, e) => a + e.spec.count, 0) / hl.length;
+      const lp = zb.routePlan(zb.nodeDef('n2')).segs.find(q => q.type === 'split').left; lp.dense = 1; zb.prepareNode('n2');
+      const sgB = G.route.find(q => q.type === 'split'); const hl0 = G.events.filter(e => e.type === 'horde' && e.z <= sgB.z0 && e.z > sgB.z1 && e.spec.cx < 0);
+      lp.dense = T.splitDense; zb.prepareNode('n2');
+      check('split contents: dense - the left side hordes are bigger than the same hordes without density (seg.left.dense)', hl0.length === hl.length && avgDense > hl0.reduce((a, e) => a + e.spec.count, 0) / hl0.length, `${avgDense}`);
+    }
+    // commit and clamp
+    for (const [startX, want, label] of [[2.0, 1, 'right'], [-2.0, -1, 'left']]) {
+      labS('n2');
+      const sg = G.route.find(q => q.type === 'split');
+      const ev = []; const off = listen('splitChosen', ev);
+      const rs = []; const off2 = listen('routeSegment', rs);
+      G.z = sg.z0 + 3; G.x = G.tx = startX; for (const s of G.soldiers) s.x = startX;
+      for (let i = 0; i < 4; i++) zb.step(1 / 60);
+      for (let i = 0; i < 90 && G.z > sg.z0 - 1; i++) { G.shield = 1e9; zb.step(1 / 60); }
+      off(); off2();
+      check(`split: entering on the ${label} locks that half (seg.chosen = ${want}); bus splitChosen { seg, side, scene } follows routeSegment`, sg.chosen === want && ev.length === 1 && ev[0].seg === sg && ev[0].side === want && ev[0].scene === (want > 0 ? sg.right.scene : sg.left.scene) && rs.some(q => q.seg === sg && q.index === G.route.indexOf(sg)), `${sg.chosen} ${ev.length}`);
+      G.tx = -want * 3.5; for (let i = 0; i < 90; i++) { G.shield = 1e9; zb.step(1 / 60); }
+      const xs = G.soldiers.map(s => s.x);
+      const ok = want > 0 ? Math.min(...xs) >= sg.split + sg.margin - 0.1 : Math.max(...xs) <= sg.split - sg.margin + 0.1;
+      check(`split: the ${label} squad cannot cross the median (0.6 wide wall), formation included`, ok && G.z > sg.z1 && (want > 0 ? G.x >= sg.split + sg.margin : G.x <= sg.split - sg.margin), `x ${G.x.toFixed(2)} ${Math.min(...xs).toFixed(2)}..${Math.max(...xs).toFixed(2)}`);
+      const zl = mkS(-1.0, G.z - 5, 100), zr = mkS(1.0, G.z - 5, 100); zl.sp = zr.sp = 0.3;
+      for (let i = 0; i < 60; i++) { G.shield = 1e9; zb.step(1 / 60); }
+      if (want > 0) check('split: zombies stay on their own side (the 0.6 wall)', zl.x <= -sg.margin + 1e-6 && zr.x >= sg.margin - 1e-6, `${zl.x.toFixed(2)} ${zr.x.toFixed(2)}`);
+      G.z = sg.z1 - 3; G.tx = -want * 3.5; for (let i = 0; i < 90; i++) { G.shield = 1e9; zb.step(1 / 60); }
+      check(`split: after the split the full deck is back (${label})`, want > 0 ? G.x < sg.split : G.x > sg.split, `x ${G.x.toFixed(2)}`);
+    }
+    // a side obstacle: squeeze inside the half, no loss for a squad in the gap
+    {
+      labS('n2'); const sg = G.route.find(q => q.type === 'split');
+      const ob = zb.levelObstacles.filter(o => o.row >= 1000 && o.z <= sg.z0 && o.z > sg.z1)[0];
+      G.shield = 0; G.squad = 30; zb.syncSoldiers(); for (const s of G.soldiers) s.cd = 1e9;
+      G.z = sg.z0 + 3; G.x = G.tx = 2.0; for (const s of G.soldiers) s.x = 2.0;
+      for (let i = 0; i < 10; i++) zb.step(1 / 60);
+      for (let i = 0; i < 60 && G.z > sg.z0 - 1; i++) zb.step(1 / 60);
+      G.z = ob.z + 14;
+      const squad0 = G.squad; let sawGap = null, minCols = 99;
+      const hitsS = []; const off = listen('obstacleHit', hitsS);
+      for (let i = 0; i < 400 && G.z > ob.z - 8 && G.phase === 'run'; i++) {
+        if (G.gap) { sawGap = sawGap || { lo: G.gap.lo, hi: G.gap.hi }; G.tx = (G.gap.lo + G.gap.hi) / 2; minCols = Math.min(minCols, zb.pathBounds().cols); }
+        zb.step(1 / 60);
+      }
+      off();
+      check('split side obstacle: the squeeze works inside the half - G.gap lies within the side, >= obsMinGap wide, the formation narrows to it, and steering to its middle loses nobody', sawGap && sawGap.lo >= sg.split + sg.margin - 1e-6 && sawGap.hi - sawGap.lo >= T.obsMinGap && minCols <= Math.floor((sawGap.hi - sawGap.lo) / 0.62) + 1 && hitsS.length === 0 && G.squad === squad0, JSON.stringify(sawGap) + ` cols ${minCols} hits ${hitsS.length}`);
+    }
+    // procedural splits
+    {
+      let n = 0, total = 0, bad = '';
+      for (let d = 6; d <= 41; d++) for (const id of (d % 2 === 0 ? ['p' + d] : ['p' + d + 'a', 'p' + d + 'b'])) {
+        total++;
+        const ss = splitsOf(id);
+        if (ss.length) n++;
+        for (const q of ss) { if (q.left.scene === q.right.scene || !SCn[q.left.scene] || !SCn[q.right.scene] || q.left.scene !== G.node.scene) bad += ' ' + id; }
+      }
+      check('split: procedural nodes sometimes (not mostly) have a split; its two sides are two different scenes, the left one the node scene', n >= 5 && n < total * 0.7 && bad === '', `${n}/${total}${bad}`);
+    }
+    zb.prepareNode('n1'); zb.resetSave();
   }
 
   T.critBase = crit0;

@@ -612,6 +612,7 @@ const TUNE = {
   exBase: 0.03, exStage: 0.012, exMax: 0.08, exploderR: 1.8, exploderDmg: 2, exploderCap: 6,   // exploder zombies: share of a horde, blast radius, blast damage (flat: it stops chaining once zombies have more hp than this)
   shBase: 0.03, shStage: 0.015, shMax: 0.12, shieldSlope: 0.5, shieldHp: 1.3, shieldBreak: 4,   // shield zombies: share, how off-axis a bullet must be to get past (|dx| of its direction), hp factor
   // --- round 7: obstacles (lane-footprint blocks on the deck; see the round 7 obstacle contract)
+  splitMargin: 0.6, splitDense: 1.3, splitObsW: 1.1,   // split: half-width of the median wall (a fork uses 0.45); dense side hordes; footprint width of a side obstacle (leaves a gap >= obsMinGap in a side)
   obsOn: 1,                       // 0 = no obstacles at all (A/B switch for tests and balance runs)
   obsHp: { wreck: 420, barrier: 260, container: 0, log: 0 }, obsHpStage: 0.1,   // hp 0 = indestructible (absorbs shots); hp grows 10% per depth
   obsLook: 9, obsPad: 0.3, obsSoldierR: 0.12,     // the formation squeezes into a gap when an obstacle is within obsLook of its front; gap margin; soldier radius
@@ -807,6 +808,12 @@ const LANES = [-2.6, 0, 2.6];
 //   'straight'                   plain bridge
 //   'narrow'   { half }          road half-width shrinks to `half` (wrecks / barriers on both sides); squad is clamped
 //   'fork'     { split: x }      a median barrier at x splits the road into two paths with different contents
+//   'split'    { split, margin, left: {scene, ...}, right: {scene, ...} }   (round 7) like a fork but each side is its own place: seg.left.scene /
+//              seg.right.scene (a SCENES id; seg.scene is the node's scene), the median is at x = seg.split (0) with a wall of half-width seg.margin
+//              (TUNE.splitMargin 0.6, wider than a fork's 0.45). The squad commits at entry (seg.chosen -1 / 1, bus 'splitChosen' { seg, side, scene } right after
+//              routeSegment) and is clamped to its half - formation included, squeezed to the side's columns - until the split ends; zombies never cross the
+//              median either. Each side holds its own contents: dense head-on hordes (seg.left.dense), solo gates, barrels, and side obstacles
+//              (seg.<side>.obs rows of half-width obstacles, footprint w 1.1, each leaving a gap >= TUNE.obsMinGap inside the side). No gun rows in a split.
 //   'gauntlet'                   barrel alley / hazard-heavy stretch
 //   'ambush'                     hordes enter from both sides
 //   'arena'                      the boss arena at the end
@@ -1490,7 +1497,8 @@ function buildScenery(len, mid) {
 }
 
 // p = how far along the bridge the horde stands (0..1): later hordes are bigger and tougher because the squad is, too.
-const sceneFx = () => (SCENES[G.node ? G.node.scene : 'bridge'] || SCENES.bridge).fx || {};
+let buildFx = null;      // set while makeEvents places the contents of one split side (that side's scene fx)
+const sceneFx = () => buildFx || (SCENES[G.node ? G.node.scene : 'bridge'] || SCENES.bridge).fx || {};
 function hordeSpec(kind, n, side, p) {
   p = Math.pow(p || 0, TUNE.rampPow);
   const sd = Math.pow(n - 1, TUNE.stagePow);      // stage steps: concave when stagePow < 1 (later stages grow more slowly)
@@ -1552,7 +1560,7 @@ const NODE_PLANS = {
     SEG('straight', { tokens: ['weapon', 'wall', 'gates'] }),
     SEG('fork', { split: 0, left: ['gates', 'blob'], right: ['bar', 'brutes'] }),
     SEG('straight', { tokens: ['weapon', 'swarm', 'gates', 'blob'] }),
-    SEG('fork', { split: 0, left: ['line', 'gates'], right: ['bar', 'blob'] }),
+    SEG('split', { split: 0, left: { scene: 'tunnel', tokens: ['blob', 'line', 'gates'], dense: TUNE.splitDense, obs: 0 }, right: { scene: 'harbor', tokens: ['bar', 'blob', 'bar', 'gates'], obs: 2 } }),
     SEG('straight', { tokens: ['wall', 'blob', 'weapon', 'weapon'], cycle: ['swarm', 'gates', 'wall', 'brutes', 'gates'] })] },
   // n3a city (the harder, richer branch): alley ambushes from both sides and a barrel gauntlet; barriers on the straights
   n3a: { extra: 70, segs: [
@@ -1588,7 +1596,7 @@ const NODE_PLANS = {
   n5: { theme: 'storm', extra: 55, segs: [
     SEG('straight', { tokens: ['weapon', 'wall', 'gates'] }),
     SEG('straight', { tokens: ['weapon', 'runners', 'gates', 'line'] }),
-    SEG('fork', { split: 0, left: ['gates', 'line'], right: ['bar', 'brutes'] }),
+    SEG('split', { split: 0, left: { scene: 'city', tokens: ['wall', 'bar', 'gates'], dense: 1.2, obs: 1 }, right: { scene: 'forest', tokens: ['brutes', 'gates', 'swarm'], obs: 2 } }),
     SEG('straight', { tokens: ['weapon', 'gates', 'runners', 'blob'] }),
     SEG('ambush', { tokens: ['amb-swarm'] }),
     SEG('straight', { tokens: ['runners', 'wall', 'weapon', 'gates'], cycle: ['swarm', 'brutes', 'gates', 'runners', 'wall', 'gates'] })] },
@@ -1611,10 +1619,15 @@ function sceneProceduralPlan(node, salt) {
   const mids = [];
   while (mids.length < k) { const t = pick(mix.mids); if (mids[mids.length - 1] !== t) mids.push(t); }
   if (new Set(mids).size < 2) mids[1] = mix.mids.find(t => t !== mids[0]) || 'ambush';
+  const wantSplit = node.depth >= 6 && r() < 0.4, splitAt = 1 + Math.floor(r() * (mids.length - 1));
+  if (wantSplit) mids[splitAt] = 'split';
   const halves = node.scene === 'tunnel' ? [2.1, 1.9, 1.7] : node.scene === 'harbor' ? [1.7, 1.5, 1.4] : [1.5, 1.4, 1.3, 1.2];
   const segs = [SEG('straight', { tokens: ['weapon', pick(H), 'gates', pick(H)] })];
   mids.forEach((t, i) => {
-    if (t === 'fork') segs.push(SEG('fork', { split: 0, left: ['gates', pick(H)], right: ['bar', pick(['brutes', 'wall', 'swarm'])] }));
+    if (t === 'split') {
+      const other = pick(Object.keys(SCENE_MIX).filter(sc => sc !== node.scene)), HL = H, HR = SCENE_MIX[other].H;
+      segs.push(SEG('split', { split: 0, left: { scene: node.scene, tokens: ['gates', pick(HL), pick(HL)], dense: node.scene === 'tunnel' ? TUNE.splitDense : 1, obs: 1 }, right: { scene: other, tokens: ['bar', pick(HR), 'gates'], obs: 2 } }));
+    } else if (t === 'fork') segs.push(SEG('fork', { split: 0, left: ['gates', pick(H)], right: ['bar', pick(['brutes', 'wall', 'swarm'])] }));
     else if (t === 'narrow') segs.push(SEG('narrow', { half: pick(halves), tokens: [pick(H), pick(H), 'bar'] }));
     else if (t === 'gauntlet') segs.push(SEG('gauntlet', { tokens: ['bar', pick(H), 'bar', pick(H), 'bar'] }));
     else segs.push(SEG('ambush', { tokens: ['amb-' + pick(['wall', 'blob', 'swarm']), 'amb-' + pick(['wall', 'blob', 'swarm'])] }));
@@ -1657,7 +1670,10 @@ function makeGunRow(z, slot) {
 function makeEvents(n, L) {
   const E = G.events;
   const plan = routePlan(G.node || n);
-  const fx = Object.assign({}, sceneFx(), plan.fx || {});
+  buildFx = null;
+  const fxNode = Object.assign({}, sceneFx(), plan.fx || {});
+  let fx = fxNode;
+  buildFx = fx;
   G.routeName = plan.name; G.theme = plan.theme; G.scene = G.node ? G.node.scene : 'bridge'; G.spawnAhead = fx.ahead || TUNE.spawnAhead;
   let z = -24;
   // Opening that mirrors the ad: a horde, then a red gate beside a dormant mech with a rifle (middle lane) between them.
@@ -1734,6 +1750,7 @@ function makeEvents(n, L) {
     } else if (ctx.side) {                                  // one side of a fork
       const w = Math.min(spec.w, 2.4);
       spec.d = spec.d * Math.min(2, spec.w / w); spec.w = w; spec.cx = ctx.side * 2.05;
+      if (ctx.dense) spec.count = Math.round(spec.count * ctx.dense);               // a split side can be denser
     }
     else if (fx.headOn) {                                   // the tunnel: one head-on column (cx 0), deeper for the same count
       const w = Math.min(spec.w, fx.headOn);
@@ -1757,12 +1774,25 @@ function makeEvents(n, L) {
     const seg = { type: sd.type, z0: zs, z1: zs, scene: G.node ? G.node.scene : 'bridge' };   // seg.scene: the scene of this stretch (a split has seg.left.scene / seg.right.scene instead)
     if (sd.type === 'narrow') seg.half = sd.half;
     if (sd.type === 'fork') seg.split = sd.split || 0;
+    if (sd.type === 'split') { seg.split = sd.split || 0; seg.margin = TUNE.splitMargin; seg.left = { scene: sd.left.scene, dense: sd.left.dense || 1, obs: sd.left.obs | 0 }; seg.right = { scene: sd.right.scene, dense: sd.right.dense || 1, obs: sd.right.obs | 0 }; }
     if (k > 0) zc = zs - 6;                                 // a lead-in before the new segment's first token
     if (sd.type === 'fork') {
       let zl = zc, zr = zc;
       const cl = { side: -1, lo: -3.5, hi: seg.split - 0.7 }, cr = { side: 1, lo: seg.split + 0.7, hi: 3.5 };
       for (const t of sd.left) if (zl > limit) zl = place(t, zl, cl);
       for (const t of sd.right) if (zr > limit) zr = place(t, zr, cr);
+      zc = Math.min(zl, zr) - 4;
+    } else if (sd.type === 'split') {
+      let zl = zc, zr = zc;
+      const hiL = seg.split - seg.margin - 0.3, loR = seg.split + seg.margin + 0.3;
+      for (const [sk, side] of [['left', -1], ['right', 1]]) {
+        fx = buildFx = Object.assign({}, SCENES[sd[sk].scene].fx, sd[sk].fx || {});       // this side's scene: barrel counts, brute / runner sizes
+        const cx = side < 0 ? { side, lo: -3.5, hi: hiL, dense: sd[sk].dense } : { side, lo: loR, hi: 3.5, dense: sd[sk].dense };
+        let zq = zc;
+        for (const t of sd[sk].tokens) if (zq > limit) zq = place(t, zq, cx);
+        if (side < 0) zl = zq; else zr = zq;
+      }
+      fx = fxNode; buildFx = fxNode;
       zc = Math.min(zl, zr) - 4;
     } else {
       const ctx = sd.type === 'narrow' ? { half: sd.half } : sd.type === 'gauntlet' ? { gaunt: true } : {};
@@ -1780,8 +1810,10 @@ function makeEvents(n, L) {
   for (let i = 1; i < route.length; i++) route[i].z0 = route[i - 1].z1;
   route.push({ type: 'arena', z0: -L, z1: -L - 60, scene: G.node ? G.node.scene : 'bridge' });
   G.route = route;
-  G.restrict = route.some(sg => sg.type === 'narrow' || sg.type === 'fork');
+  G.restrict = route.some(sg => sg.type === 'narrow' || sg.type === 'fork' || sg.type === 'split');
   placeObstacles(plan, n, L);
+  placeSplitObstacles();
+  buildFx = null;
 }
 
 // A '?' gate: its real value is drawn now from the stage's seeded stream, mostly good. Passing it (or shooting it TUNE.mysteryHits) reveals it.
@@ -1804,9 +1836,9 @@ function makeBarrel(x, z) {
 // ---------------------------------------------------------------- round 7: obstacles (contract above)
 const levelObstacles = [];
 const OBS_KINDS = { wreck: { w: 2.0, d: 3.2 }, barrier: { w: 2.4, d: 0.9 }, container: { w: 2.4, d: 5.6 }, log: { w: 3.0, d: 1.0 } };
-function makeObstacle(kind, x, z, row) {
+function makeObstacle(kind, x, z, row, wOver) {
   const K = OBS_KINDS[kind], hp = Math.round((TUNE.obsHp[kind] || 0) * (1 + TUNE.obsHpStage * (G.level - 1)));
-  const lane = laneOf(x), e = { type: 'obstacle', kind, x, z, lane, lanes: [lane], w: K.w, d: K.d, hp, max: hp, dead: false, flash: 0, row };   // lane / lanes: the lane index (0..2) the footprint is centred on
+  const lane = laneOf(x), e = { type: 'obstacle', kind, x, z, lane, lanes: [lane], w: wOver || K.w, d: K.d, hp, max: hp, dead: false, flash: 0, row };   // lane / lanes: the lane index (0..2) the footprint is centred on
   levelObstacles.push(e);
   return e;
 }
@@ -1858,6 +1890,32 @@ function placeObstacles(plan, n, L) {
       row++;
       z -= len + prof.gap * (0.85 + R3() * 0.35);
     } else z -= 5;                                          // no room here (a segment edge or a pickup): look a little further on
+  }
+}
+// Round 7 step 4: half-width obstacles inside the sides of a split (seg.<side>.obs of them, the kind of that side's scene). Each side puts all of them at its outer or all at its inner
+// end and leaves a gap of at least TUNE.obsMinGap (the footprint is TUNE.splitObsW wide). Own seeded stream; never within 6 before / 4 after a gate of the same side.
+function placeSplitObstacles() {
+  if (!TUNE.obsOn) return;
+  const R4 = mulberry((G.node ? G.node.seed : 1) * 179426549 + 11);
+  const gates = G.events.filter(e => e.type === 'gate');
+  let row = 1000;
+  for (const sg of G.route) {
+    if (sg.type !== 'split') continue;
+    for (const sk of ['left', 'right']) {
+      const sd = sg[sk], side = sk === 'left' ? -1 : 1;
+      if (!sd.obs) continue;
+      const kind = SCENES[sd.scene].obstacle, w = TUNE.splitObsW;
+      const lo = side < 0 ? -ROAD + 0.45 : sg.split + sg.margin, hi = side < 0 ? sg.split - sg.margin : ROAD - 0.45;
+      const zA = sg.z0 - 16, zB = sg.z1 + 12;
+      const inner = R4() < 0.5;                                          // one end per side: a deep formation can see two of them at once and the gap must survive
+      for (let q = 0; q < sd.obs; q++) {
+        const z = zA - (zA - zB) * (q + 0.5) / sd.obs + (R4() - 0.5) * 4;
+        if (zB > zA) continue;
+        if (gates.some(e => (e.x < 0) === (side < 0) && z + 1.6 > e.z - 6 && z - 1.6 < e.z + 4)) continue;
+        const x = inner === (side < 0) ? hi - w / 2 : lo + w / 2;        // inner = against the median
+        G.events.push(makeObstacle(kind, x, z, row++, w));
+      }
+    }
   }
 }
 const activeO = [];             // obstacles a bullet can hit this step
@@ -2728,14 +2786,15 @@ function updateRoute() {
   if (seg !== G.seg) {
     G.seg = seg;
     if (seg) {
-      if (seg.type === 'fork') seg.chosen = G.x >= seg.split ? 1 : -1;
+      if (seg.type === 'fork' || seg.type === 'split') seg.chosen = G.x >= seg.split ? 1 : -1;
       bus.emit('routeSegment', { seg, index: G.route.indexOf(seg) });
+      if (seg.type === 'split') bus.emit('splitChosen', { seg, side: seg.chosen, scene: seg.chosen > 0 ? seg.right.scene : seg.left.scene });
     }
   }
   pLo = -ROAD + 0.45; pHi = ROAD - 0.45;
   if (seg) {
     if (seg.type === 'narrow') { pLo = -seg.half + 0.3; pHi = seg.half - 0.3; }
-    else if (seg.type === 'fork') { if (seg.chosen > 0) pLo = seg.split + 0.45; else pHi = seg.split - 0.45; }
+    else if (seg.type === 'fork' || seg.type === 'split') { const m = seg.margin || 0.45; if (seg.chosen > 0) pLo = seg.split + m; else pHi = seg.split - m; }
   }
   colCap = Math.max(1, Math.floor((pHi - pLo) / SP + 1e-6) + 1);
   G.gap = null;
@@ -2908,7 +2967,7 @@ function zClampX(x, z) {
   const seg = segAt(z);
   if (seg) {
     if (seg.type === 'narrow') { lo = -seg.half + 0.3; hi = seg.half - 0.3; }
-    else if (seg.type === 'fork') { if (x >= seg.split) lo = seg.split + 0.45; else hi = seg.split - 0.45; }
+    else if (seg.type === 'fork' || seg.type === 'split') { const m = seg.margin || 0.45; if (x >= seg.split) lo = seg.split + m; else hi = seg.split - m; }
   }
   return x < lo ? lo : x > hi ? hi : x;
 }
