@@ -33,7 +33,7 @@ node zombie-bridge/tests/playtest.mjs --trace --n 3 --workers 1   # 印出前 3 
 
 | 旗標 | 說明 |
 | --- | --- |
-| `--stages 1,2,3` | 要測的關卡 |
+| `--stages 1,2,3` | 要測的關卡：數字是主線深度（1 = n1、2 = n2、3 = n3a、4 = n4a、5 = n5，6 以上 = p6…），也可以給節點 id，例如 `n3b,p7a` |
 | `--n 40` | 每列場數 |
 | `--seed 1` | 種子批次 |
 | `--opening auto\|rifle\|gate\|battery\|weapons\|all\|allw` | 開場策略（見下） |
@@ -44,11 +44,14 @@ node zombie-bridge/tests/playtest.mjs --trace --n 3 --workers 1   # 印出前 3 
 | `--workers 4` | 同時開幾個頁面平行跑 |
 | `--json out.json` / `--dump all.jsonl` | 輸出彙總 / 每一場的原始結果 |
 | `--line` | 每個關卡只印一行摘要（掃參數用） |
-| `--entry auto\|<n>` | 單關模式：第 2 關以後帶進去的隊伍人數（`auto` = 戰役裡通常帶進來的人數：48/55/50/45） |
+| `--entry auto\|<n>` | 單關模式：第 2 關以後帶進去的隊伍人數（`auto` = 各深度的典型帶入人數：第 2 關 50、第 3 關 90、第 4 關 80、第 5 關 70、之後 70） |
 | `--ups '{"dmg":3}'` | 單關模式：永久升級等級 |
 | `--campaign` | 戰役模式（見下），`--cstages 5` 打到第幾關 |
 | `--upgrades` | 戰役模式：每關之間用金幣貪婪地買升級 |
 | `--retries K` | 戰役模式：輸掉的關卡買完升級後最多重打 K 次 |
+| `--path a\|b\|both` | 戰役模式：走哪一條分支。a = n3a 市區街道 → n4a 地下隧道，b = n3b 港口碼頭 → n4b 林間公路，`both` 兩條各跑一次（預設 a） |
+| `--no-avoid` | 機器人不閃避障礙物（用來量障礙物造成的損失）；預設會閃避 |
+| `--hits` | 印出前 6 場的障礙物命中紀錄（每場最多 12 筆：種類與座標、損失人數、隊伍中心與縫隙） |
 
 開場策略：`rifle` 只撿開場那把步槍、不碰紅門也不打電池；`gate` 不撿槍、把紅色數字門打成正的再穿過去；`battery` 不撿槍、把電池打滿；
 `auto` 讓機器人自己權衡；`weapons`（槍械路線）只撿槍，不追數字門的正值、也不打電池，只避開紅門。
@@ -61,7 +64,7 @@ node zombie-bridge/tests/playtest.mjs --trace --n 3 --workers 1   # 印出前 3 
 `--hold-take` 則仍會踩過別把槍的槍箱領新兵（槍會被換回來）。
 
 **戰役模式**：`node playtest.mjs --campaign --n 200 --seed 1 [--upgrades] [--retries 1]`。同一份存檔從第 1 關連打到第 5 關，
-每關帶著上一關的存活隊伍（`SAVE.stages[n].entry`），輸了就停（或重打）。表格每列是一關：`reached` 打到這關的比例、
+每關帶著上一關的存活隊伍（該節點的 `SAVE.nodes[id].entry`），輸了就停（或重打）。路線是 n1 → n2 → n3a 或 n3b → n4a 或 n4b → n5 → p6…，分支由 `--path` 決定。表格每列是一關：`reached` 打到這關的比例、
 `cleared|reached` 打到的人當中通關的比例、`cumulative` 從頭算起的累計通關率、`entry` 平均帶進來的人數、`survivors` 通關時的人數、
 `stars` 平均星數、`coins/run` 平均賺到的金幣、`boss s` 巨屍戰秒數。`--upgrades` 時機器人用 `UPGRADES` 的權重（火力／射速／援軍／護盾／幸運）貪婪購買。
 單關模式（沒加 `--campaign`）每場先清空存檔，第 2 關以後用 `--entry` 的人數開始。

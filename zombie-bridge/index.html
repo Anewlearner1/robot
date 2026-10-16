@@ -5872,9 +5872,26 @@ function mapNodeStates() {
 const MAPV = { sel: null, procDepth: 8, nodes: [], byId: {}, w: 0, built: false };
 const mapEl = { scroll: $('#mapScroll'), inner: $('#mapInner'), card: $('#nodeCard') };
 const mapStars = n => '<span class="ms">' + '★'.repeat(n) + '<i>' + '★'.repeat(3 - n) + '</i></span>';
-function mapTradeChip(n, siblings) {
-  if (n.diffMul > 1.001) return '<span class="mchip">難度↑ 金幣×' + +n.coinMul.toFixed(2) + '</span>';
-  if (siblings && n.diffMul < 0.999) return '<span class="mchip easy">穩健路線</span>';
+// Trade-off chips compare SIBLINGS: the other children of a fork parent at the same depth. The harder one (higher coinMul; on a tie the
+// higher diffMul) shows 難度↑ 金幣×n, the other shows 穩健路線. A node with no sibling (or an exact tie) keeps the plain coin chip when coinMul > 1.
+function mapSiblings(id) {
+  const me = MAPV.byId[id]; if (!me) return [];
+  const out = [];
+  for (const p of MAPV.nodes) if (p.next.length > 1 && p.next.includes(id)) for (const c of p.next) { const k = MAPV.byId[c]; if (c !== id && k && k.depth === me.depth) out.push(k); }
+  return out;
+}
+const mapHarder = (a, b) => a.coinMul > b.coinMul || (a.coinMul === b.coinMul && a.diffMul > b.diffMul);
+// 'hard' | 'easy' | null
+function mapTradeRole(n) {
+  const sibs = mapSiblings(n.id); if (!sibs.length) return null;
+  if (sibs.every(k => mapHarder(n, k))) return 'hard';
+  if (sibs.some(k => mapHarder(k, n))) return 'easy';
+  return null;
+}
+function mapTradeChip(n) {
+  const role = mapTradeRole(n);
+  if (role === 'hard') return '<span class="mchip">難度↑ 金幣×' + +n.coinMul.toFixed(2) + '</span>';
+  if (role === 'easy') return '<span class="mchip easy">穩健路線</span>';
   if (n.coinMul > 1.001) return '<span class="mchip gold">金幣×' + +n.coinMul.toFixed(2) + '</span>';
   return '';
 }
@@ -5923,7 +5940,7 @@ function mapRender(keepScroll) {
     if (n.next.length > 1) html += '<span class="mfork" style="left:' + (p.x + 62) + 'px;top:' + (p.y + 10) + 'px">岔路・二選一</span>';
     html += '<button class="mnode ' + n.state + (MAPV.sel === n.id ? ' sel' : '') + '" type="button" data-id="' + n.id + '" style="left:' + p.x + 'px;top:' + p.y + 'px;--sc:' + MAP_SC[n.scene] + '" aria-label="' + n.name + (n.state === 'locked' ? '（未解鎖）' : '') + '">' +
       '<span class="mdisc">' + mapIcon(n.scene) + '</span><span class="mname">' + n.name + '</span>' +
-      '<span class="msub">' + (n.state === 'locked' ? '未解鎖' : mapStars(n.stars) + '<span>×' + n.entry + '</span>') + '</span>' + (sib || n.coinMul > 1.001 ? mapTradeChip(n, sib) : '') + '</button>';
+      '<span class="msub">' + (n.state === 'locked' ? '未解鎖' : mapStars(n.stars) + '<span>×' + n.entry + '</span>') + '</span>' + mapTradeChip(n) + '</button>';
   }
   html += '<div class="mapv-more" style="top:12px">▲ 繼續向前 ▲</div>';
   const st = keepScroll ? mapEl.scroll.scrollTop : null;
@@ -5932,13 +5949,14 @@ function mapRender(keepScroll) {
 }
 function mapCard() {
   const n = MAPV.byId[MAPV.sel]; if (!n) return;
-  const sc = SCENES[n.scene] || SCENES.bridge, sib = MAPV.nodes.some(q => q.next.length > 1 && q.next.includes(n.id));
+  const sc = SCENES[n.scene] || SCENES.bridge;
   mapEl.card.style.setProperty('--sc', MAP_SC[n.scene]);
   $('#ncIco').innerHTML = mapIcon(n.scene); $('#ncStage').textContent = 'STAGE ' + n.depth + '　' + sc.name; $('#ncName').textContent = n.name;
   $('#ncDesc').textContent = n.state === 'locked' ? '先通關前一關才能解鎖。' : sc.desc;
   let m = '<span class="nc-pill">起始兵力 ×' + n.entry + '</span><span class="nc-pill st">' + '★'.repeat(n.stars) + '<i>' + '★'.repeat(3 - n.stars) + '</i></span>';
-  if (n.diffMul > 1.001) m += '<span class="nc-pill hard">難度↑ 金幣×' + +n.coinMul.toFixed(2) + '</span>';
-  else if (sib && n.diffMul < 0.999) m += '<span class="nc-pill easy">穩健路線</span>';
+  const role = mapTradeRole(n);
+  if (role === 'hard') m += '<span class="nc-pill hard">難度↑ 金幣×' + +n.coinMul.toFixed(2) + '</span>';
+  else if (role === 'easy') m += '<span class="nc-pill easy">穩健路線</span>';
   else if (n.coinMul > 1.001) m += '<span class="nc-pill gold">金幣×' + +n.coinMul.toFixed(2) + '</span>';
   $('#ncMeta').innerHTML = m;
   $('#btnStart').disabled = n.state === 'locked';
