@@ -661,6 +661,50 @@ const UPGRADES = [
   { id: 'shield',  name: '護盾',   desc: '機甲護盾 +1 秒',      per: 1,    max: 5, base: 120, grow: 1.8 },
   { id: 'luck',    name: '幸運',   desc: '金幣 +15%、爆擊率 +3%', per: 0.15, max: 5, base: 150, grow: 1.9 },
 ];
+// ---------------------------------------------------------------- round 7 contract: world map, scenes, split routes
+// Owner (round 7): (1) a world map with branching routes, (2) new scenes beyond the bridge, (3) real in-stage splits.
+//
+// SCENES: what a stage looks like and which hazards it favours. Logic owns the gameplay keys (obstacle, mix);
+//   presentation owns the look (props, palette) and maps `id` to it. `theme` is the default G.theme for the scene.
+const SCENES = {
+  bridge:  { name: '斷橋',     theme: 'haze',   obstacle: 'wreck',     desc: '吊橋與廢車，經典屍潮' },
+  highway: { name: '高架公路', theme: 'sunset', obstacle: 'wreck',     desc: '多車道高架，翻覆車輛擋路，奔跑屍多' },
+  tunnel:  { name: '地下隧道', theme: 'night',  obstacle: 'barrier',   desc: '昏暗隧道，視野短，屍群從前方湧來' },
+  city:    { name: '市區街道', theme: 'dawn',   obstacle: 'barrier',   desc: '高樓夾道，巷口伏擊、油桶多' },
+  harbor:  { name: '港口碼頭', theme: 'storm',  obstacle: 'container', desc: '貨櫃堆成窄道，兩側是海' },
+  forest:  { name: '林間公路', theme: 'dawn',   obstacle: 'log',       desc: '倒木擋道，濃霧中的大型殭屍' },
+};
+// MAP: the campaign graph shown on the world map. Nodes are stages; `next` are the nodes a clear unlocks (two ids = the
+//   player chooses a branch). A node is playable when it is the root or any node listing it in `next` is cleared.
+//   depth drives base difficulty (what the stage number used to drive); diffMul / coinMul make one branch harder and
+//   richer than the other. x, y are map coordinates in 0..1 for presentation. Logic may extend the MAP (more chapters)
+//   and owns everything but x/y; after the last authored node the campaign continues procedurally (logic generates
+//   further nodes on demand with ids 'p<depth>', each with a seeded scene and a two-way branch every other depth).
+const MAP = [
+  { id: 'n1',  depth: 1, name: '新手橋',   scene: 'bridge',  next: ['n2'],         diffMul: 1,    coinMul: 1,    x: 0.50, y: 0.92 },
+  { id: 'n2',  depth: 2, name: '雙岔路',   scene: 'bridge',  next: ['n3a', 'n3b'], diffMul: 1,    coinMul: 1,    x: 0.50, y: 0.76 },
+  { id: 'n3a', depth: 3, name: '市區街道', scene: 'city',    next: ['n4a'],        diffMul: 1.15, coinMul: 1.35, x: 0.28, y: 0.60 },
+  { id: 'n3b', depth: 3, name: '港口碼頭', scene: 'harbor',  next: ['n4b'],        diffMul: 0.95, coinMul: 1,    x: 0.72, y: 0.60 },
+  { id: 'n4a', depth: 4, name: '地下隧道', scene: 'tunnel',  next: ['n5'],         diffMul: 1.15, coinMul: 1.35, x: 0.26, y: 0.42 },
+  { id: 'n4b', depth: 4, name: '林間公路', scene: 'forest',  next: ['n5'],         diffMul: 0.95, coinMul: 1,    x: 0.74, y: 0.42 },
+  { id: 'n5',  depth: 5, name: '終局高架', scene: 'highway', next: [],             diffMul: 1,    coinMul: 1.2,  x: 0.50, y: 0.24 },
+];
+// Progress becomes node based (SAVE v2): SAVE.nodes = { [id]: { entry, stars, cleared } }, SAVE.cur = last chosen node id.
+//   Carry-over follows the path: clearing a node sets entry on each node in its `next` (keep the larger); a converging node
+//   (n5) takes the larger of its parents' survivors. v1 saves migrate: stage n -> the main-path node of depth n (n1, n2, n3a,
+//   n4a, n5, then procedural ids). Cloud merge (mergeSaves) merges nodes the same way stages merged (max stars / entry,
+//   cleared = OR). G.node is the node being played (its object); G.level stays its depth for older code paths.
+// Route segment additions (G.route): 'split' { left: { scene }, right: { scene } } — the road truly splits into two roads
+//   that run apart and rejoin; the squad commits to the side its centre is on when entering (like fork, but each side has
+//   its own scene, contents and hazards; the gap between them is void/water/wall, not a crossable median).
+//   Every segment may carry `scene` (defaults to the stage scene) so a stage can pass from one scene into another.
+// Obstacle events (logic places them, seeded): { type: 'obstacle', kind: SCENES[...].obstacle, x, z, lanes: [laneIdx…],
+//   w, d, hp (0 = indestructible), dead }. They never block all three lanes and never sit in a gun row's blank lane.
+//   Soldiers whose position overlaps a live obstacle die (bus 'obstacleHit' { x, z, n, kind }); destructible ones
+//   (hp > 0) can be shot apart (bus 'obstacleBreak' { x, z, kind }).
+// Map/progress events: nodeUnlocked { id }, nodeCleared { id, stars }, mapSelect { id } (presentation emits when the
+//   player picks a node; logic prepares it).
+
 // ---------------------------------------------------------------- round 4 contract: lanes and routes
 // LANES: the road is read as three lanes. Every pickup row (guns) uses at most two of them, so at least one lane is always
 //   empty and the player can skip the guns. Pickups trigger on the lane of the squad centre (G.x), not on formation overlap.
