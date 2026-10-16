@@ -687,8 +687,71 @@ const MAP = [
   { id: 'n3b', depth: 3, name: '港口碼頭', scene: 'harbor',  next: ['n4b'],        diffMul: 0.95, coinMul: 1,    x: 0.72, y: 0.60 },
   { id: 'n4a', depth: 4, name: '地下隧道', scene: 'tunnel',  next: ['n5'],         diffMul: 1.15, coinMul: 1.35, x: 0.26, y: 0.42 },
   { id: 'n4b', depth: 4, name: '林間公路', scene: 'forest',  next: ['n5'],         diffMul: 0.95, coinMul: 1,    x: 0.74, y: 0.42 },
-  { id: 'n5',  depth: 5, name: '終局高架', scene: 'highway', next: [],             diffMul: 1,    coinMul: 1.2,  x: 0.50, y: 0.24 },
+  { id: 'n5',  depth: 5, name: '終局高架', scene: 'highway', next: ['p6'],         diffMul: 1,    coinMul: 1.2,  x: 0.50, y: 0.24 },
 ];
+// ---- round 7 logic: the node graph (authored MAP + procedural continuation)
+// Logic additions to MAP: n5.next = ['p6'] (the campaign continues). Procedural nodes ('p<depth>' single at even depths, 'p<depth>a' / 'p<depth>b'
+// at odd depths: a = harder (diffMul 1.12, coinMul 1.3), b = easier) are generated on demand, seeded by depth, with x / y laid out like the
+// authored ones (y = 0.92 - 0.17 * (depth - 1): negative from depth 7 on, the map scrolls). Every node object has:
+//   { id, depth, name, scene, next[], diffMul, coinMul, x, y, seed }.
+const NODE_CACHE = {};
+for (const m of MAP) { m.seed = m.depth + (/a$/.test(m.id) ? 1000 : /b$/.test(m.id) ? 2000 : 0); NODE_CACHE[m.id] = m; }
+const MAIN_IDS = ['n1', 'n2', 'n3a', 'n4a', 'n5'];
+// The main path (what stage n meant before the map): n1, n2, n3a, n4a, n5, then p6, p7a, p8, p9a, ...
+function mainId(depth) { depth = Math.max(1, depth | 0); return depth <= 5 ? MAIN_IDS[depth - 1] : depth % 2 === 0 ? 'p' + depth : 'p' + depth + 'a'; }
+const NODE_ID_RE = /^(n[1-5][ab]?|p\d{1,3}[ab]?)$/;
+let genTop = 5;
+function genDepth(d) {
+  d = Math.min(d, 400);
+  while (genTop < d) {
+    const e = ++genTop, rng = mulberry(e * 40503 + 17), pool = ['highway', 'tunnel', 'city', 'harbor', 'forest', 'bridge'];
+    const parents = Object.values(NODE_CACHE).filter(q => q.depth === e - 1);
+    const avoid = new Set(parents.map(q => q.scene));
+    const pickScene = taken => { const c = pool.filter(sc => !avoid.has(sc) && !taken.includes(sc)); return c[Math.floor(rng() * c.length)] || pool[0]; };
+    const mk = (id, scene, a, x) => {
+      const nd = { id, depth: e, name: SCENES[scene].name + '·' + e, scene, next: [], diffMul: a === 'a' ? 1.12 : a === 'b' ? 0.95 : 1, coinMul: a === 'a' ? 1.3 : a === 'b' ? 1 : 1.2, x, y: Math.round((0.92 - 0.17 * (e - 1)) * 1000) / 1000, seed: e + (a === 'a' ? 1000 : a === 'b' ? 2000 : 0) };
+      NODE_CACHE[id] = nd; return nd;
+    };
+    let made;
+    if (e % 2 === 0) made = [mk('p' + e, pickScene([]), '', 0.5)];
+    else { const sa = pickScene([]), sb = pickScene([sa]); made = [mk('p' + e + 'a', sa, 'a', 0.28), mk('p' + e + 'b', sb, 'b', 0.72)]; }
+    const ids = made.map(q => q.id);
+    for (const par of parents) { par.next = ids.slice(); }
+    if (e === 6) NODE_CACHE.n5.next = ['p6'];
+  }
+}
+// The node object for an id (generating procedural depths on demand), or null for an unknown id.
+function nodeDef(id) {
+  if (NODE_CACHE[id]) return NODE_CACHE[id];
+  const m = /^p(\d{1,3})[ab]?$/.exec(id || '');
+  if (!m) return null;
+  genDepth(+m[1] + 1);
+  return NODE_CACHE[id] || null;
+}
+const nodeParents = id => { const nd = nodeDef(id); if (nd) genDepth(nd.depth); return Object.values(NODE_CACHE).filter(q => q.next.includes(id)); };
+// 'cleared' | 'open' (the root, or any parent is cleared) | 'locked'
+function nodeState(id) {
+  const rec = SAVE.nodes[id];
+  if (rec && rec.cleared) return 'cleared';
+  if (id === 'n1') return 'open';
+  return nodeParents(id).some(q => SAVE.nodes[q.id] && SAVE.nodes[q.id].cleared) ? 'open' : 'locked';
+}
+// highest depth that has a node the player can play
+function unlockedDepth() {
+  let d = 1;
+  for (const id of Object.keys(SAVE.nodes)) { const nd = nodeDef(id); if (nd && SAVE.nodes[id].cleared) for (const nx of nd.next) { const q = nodeDef(nx); if (q) d = Math.max(d, q.depth); } else if (nd && nodeState(id) !== 'locked') d = Math.max(d, nd.depth); }
+  return d;
+}
+// The visible world map: authored nodes plus generated ones up to 2 depths beyond the furthest unlocked, each with its state.
+function mapNodes() {
+  const top = unlockedDepth();
+  genDepth(top + 2);
+  return Object.values(NODE_CACHE).filter(q => q.depth <= top + 2).sort((x, y) => x.depth - y.depth || (x.id < y.id ? -1 : 1)).map(q => {
+    const rec = SAVE.nodes[q.id] || null;
+    return { id: q.id, depth: q.depth, name: q.name, scene: q.scene, next: q.next.slice(), diffMul: q.diffMul, coinMul: q.coinMul, x: q.x, y: q.y,
+      state: nodeState(q.id), stars: rec ? rec.stars : 0, entry: q.id === 'n1' ? TUNE.startSquad : rec && rec.entry ? rec.entry : TUNE.startSquad, cleared: !!(rec && rec.cleared) };
+  });
+}
 // Progress becomes node based (SAVE v2): SAVE.nodes = { [id]: { entry, stars, cleared } }, SAVE.cur = last chosen node id.
 //   Carry-over follows the path: clearing a node sets entry on each node in its `next` (keep the larger); a converging node
 //   (n5) takes the larger of its parents' survivors. v1 saves migrate: stage n -> the main-path node of depth n (n1, n2, n3a,
@@ -739,18 +802,32 @@ const LANES = [-2.6, 0, 2.6];
 //   MERGE POLICY (mergeSaves; never lose progress): different epochs -> the higher epoch wins as a whole (that is how a reset travels);
 //   same epoch -> best: max; per stage: stars max, entry max; upgrades: per-id max level; coins: from the copy with the newer updatedAt
 //   (coins go down when spent, so max would duplicate them; equal updatedAt: the larger); rev / updatedAt: max.
-const SAVE = { v: 1, coins: 0, upgrades: {}, best: 1, stages: {}, rev: 0, updatedAt: 0, epoch: 0 };
+// Round 7 (SAVE v2): v: 2; the stage table becomes nodes: { [id]: { entry, stars, cleared } } plus cur (the node last chosen on the map); best stays
+//   the highest depth the player can play (derived: it moves when a clear unlocks a deeper node). v1 saves (numeric `stages`, or the old
+//   `zombie-bridge-best` key) migrate once on load: stage n -> the main-path node of depth n (mainId), cleared when it had stars (or lies below best);
+//   loading a v2 save never migrates again. MERGE adds nodes: union, per node entry max / stars max / cleared OR; cur from the newer copy.
+//   Clearing a node sets the entry of every node in its `next` to the larger of the old entry and the survivors (a converging node takes the
+//   larger parent); a locked node cannot be played; unlock rule: the root is open, any other node opens when ANY parent is cleared.
+const SAVE = { v: 2, coins: 0, upgrades: {}, best: 1, nodes: {}, cur: 'n1', rev: 0, updatedAt: 0, epoch: 0 };
 const SAVE_KEY = 'zombie-bridge-save', OLD_BEST_KEY = 'zombie-bridge-best';
 const toInt = (v, lo, hi, d) => { v = parseInt(v, 10); return isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
-function resetSaveData() { SAVE.v = 1; SAVE.coins = 0; SAVE.upgrades = {}; SAVE.best = 1; SAVE.stages = {}; SAVE.rev = 0; SAVE.updatedAt = 0; SAVE.epoch = 0; }
+function resetSaveData() { SAVE.v = 2; SAVE.coins = 0; SAVE.upgrades = {}; SAVE.best = 1; SAVE.nodes = {}; SAVE.cur = 'n1'; SAVE.rev = 0; SAVE.updatedAt = 0; SAVE.epoch = 0; }
 // A clean save object from untrusted data (a stored JSON string's parse, or a cloud document): every field clamped, unknown keys dropped.
 function sanitizeSave(o) {
-  const r = { v: 1, coins: toInt(o.coins, 0, 1e9, 0), upgrades: {}, best: toInt(o.best, 1, 999, 1), stages: {},
+  const r = { v: 2, coins: toInt(o.coins, 0, 1e9, 0), upgrades: {}, best: toInt(o.best, 1, 999, 1), nodes: {}, cur: 'n1',
     rev: toInt(o.rev, 0, 1e9, 0), updatedAt: toInt(o.updatedAt, 0, 9e15, 0), epoch: toInt(o.epoch, 0, 1e9, 0) };
   if (o.upgrades && typeof o.upgrades === 'object') for (const u of UPGRADES) r.upgrades[u.id] = toInt(o.upgrades[u.id], 0, u.max, 0);
-  if (o.stages && typeof o.stages === 'object') for (const k of Object.keys(o.stages)) {
-    const n = toInt(k, 1, 999, 0), st = o.stages[k];
-    if (n && st && typeof st === 'object') r.stages[n] = { entry: toInt(st.entry, 1, TUNE.maxSquad, TUNE.startSquad), stars: toInt(st.stars, 0, 3, 0) };
+  const rec = st => ({ entry: toInt(st.entry, 1, TUNE.maxSquad, TUNE.startSquad), stars: toInt(st.stars, 0, 3, 0), cleared: !!st.cleared });
+  if (o.nodes && typeof o.nodes === 'object') {                       // v2
+    for (const k of Object.keys(o.nodes).slice(0, 400)) { const st = o.nodes[k]; if (NODE_ID_RE.test(k) && st && typeof st === 'object') r.nodes[k] = rec(st); }
+    r.cur = typeof o.cur === 'string' && NODE_ID_RE.test(o.cur) ? o.cur : 'n1';
+  } else if (o.stages && typeof o.stages === 'object') {              // v1 -> v2: stage n becomes the main-path node of depth n
+    for (const k of Object.keys(o.stages)) {
+      const n = toInt(k, 1, 999, 0), st = o.stages[k];
+      if (n && st && typeof st === 'object') { const x = rec(st); x.cleared = x.stars > 0 || n < r.best; r.nodes[mainId(n)] = x; }
+    }
+    for (let n = 1; n < r.best; n++) { const id = mainId(n); (r.nodes[id] || (r.nodes[id] = { entry: TUNE.startSquad, stars: 0, cleared: true })).cleared = true; }
+    r.cur = mainId(r.best);
   }
   return r;
 }
@@ -764,23 +841,27 @@ function loadSave() {
   try { old = toInt(localStorage.getItem(OLD_BEST_KEY), 1, 999, 1); } catch (e) {}
   if (old > 1) {
     SAVE.best = old;
-    for (let n = 2; n <= old; n++) SAVE.stages[n] = { entry: Math.min(TUNE.maxSquad, TUNE.migrateEntry), stars: 0 };
+    for (let n = 1; n <= old; n++) SAVE.nodes[mainId(n)] = { entry: n === 1 ? TUNE.startSquad : Math.min(TUNE.maxSquad, TUNE.migrateEntry), stars: n < old ? 1 : 0, cleared: n < old };
+    SAVE.cur = mainId(old);
   }
 }
 function persistLocal() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(SAVE)); } catch (e) {} }
 // Every save: rev + 1, updatedAt = now, localStorage, then a debounced cloud write (a no-op without a cloud).
 function saveGame() { SAVE.rev++; SAVE.updatedAt = Date.now(); persistLocal(); cloudSchedule(); }
 // The squad you start stage n with: stage 1 = TUNE.startSquad, later stages = the survivors of the best clear of the stage before.
+// n is a depth (main-path node, as before) or a node id.
 function entryFor(n) {
-  if (n <= 1) return TUNE.startSquad;
-  const st = SAVE.stages[n];
+  const id = typeof n === 'string' ? n : mainId(n);
+  if (id === 'n1') return TUNE.startSquad;
+  const st = SAVE.nodes[id];
   return st && st.entry ? Math.min(TUNE.maxSquad, st.entry) : TUNE.startSquad;
 }
 loadSave();
-let best = SAVE.best;
+let best = Math.max(SAVE.best, unlockedDepth());
+SAVE.best = best;
 
 const G = {
-  level: best, phase: 'menu', x: 0, tx: 0, z: 0, L: 200, squad: 1, weapon: 0, weaponLv: 1, kills: 0, time: 0,
+  level: best, node: null, phase: 'menu', x: 0, tx: 0, z: 0, L: 200, squad: 1, weapon: 0, weaponLv: 1, kills: 0, time: 0,
   events: [], soldiers: [], shield: 0, mech: null, boss: null, shake: 0, dmgMul: 1, safe: false,
   // round 3 (logic writes, presentation reads): combo chain, coins earned this run, timed buffs { id: secondsLeft },
   // the squad this stage started with, and the last stage result (set right before `win` / `gameOver`).
@@ -1298,9 +1379,10 @@ function buildLevel(n) {
   if (levelGroup) { scene.remove(levelGroup); disposeTree(levelGroup); }
   levelGroup = new T.Group();
   scene.add(levelGroup);
-  R = mulberry(n * 7919 + 13);
-  R2 = mulberry(n * 104729 + 31);
-  const L = 170 + n * 25 + (routePlan(n).extra || 0);       // some route plans need a longer bridge to fit their segments
+  const sd = G.node ? G.node.seed : n;                       // every node has its own seed (depth, +1000 for an a-branch, +2000 for a b-branch)
+  R = mulberry(sd * 7919 + 13);
+  R2 = mulberry(sd * 104729 + 31);
+  const L = 170 + n * 25 + (routePlan(G.node || n).extra || 0);       // some route plans need a longer bridge to fit their segments
   G.L = L;
   const len = L + 130, mid = 30 - len / 2;
 
@@ -1381,7 +1463,7 @@ function hordeSpec(kind, n, side, p) {
   p = Math.pow(p || 0, TUNE.rampPow);
   const sd = Math.pow(n - 1, TUNE.stagePow);      // stage steps: concave when stagePow < 1 (later stages grow more slowly)
   const f = (1 + sd * TUNE.hordeGrow) * (TUNE.early + TUNE.ramp * p * TUNE.stageMul[Math.min(n, TUNE.stageMul.length) - 1]);
-  const hm = TUNE.stageHp[Math.min(n, TUNE.stageHp.length) - 1];
+  const hm = TUNE.stageHp[Math.min(n, TUNE.stageHp.length) - 1] * (G.node ? G.node.diffMul : 1);   // diffMul: one branch harder than the other
   const hp = (1 + sd * TUNE.hpPerStage) * (1 + TUNE.hpRamp * p) * hm;
   const C = TUNE.count;
   const exFrac = Math.min(TUNE.exMax, TUNE.exBase + TUNE.exStage * (n - 1)), shFrac = Math.min(TUNE.shMax, TUNE.shBase + TUNE.shStage * (n - 1));
@@ -1488,6 +1570,7 @@ const planSig = plan => plan.segs.map(sg => sg.type).join(',');
 // routePlan(n): the plan of stage n (pure and seeded: the same stage always gets the same plan). Stages 6+ never repeat the type
 // sequence of the stage before.
 function routePlan(n) {
+  if (n && typeof n === 'object') n = n.depth;                // round 7 step 1: plans still follow the depth (scene-aware plans come in step 2)
   if (planCache[n]) return planCache[n];
   let plan;
   if (n < 1) return routePlan(1);
@@ -1516,8 +1599,8 @@ function makeGunRow(z, slot) {
 
 function makeEvents(n, L) {
   const E = G.events;
-  const plan = routePlan(n);
-  G.routeName = plan.name; G.theme = plan.theme;
+  const plan = routePlan(G.node || n);
+  G.routeName = G.node && G.node.depth > 5 ? G.node.name : plan.name; G.theme = plan.theme;
   let z = -24;
   // Opening that mirrors the ad: a horde, then a red gate beside a dormant mech with a rifle (middle lane) between them.
   E.push({ type: 'horde', z, spec: hordeSpec('open', n, -1) });
@@ -2138,8 +2221,9 @@ const luckMul = () => 1 + upPer('luck') * upLv('luck');
 // Coins: kills add fractional amounts to an accumulator that is flushed in whole coins (at most ~7 `coin` events a second,
 // at once for brutes / chains / bosses), so G.coins is always an integer and the UI is not flooded.
 let coinAcc = 0, coinX = 0, coinZ = 0, coinT = -9;
+const coinMulNow = () => G.node ? G.node.coinMul : 1;        // round 7: the richer branch pays more
 function earn(amount, x, z, now) {
-  coinAcc += amount * luckMul(); coinX = x; coinZ = z;
+  coinAcc += amount * luckMul() * coinMulNow(); coinX = x; coinZ = z;
   flushCoins(!!now);
 }
 function flushCoins(force) {
@@ -2165,7 +2249,7 @@ function comboKill(x, z) {
   bus.emit('combo', { n: G.combo });
   const mi = TUNE.comboMilestones.indexOf(G.combo);
   if (mi >= 0) {
-    const reward = { coins: Math.round(TUNE.comboCoins[mi] * (1 + TUNE.coinStage * (G.level - 1))) };
+    const reward = { coins: Math.round(TUNE.comboCoins[mi] * (1 + TUNE.coinStage * (G.level - 1)) * coinMulNow()) };
     if (G.combo >= 100) { reward.buff = 'frenzy'; reward.secs = TUNE.comboFrenzy; startBuff('frenzy', TUNE.comboFrenzy); }
     giveCoins(reward.coins, x, z);
     bus.emit('comboMilestone', { n: G.combo, reward });
@@ -2212,7 +2296,7 @@ function checkMilestones() {
   const m = TUNE.squadMilestones;
   while (G.msIdx < m.length && G.squad >= m[G.msIdx]) {
     const n = m[G.msIdx++];
-    giveCoins(Math.round(n * TUNE.squadMilestoneCoins * (1 + TUNE.coinStage * (G.level - 1))), G.x, G.z);
+    giveCoins(Math.round(n * TUNE.squadMilestoneCoins * (1 + TUNE.coinStage * (G.level - 1)) * coinMulNow()), G.x, G.z);
     bus.emit('squadMilestone', { n });
   }
 }
@@ -4732,7 +4816,7 @@ function resetWorld() {
   for (const p of pops) p.el.remove();
   pops.length = 0;
   acc = 0;
-  const entry = entryFor(G.level);                            // the squad this stage starts with (carry-over; stage 1 = TUNE.startSquad)
+  const entry = entryFor(G.node ? G.node.id : G.level);       // the squad this stage starts with (carry-over; stage 1 = TUNE.startSquad)
   Object.assign(G, { x: 0, tx: 0, z: 0, squad: entry, weapon: 0, weaponLv: 1, kills: 0, shield: 0, shake: 0, time: 0, safe: false, dmgMul: 1,
     combo: 0, comboT: 0, comboBest: 0, coins: 0, result: null, rateBonus: 0, entrySquad: entry,
     msIdx: TUNE.squadMilestones.filter(m => m <= entry).length });          // only milestones above the entry squad count as "reached this run"
@@ -4741,20 +4825,45 @@ function resetWorld() {
   coinAcc = 0; coinT = -9; lastCritT = -9; chainDepth = 0; lastBlockT = -9;
   G.seg = null; colCap = 99; pLo = -ROAD + 0.45; pHi = ROAD - 0.45;
 }
+// prepare(level): level is a depth (older code and tests) or a node id. A depth means: the current node when it is its depth, the first node
+// after it when it is the next depth, otherwise the main-path node of that depth (mainId).
 function prepare(level) {
-  G.level = level;
+  let id;
+  if (typeof level === 'string') id = level;
+  else if (G.node && level === G.node.depth) id = G.node.id;
+  else if (G.node && level === G.node.depth + 1 && G.node.next.length) { const nx = nodeDef(G.node.next[0]); id = nx && nx.depth === level ? nx.id : mainId(level); }
+  else id = mainId(level);
+  prepareNode(id);
+}
+// Round 7: build node `id` (G.node = its object, G.level = its depth), phase 'menu', the squad at its entry size.
+function prepareNode(id) {
+  const node = nodeDef(id) || nodeDef('n1');
+  G.node = node; G.level = node.depth;
   G.phase = 'menu';
   resetWorld();
-  buildLevel(level);
+  buildLevel(node.depth);
   syncSoldiers();
   updateEvents(0);
   fillBuckets();
-  for (const id of ['menuLevel', 'overLevel']) $('#' + id).textContent = 'STAGE ' + level;
+  for (const id of ['menuLevel', 'overLevel']) $('#' + id).textContent = 'STAGE ' + node.depth;
   $('#bestLine').textContent = best > 1 ? '最佳紀錄：第 ' + best + ' 關' : '';
 }
+// The map's choice: a node that is not locked becomes SAVE.cur and is prepared (phase 'menu'). Returns false for a locked / unknown node
+// or while a run is in progress.
+function selectNode(id) {
+  const nd = nodeDef(id);
+  if (!nd || inRun() || nodeState(id) === 'locked') return false;
+  SAVE.cur = id; saveGame();
+  prepareNode(id);
+  return true;
+}
+bus.on('mapSelect', d => { if (d && d.id) selectNode(d.id); });
+function startNode(id) { if (!selectNode(id)) return false; startRun(); return true; }
+// the node the game opens on: the last chosen one if it can be played, else the main-path node of the furthest unlocked depth
+function startNodeId() { return nodeDef(SAVE.cur) && nodeState(SAVE.cur) !== 'locked' ? SAVE.cur : mainId(best); }
 function startRun() {
   SFX.init();
-  if (G.phase !== 'menu') prepare(G.level);
+  if (G.phase !== 'menu') prepareNode(G.node.id);
   for (const id of ['menu', 'over', 'win']) $('#' + id).hidden = true;
   $('#hud').hidden = false;
   hintEl.style.opacity = '1';
@@ -4765,26 +4874,32 @@ function startRun() {
 // loss -> half the coins. Fills G.result and emits stageResult (before `win` / `gameOver`).
 function settleStage(won) {
   flushCoins(true);
-  const n = G.level, entry = G.entrySquad, survivors = won ? G.squad : 0;
+  const node = G.node, n = node.depth, entry = G.entrySquad, survivors = won ? G.squad : 0;
   let stars = 0, bonus = 0, coins;
   if (won) {
     // 3 stars: 1.5 x the entry squad (at least +10), but never more than 95% of the cap - with squads of 90+ the bar is "nearly full"
     const thr3 = Math.min(Math.ceil(TUNE.maxSquad * 0.95), Math.max(Math.ceil(entry * 1.5), entry + 10));
     stars = 1 + (survivors >= entry ? 1 : 0) + (survivors >= thr3 ? 1 : 0);
-    bonus = stars * Math.round(TUNE.starCoins * (1 + TUNE.coinStage * (n - 1)));
+    bonus = stars * Math.round(TUNE.starCoins * (1 + TUNE.coinStage * (n - 1)) * node.coinMul);
     coins = G.coins + bonus;
   } else coins = Math.floor(G.coins * TUNE.loseCoinShare);
-  const st = SAVE.stages[n] || (SAVE.stages[n] = { entry: 0, stars: 0 });
-  const newBest = won && stars > (st.stars || 0);
+  const rec = SAVE.nodes[node.id] || (SAVE.nodes[node.id] = { entry: TUNE.startSquad, stars: 0, cleared: false });
+  const newBest = won && stars > rec.stars;
+  const unlocked = [];
   if (won) {
-    st.stars = Math.max(st.stars || 0, stars);
-    const nx = SAVE.stages[n + 1] || (SAVE.stages[n + 1] = { entry: 0, stars: 0 });
-    nx.entry = Math.max(nx.entry || 0, Math.min(TUNE.maxSquad, survivors));
-    SAVE.best = Math.max(SAVE.best, n + 1); best = SAVE.best;
+    const before = node.next.map(id => nodeState(id));
+    rec.stars = Math.max(rec.stars, stars); rec.cleared = true;
+    node.next.forEach((id, i) => {
+      const nx = SAVE.nodes[id] || (SAVE.nodes[id] = { entry: TUNE.startSquad, stars: 0, cleared: false });
+      nx.entry = Math.max(nx.entry | 0, Math.min(TUNE.maxSquad, survivors));          // carry-over along the path (a converging node keeps the larger)
+      if (before[i] === 'locked') unlocked.push(id);
+    });
+    SAVE.best = Math.max(SAVE.best, unlockedDepth()); best = SAVE.best;
   }
   SAVE.coins += coins;
   saveGame();
-  G.result = { stage: n, stars, survivors, entry, kills: G.kills, coins, bonus, comboBest: G.comboBest, newBest };
+  if (won) { bus.emit('nodeCleared', { id: node.id, stars }); for (const id of unlocked) bus.emit('nodeUnlocked', { id }); }
+  G.result = { stage: n, node: node.id, stars, survivors, entry, kills: G.kills, coins, bonus, comboBest: G.comboBest, newBest };
   bus.emit('stageResult', G.result);
 }
 function gameOver(reason, cause, kind) {
@@ -4840,7 +4955,7 @@ function goMenu() {
 }
 function syncMenu() {
   $('#menuCoins').textContent = String(SAVE.coins | 0);
-  const sv = SAVE.stages && SAVE.stages[G.level], entry = sv && sv.entry ? sv.entry : TUNE.startSquad, stars = clamp(sv && sv.stars | 0, 0, 3);
+  const sv = SAVE.nodes && G.node && SAVE.nodes[G.node.id], entry = G.node && G.node.id !== 'n1' && sv && sv.entry ? sv.entry : TUNE.startSquad, stars = clamp(sv && sv.stars | 0, 0, 3);
   $('#entryLine').innerHTML = (G.routeName ? '<span class="rn">' + G.routeName + '</span>　' : '') + '起始兵力 ×' + entry + '　<span class="st">' + '★'.repeat(stars) + '<i>' + '★'.repeat(3 - stars) + '</i></span>';
   const multi = best > 1;
   const prev = $('#stagePrev'), next = $('#stageNext');
@@ -5187,11 +5302,11 @@ bus.on('cloudSync', e => hudCloudChip(e.state, e.lastSyncAt));
 // the highest unlocked stage, as a fresh boot would; never touch a run (the engine defers remote saves until a run ends).
 bus.on('cloudSync', e => {
   if (!e.merged) return;
-  if (G.phase === 'menu') { if (G.level < best) prepare(best); syncMenu(); }
+  if (G.phase === 'menu') { if (G.level < best) prepareNode(startNodeId()); syncMenu(); }
   if (!shopEl.hidden) renderShop();
 });
 
-prepare(G.level);
+prepareNode(startNodeId());
 syncMenu();
 if (document.fonts && document.fonts.load) {
   Promise.all([document.fonts.load('96px Bungee'), document.fonts.load('900 40px "Noto Sans TC"')])
@@ -5211,17 +5326,18 @@ requestAnimationFrame(frame);
 //   remote snapshots newer than local (epoch, rev, updatedAt) merge in while the player is NOT in a run; during a run they are queued.
 function mergeSaves(a, b) {
   if (a.epoch !== b.epoch) return JSON.parse(JSON.stringify(a.epoch > b.epoch ? a : b));      // a reset (higher epoch) wins as a whole
-  const m = { v: 1, epoch: a.epoch, best: Math.max(a.best, b.best), rev: Math.max(a.rev, b.rev), updatedAt: Math.max(a.updatedAt, b.updatedAt), upgrades: {}, stages: {} };
+  const m = { v: 2, epoch: a.epoch, best: Math.max(a.best, b.best), rev: Math.max(a.rev, b.rev), updatedAt: Math.max(a.updatedAt, b.updatedAt), upgrades: {}, nodes: {} };
   m.coins = a.updatedAt > b.updatedAt ? a.coins : b.updatedAt > a.updatedAt ? b.coins : Math.max(a.coins, b.coins);
+  m.cur = a.updatedAt >= b.updatedAt ? a.cur : b.cur;
   for (const u of UPGRADES) m.upgrades[u.id] = Math.max(a.upgrades[u.id] | 0, b.upgrades[u.id] | 0);
-  for (const src of [a, b]) for (const k of Object.keys(src.stages)) {
-    const st = src.stages[k], cur = m.stages[k] || (m.stages[k] = { entry: 1, stars: 0 });
-    cur.entry = Math.max(cur.entry, st.entry); cur.stars = Math.max(cur.stars, st.stars);
+  for (const src of [a, b]) for (const k of Object.keys(src.nodes)) {                           // union of nodes; entry max, stars max, cleared OR
+    const st = src.nodes[k], cur = m.nodes[k] || (m.nodes[k] = { entry: 1, stars: 0, cleared: false });
+    cur.entry = Math.max(cur.entry, st.entry); cur.stars = Math.max(cur.stars, st.stars); cur.cleared = cur.cleared || !!st.cleared;
   }
   return m;
 }
-const saveCore = o => JSON.stringify([o.epoch, o.coins, o.best, UPGRADES.map(u => o.upgrades[u.id] | 0), Object.keys(o.stages).sort((x, y) => x - y).map(k => [k, o.stages[k].entry, o.stages[k].stars])]);
-const saveHasProgress = o => o.rev > 0 || o.best > 1 || o.coins > 0 || Object.keys(o.stages).length > 0 || UPGRADES.some(u => o.upgrades[u.id] > 0);
+const saveCore = o => JSON.stringify([o.epoch, o.coins, o.best, UPGRADES.map(u => o.upgrades[u.id] | 0), Object.keys(o.nodes).sort().map(k => [k, o.nodes[k].entry, o.nodes[k].stars, o.nodes[k].cleared ? 1 : 0])]);
+const saveHasProgress = o => o.rev > 0 || o.best > 1 || o.coins > 0 || Object.keys(o.nodes).length > 0 || UPGRADES.some(u => o.upgrades[u.id] > 0);
 const remoteNewer = (r, l) => r.epoch !== l.epoch ? r.epoch > l.epoch : r.rev !== l.rev ? r.rev > l.rev : r.updatedAt > l.updatedAt;
 const inRun = () => G.phase === 'run' || G.phase === 'boss';
 
@@ -5237,7 +5353,7 @@ function cloudState(state, merged) {
   if (changed || merged) bus.emit('cloudSync', merged ? { state, lastSyncAt: G.cloud.lastSyncAt, merged: true } : { state, lastSyncAt: G.cloud.lastSyncAt });
 }
 function cloudApply(m) {                                    // replaces SAVE's content in place (SAVE is shared by reference)
-  SAVE.coins = m.coins; SAVE.best = m.best; SAVE.upgrades = m.upgrades; SAVE.stages = m.stages; SAVE.rev = m.rev; SAVE.updatedAt = m.updatedAt; SAVE.epoch = m.epoch;
+  SAVE.coins = m.coins; SAVE.best = m.best; SAVE.upgrades = m.upgrades; SAVE.nodes = m.nodes; SAVE.cur = m.cur; SAVE.rev = m.rev; SAVE.updatedAt = m.updatedAt; SAVE.epoch = m.epoch;
   best = SAVE.best; persistLocal();
 }
 // Local and cloud meet: merge, apply locally if it changed anything, and report what the cloud still lacks (rev / updatedAt only move on content).
@@ -5384,7 +5500,7 @@ function resetSave() {
 }
 // Start stage n from the beginning with its entry squad (same as prepare(n) + startRun()).
 function startStage(n) { prepare(n); startRun(); }
-window.__zb = { cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
+window.__zb = { MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
   stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0), bw: Array.from(bw.subarray(0, nb)), bl: Array.from(bl.subarray(0, nb)), by: Array.from(by.subarray(0, nb)), bt: Array.from(bt.subarray(0, nb)), bs: Array.from(bs.subarray(0, nb)), bx: Array.from(bx.subarray(0, nb)), bz: Array.from(bz.subarray(0, nb)) }),
   perf: () => ({ pr: PR_STEPS[prIdx], steps: PR_STEPS, avg: Perf.avg, fxScale }) };
 })();

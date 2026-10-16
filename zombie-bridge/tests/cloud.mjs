@@ -54,7 +54,13 @@ async function open(cfg, local) {
   });
   return page;
 }
-const S = (o = {}) => Object.assign({ v: 1, coins: 0, best: 1, upgrades: {}, stages: {}, rev: 0, updatedAt: 0, epoch: 0 }, o);
+const ID = { 1: 'n1', 2: 'n2', 3: 'n3a', 4: 'n4a', 5: 'n5', 8: 'p8' };       // stage number -> main-path node id
+// A save document for the fixtures; `stages: { n: {entry, stars} }` is shorthand for the v2 nodes of the main path.
+const S = (o = {}) => {
+  const x = Object.assign({ v: 2, coins: 0, best: 1, upgrades: {}, nodes: {}, cur: 'n1', rev: 0, updatedAt: 0, epoch: 0 }, o);
+  if (x.stages) { x.nodes = {}; for (const k of Object.keys(x.stages)) x.nodes[ID[k]] = { entry: x.stages[k].entry, stars: x.stages[k].stars, cleared: x.stages[k].stars > 0 }; delete x.stages; }
+  return x;
+};
 const ev = (page, js) => page.evaluate(js);
 const settle = page => page.evaluate(async () => { await window.__zb.cloud.flush(); return window.__zb.cloud.state(); });
 
@@ -63,7 +69,7 @@ const settle = page => page.evaluate(async () => { await window.__zb.cloud.flush
   const page = await open({}, S({ best: 3, coins: 120, rev: 4, updatedAt: 1000, upgrades: { dmg: 2 }, stages: { 2: { entry: 30, stars: 2 }, 3: { entry: 41, stars: 1 } } }));
   const state = await settle(page);
   const f = await page.evaluate(() => ({ doc: window.__fake.doc, sets: window.__fake.sets.length, path: window.__fake.path, uses: window.__fake.uses, G: window.__zb.G.cloud, subs: window.__fake.subs.length }));
-  check('boot, no cloud doc: the local save is written up once, to data/users/<id>/save', state === 'synced' && f.sets === 1 && f.path === 'data/users/u_abc/save' && f.doc && f.doc.best === 3 && f.doc.coins === 120 && f.doc.upgrades.dmg === 2 && f.doc.stages[3].entry === 41, JSON.stringify(f));
+  check('boot, no cloud doc: the local save is written up once, to data/users/<id>/save', state === 'synced' && f.sets === 1 && f.path === 'data/users/u_abc/save' && f.doc && f.doc.best >= 3 && f.doc.coins === 120 && f.doc.upgrades.dmg === 2 && f.doc.nodes[ID[3]].entry === 41, JSON.stringify(f));
   check('boot: db and user were requested, one onSnapshot subscription, G.cloud.user is true', f.uses.includes('db') && f.uses.includes('user') && f.subs === 1 && f.G.user === true && f.G.lastSyncAt > 0);
   const evs = await page.evaluate(() => window.__events.map(e => e.state));
   check('boot: cloudSync events go syncing -> synced', evs.join() === 'syncing,synced', evs.join());
@@ -86,10 +92,10 @@ const settle = page => page.evaluate(async () => { await window.__zb.cloud.flush
   const state = await settle(page);
   const r = await page.evaluate(() => ({ save: JSON.parse(JSON.stringify(window.__zb.SAVE)), doc: window.__fake.doc, sets: window.__fake.sets.length, ls: JSON.parse(localStorage.getItem('zombie-bridge-save')), ev: window.__events.filter(e => e.merged).length, best: window.__zb.G.level }));
   const s = r.save;
-  check('merge: best max, stars max, entry max, upgrades per-id max', s.best === 4 && s.stages[2].stars === 3 && s.stages[2].entry === 30 && s.stages[3].entry === 40 && s.upgrades.dmg === 1 && s.upgrades.rate === 2, JSON.stringify(s));
+  check('merge: best max, stars max, entry max, upgrades per-id max', s.best === 4 && s.nodes[ID[2]].stars === 3 && s.nodes[ID[2]].entry === 30 && s.nodes[ID[3]].entry === 40 && s.upgrades.dmg === 1 && s.upgrades.rate === 2, JSON.stringify(s));
   check('merge: coins come from the copy with the newer updatedAt (the cloud: 100, not max 500)', s.coins === 100, s.coins);
   check('merge: localStorage got the merged save, a merged cloudSync event fired', r.ls.best === 4 && r.ls.upgrades.rate === 2 && r.ev === 1, JSON.stringify([r.ls.best, r.ev]));
-  check('merge: the cloud gets the merge back (it lacked entry 30 and dmg 1), rev moved past both', r.sets === 1 && r.doc.stages[2].entry === 30 && r.doc.upgrades.dmg === 1 && r.doc.rev > 5 && state === 'synced', JSON.stringify([r.sets, r.doc.rev]));
+  check('merge: the cloud gets the merge back (it lacked entry 30 and dmg 1), rev moved past both', r.sets === 1 && r.doc.nodes[ID[2]].entry === 30 && r.doc.upgrades.dmg === 1 && r.doc.rev > 5 && state === 'synced', JSON.stringify([r.sets, r.doc.rev]));
   await page.close();
 }
 {
@@ -179,11 +185,11 @@ const settle = page => page.evaluate(async () => { await window.__zb.cloud.flush
   await page.evaluate(() => window.__fake.remoteWrite({ v: 1, coins: 77, best: 5, upgrades: { rate: 3 }, stages: { 2: { entry: 25, stars: 3 }, 4: { entry: 50, stars: 2 } }, rev: 9, updatedAt: Date.now() + 5000, epoch: 0 }));
   await page.waitForTimeout(200);
   const during = await page.evaluate(() => ({ best: window.__zb.SAVE.best, phase: window.__zb.G.phase }));
-  check('remote snapshot during a run: nothing is applied while the player is in the run', during.phase === 'run' && during.best === 2, JSON.stringify(during));
+  check('remote snapshot during a run: nothing is applied while the player is in the run', during.phase === 'run' && during.best === 3, JSON.stringify(during));
   await page.evaluate(() => { window.__zb.G.phase = 'over'; });
   await page.evaluate(() => window.__zb.cloud.flush());
   const after = await page.evaluate(() => ({ s: JSON.parse(JSON.stringify(window.__zb.SAVE)), merged: window.__events.filter(e => e.merged).length }));
-  check('remote snapshot: applied (merged) as soon as the run is over', after.s.best === 5 && after.s.upgrades.rate === 3 && after.s.stages[4].entry === 50 && after.s.coins === 77 && after.merged >= 1, JSON.stringify(after));
+  check('remote snapshot: applied (merged) as soon as the run is over', after.s.best === 5 && after.s.upgrades.rate === 3 && after.s.nodes[ID[4]].entry === 50 && after.s.coins === 77 && after.merged >= 1, JSON.stringify(after));
   // in the menu it applies at once
   await page.evaluate(() => { window.__zb.prepare(1); window.__fake.remoteWrite({ v: 1, coins: 78, best: 6, upgrades: {}, stages: {}, rev: 20, updatedAt: Date.now() + 9000, epoch: 0 }); });
   await page.waitForTimeout(200);
@@ -203,15 +209,15 @@ const settle = page => page.evaluate(async () => { await window.__zb.cloud.flush
   await page.evaluate(() => { window.__zb.resetSave(); });
   await page.evaluate(() => window.__zb.cloud.flush());
   const r = await page.evaluate(() => ({ doc: window.__fake.doc, sets: window.__fake.sets.length, save: JSON.parse(JSON.stringify(window.__zb.SAVE)), ls: JSON.parse(localStorage.getItem('zombie-bridge-save')) }));
-  check('resetSave: the cloud doc is overwritten with a fresh save (kept, not deleted), at a higher epoch', r.doc && r.doc.best === 1 && r.doc.coins === 0 && Object.keys(r.doc.stages).length === 0 && r.doc.epoch >= 1 && r.sets === 2, JSON.stringify(r.doc));
+  check('resetSave: the cloud doc is overwritten with a fresh save (kept, not deleted), at a higher epoch', r.doc && r.doc.best === 1 && r.doc.coins === 0 && Object.keys(r.doc.nodes).length === 0 && r.doc.epoch >= 1 && r.sets === 2, JSON.stringify(r.doc));
   check('resetSave: the local cache keeps the epoch so a stale cloud copy cannot revive the old progress', r.ls.epoch === r.doc.epoch && r.save.best === 1);
   const merged = await page.evaluate(() => window.__zb.cloud.merge(window.__zb.SAVE, { v: 1, coins: 999, best: 9, upgrades: { dmg: 5 }, stages: { 8: { entry: 90, stars: 3 } }, rev: 50, updatedAt: 1, epoch: 0 }));
-  check('merge: an old-epoch copy (a device that never saw the reset) loses to the reset as a whole', merged.best === 1 && merged.coins === 0 && Object.keys(merged.stages).length === 0, JSON.stringify(merged));
+  check('merge: an old-epoch copy (a device that never saw the reset) loses to the reset as a whole', merged.best === 1 && merged.coins === 0 && Object.keys(merged.nodes).length === 0, JSON.stringify(merged));
   await page.close();
   // an old device boots after the reset and picks it up
   const old = await open({ cloudDoc: r.doc }, S({ best: 4, coins: 300, rev: 6, updatedAt: 500, stages: { 2: { entry: 30, stars: 3 } } }));
   await settle(old);
-  const o = await old.evaluate(() => ({ best: window.__zb.SAVE.best, st: Object.keys(window.__zb.SAVE.stages).length, sets: window.__fake.sets.length }));
+  const o = await old.evaluate(() => ({ best: window.__zb.SAVE.best, st: Object.keys(window.__zb.SAVE.nodes).length, sets: window.__fake.sets.length }));
   check('resetSave: another device with the old save adopts the reset on its next boot (and does not write the old data back)', o.best === 1 && o.st === 0 && o.sets === 0, JSON.stringify(o));
   await old.close();
 }

@@ -358,7 +358,7 @@ const results = await page.evaluate(() => {
     const log = [], res = [], seen = [];
     const o1 = listen('stageResult', res), o2 = listen('win', log), o3 = listen('stageResult', seen);
     let coinsAtEvent = null, entryAtEvent = null, runCoins = null, winsBefore = -1;
-    const h = () => { winsBefore = log.length; coinsAtEvent = zb.SAVE.coins; runCoins = G.coins; entryAtEvent = zb.SAVE.stages[n + 1] && zb.SAVE.stages[n + 1].entry; };
+    const h = () => { winsBefore = log.length; coinsAtEvent = zb.SAVE.coins; runCoins = G.coins; entryAtEvent = zb.SAVE.nodes[zb.mainId(n + 1)] && zb.SAVE.nodes[zb.mainId(n + 1)].entry; };
     zb.bus.on('stageResult', h);
     let guard = 0;
     while (G.phase !== 'win' && guard++ < 8000) { G.shield = 1e9; zb.step(1 / 60); }
@@ -371,19 +371,19 @@ const results = await page.evaluate(() => {
   {
     zb.resetSave();
     check('save: a fresh save has no coins, no upgrades, entry 1 for every stage', zb.SAVE.coins === 0 && !zb.SAVE.upgrades.dmg && zb.entryFor(1) === T.startSquad && zb.entryFor(3) === T.startSquad);
-    zb.SAVE.coins = 123; zb.SAVE.upgrades.dmg = 2; zb.SAVE.best = 3; zb.SAVE.stages[2] = { entry: 37, stars: 2 };
+    zb.SAVE.coins = 123; zb.SAVE.upgrades.dmg = 2; zb.SAVE.best = 3; zb.SAVE.nodes[zb.mainId(2)] = { entry: 37, stars: 2 };
     zb.saveGame();
     const raw = JSON.parse(localStorage.getItem(KEY));
-    check('save: round trip, the stored JSON has coins / upgrades / best / stages[n].entry+stars', raw.coins === 123 && raw.upgrades.dmg === 2 && raw.best === 3 && raw.stages[2].entry === 37 && raw.stages[2].stars === 2, JSON.stringify(raw));
-    zb.SAVE.coins = 0; zb.SAVE.upgrades = {}; zb.SAVE.stages = {}; zb.SAVE.best = 1;
+    check('save: round trip, the stored JSON has coins / upgrades / best / nodes[id].entry+stars', raw.coins === 123 && raw.upgrades.dmg === 2 && raw.best === 3 && raw.nodes.n2.entry === 37 && raw.nodes.n2.stars === 2, JSON.stringify(raw));
+    zb.SAVE.coins = 0; zb.SAVE.upgrades = {}; zb.SAVE.nodes = {}; zb.SAVE.best = 1;
     zb.loadSave();
-    check('save: loadSave restores the same state', zb.SAVE.coins === 123 && zb.SAVE.upgrades.dmg === 2 && zb.SAVE.best === 3 && zb.entryFor(2) === 37 && zb.SAVE.stages[2].stars === 2, JSON.stringify(zb.SAVE));
+    check('save: loadSave restores the same state', zb.SAVE.coins === 123 && zb.SAVE.upgrades.dmg === 2 && zb.SAVE.best === 3 && zb.entryFor(2) === 37 && zb.SAVE.nodes[zb.mainId(2)].stars === 2, JSON.stringify(zb.SAVE));
     localStorage.setItem(KEY, '{broken json');
     let threw = false; try { zb.loadSave(); } catch (e) { threw = true; }
     check('save: a corrupt save does not throw, falls back to a fresh one', !threw && zb.SAVE.coins === 0 && zb.entryFor(2) === T.startSquad);
     localStorage.setItem(KEY, JSON.stringify({ v: 1, coins: -5, best: 2, upgrades: { dmg: 99 }, stages: { 2: { entry: 9999, stars: 9 } } }));
     zb.loadSave();
-    check('save: out-of-range values are clamped', zb.SAVE.coins === 0 && zb.SAVE.upgrades.dmg === zb.UPGRADES[0].max && zb.entryFor(2) === T.maxSquad && zb.SAVE.stages[2].stars === 3, JSON.stringify(zb.SAVE));
+    check('save: out-of-range values are clamped', zb.SAVE.coins === 0 && zb.SAVE.upgrades.dmg === zb.UPGRADES[0].max && zb.entryFor(2) === T.maxSquad && zb.SAVE.nodes[zb.mainId(2)].stars === 3, JSON.stringify(zb.SAVE));
     const setItem = Storage.prototype.setItem;
     Storage.prototype.setItem = function () { throw new Error('quota'); };
     threw = false; try { zb.saveGame(); } catch (e) { threw = true; }
@@ -399,7 +399,7 @@ const results = await page.evaluate(() => {
     zb.resetSave();
 
     // carry-over: startStage(n) starts with SAVE.stages[n].entry; weapon and level reset
-    zb.SAVE.stages[2] = { entry: 37, stars: 0 }; zb.saveGame();
+    zb.SAVE.nodes[zb.mainId(2)] = { entry: 37, stars: 0 }; zb.saveGame();
     G.weapon = 4; G.weaponLv = 3;
     zb.startStage(2);
     check('carry-over: startStage(2) starts with the stored entry squad, phase run', G.level === 2 && G.phase === 'run' && G.squad === 37 && G.entrySquad === 37 && G.soldiers.length === 37, `${G.level} ${G.squad} ${G.soldiers.length}`);
@@ -423,7 +423,7 @@ const results = await page.evaluate(() => {
     const lr = lost[0];
     check('loss: exactly one stageResult, before gameOver', lost.length === 1 && order.join() === 'stageResult,gameOver', order.join());
     check('loss: 0 stars, no bonus, coins = half of the run coins, banked in SAVE', lr && lr.stars === 0 && lr.bonus === 0 && lr.coins === Math.floor(lossCoins * T.loseCoinShare) && zb.SAVE.coins === wallet0 + lr.coins, JSON.stringify(lr) + ' wallet ' + zb.SAVE.coins);
-    check('loss: the stored entry is untouched', zb.SAVE.stages[2].entry === 37 && zb.SAVE.stages[3] === undefined);
+    check('loss: the stored entry is untouched', zb.SAVE.nodes[zb.mainId(2)].entry === 37 && zb.SAVE.nodes[zb.mainId(3)] === undefined);
     zb.startStage(2);
     check('retry: the same stage starts with the same entry squad again', G.squad === 37 && G.entrySquad === 37 && G.coins === 0);
 
@@ -431,22 +431,22 @@ const results = await page.evaluate(() => {
     zb.resetSave();
     let w = playWin(1, 25);
     check('win: one stageResult (before the win event), one win, phase win', w.n === 1 && w.wins === 1 && w.winsBefore === 0 && w.phase === 'win', `${w.n} ${w.wins} ${w.phase}`);
-    check('win: survivors are stored as the entry squad of stage 2 and SAVE was already updated when stageResult fired', zb.SAVE.stages[2].entry === 25 && w.entryAtEvent === 25 && w.r.survivors === 25, `${zb.SAVE.stages[2].entry} ${w.entryAtEvent}`);
-    check('win: stage 1 entry 1, 25 survivors = 3 stars; coins = run coins + stars*stage*starCoins, wallet += coins (SAVE updated before the event)', w.r.entry === 1 && w.r.stars === 3 && w.r.bonus === 3 * 1 * T.starCoins && w.r.coins === w.runCoins + w.r.bonus && zb.SAVE.coins === w.r.coins && w.coinsAtEvent === w.r.coins && zb.SAVE.stages[1].stars === 3, JSON.stringify(w.r));
+    check('win: survivors are stored as the entry squad of stage 2 and SAVE was already updated when stageResult fired', zb.SAVE.nodes[zb.mainId(2)].entry === 25 && w.entryAtEvent === 25 && w.r.survivors === 25, `${zb.SAVE.nodes[zb.mainId(2)].entry} ${w.entryAtEvent}`);
+    check('win: stage 1 entry 1, 25 survivors = 3 stars; coins = run coins + stars*stage*starCoins, wallet += coins (SAVE updated before the event)', w.r.entry === 1 && w.r.stars === 3 && w.r.bonus === 3 * 1 * T.starCoins && w.r.coins === w.runCoins + w.r.bonus && zb.SAVE.coins === w.r.coins && w.coinsAtEvent === w.r.coins && zb.SAVE.nodes[zb.mainId(1)].stars === 3, JSON.stringify(w.r));
     check('win: best unlocks the next stage', zb.SAVE.best === 2);
     w = playWin(1, 12);
-    check('win again with fewer survivors: the larger entry (25) is kept', zb.SAVE.stages[2].entry === 25, zb.SAVE.stages[2].entry);
+    check('win again with fewer survivors: the larger entry (25) is kept', zb.SAVE.nodes[zb.mainId(2)].entry === 25, zb.SAVE.nodes[zb.mainId(2)].entry);
     // stars: 1 clear, 2 if survivors >= entry, 3 if >= max(1.5 x entry, entry + 10)
-    zb.resetSave(); zb.SAVE.stages[2] = { entry: 20, stars: 0 };
-    const sv = n => { zb.SAVE.stages[2] = { entry: 20, stars: 0 }; return playWin(2, n).r.stars; };
+    zb.resetSave(); zb.SAVE.nodes[zb.mainId(2)] = { entry: 20, stars: 0 };
+    const sv = n => { zb.SAVE.nodes[zb.mainId(2)] = { entry: 20, stars: 0 }; return playWin(2, n).r.stars; };
     const st = [sv(19), sv(20), sv(29), sv(30)];
     check('stars: entry 20 -> 19 survivors 1 star, 20 -> 2, 29 -> 2, 30 -> 3', st.join() === '1,2,2,3', st.join());
-    zb.SAVE.stages[2] = { entry: 50, stars: 0 };
+    zb.SAVE.nodes[zb.mainId(2)] = { entry: 50, stars: 0 };
     const hi = [playWin(2, 74).r.stars, playWin(2, 75).r.stars, playWin(2, 49).r.stars];
-    zb.SAVE.stages[2] = { entry: 94, stars: 0 };
+    zb.SAVE.nodes[zb.mainId(2)] = { entry: 94, stars: 0 };
     const top = [playWin(2, 94).r.stars, playWin(2, 95).r.stars];
     check('stars: with an entry of 94 the 3-star bar is 95% of the cap (95 survivors), not an impossible 100+', top.join() === '2,3', top.join());
-    zb.SAVE.stages[2] = { entry: 50, stars: 0 };
+    zb.SAVE.nodes[zb.mainId(2)] = { entry: 50, stars: 0 };
     check('stars: with the cap at 100 the 3-star bar for entry 50 is 75 survivors (>= 1.5 x entry); below the entry is 1 star', hi.join() === '2,3,1', hi.join());
     zb.resetSave();
   }
@@ -717,7 +717,7 @@ const results = await page.evaluate(() => {
     G.squad = 60; zb.syncSoldiers(); zb.step(1 / 60); zb.step(1 / 60);
     k4();
     check('squad milestones: 10, 25, 50 fire once each as the squad grows', sm.map(m => m.n).join() === '10,25,50', sm.map(m => m.n).join());
-    zb.SAVE.stages[2] = { entry: 30, stars: 0 };
+    zb.SAVE.nodes[zb.mainId(2)] = { entry: 30, stars: 0 };
     zb.startStage(2);
     const sm2 = []; const k5 = listen('squadMilestone', sm2);
     G.shield = 1e9; zb.step(1 / 60); G.squad = 55; zb.syncSoldiers(); zb.step(1 / 60); zb.step(1 / 60);
@@ -1121,12 +1121,105 @@ const results = await page.evaluate(() => {
         G.tx = -3.5; for (let i = 0; i < 90; i++) { G.shield = 1e9; zb.step(1 / 60); }
         check('formation: ... and the other side lane too', zb.laneOf(G.x) === 0, `x ${G.x.toFixed(2)}`);
       }
-      zb.SAVE.stages[2] = { entry: 100, stars: 0 };
+      zb.SAVE.nodes[zb.mainId(2)] = { entry: 100, stars: 0 };
       localStorage.setItem('zombie-bridge-save', JSON.stringify({ v: 1, coins: 0, best: 2, upgrades: {}, stages: { 2: { entry: 999, stars: 0 } } }));
       zb.loadSave();
       check('cap: an entry squad above the cap loads clamped to 100', zb.entryFor(2) === 100, zb.entryFor(2));
       zb.resetSave();
     }
+  }
+
+  // ================================================================ round 7: world map, nodes, SAVE v2
+  {
+    const SC7 = zb.SCENES;
+    zb.resetSave();
+    const KEY7 = 'zombie-bridge-save';
+    // ---- migration v1 -> v2
+    localStorage.setItem(KEY7, JSON.stringify({ v: 1, coins: 77, best: 4, upgrades: { dmg: 2 }, stages: { 2: { entry: 31, stars: 2 }, 3: { entry: 44, stars: 3 }, 4: { entry: 52, stars: 0 } }, rev: 5, updatedAt: 99, epoch: 0 }));
+    zb.loadSave();
+    const sv = zb.SAVE;
+    check('migration v1 -> v2: stage n becomes the main-path node of depth n, cleared when it had stars or lies below best', sv.v === 2 && sv.nodes.n2.entry === 31 && sv.nodes.n2.stars === 2 && sv.nodes.n2.cleared && sv.nodes.n3a.entry === 44 && sv.nodes.n3a.cleared && sv.nodes.n4a.entry === 52 && !sv.nodes.n4a.cleared && sv.nodes.n1.cleared && !('stages' in sv), JSON.stringify(sv.nodes));
+    check('migration: cur is the node of depth best, coins / upgrades / best / rev / epoch carry over', sv.cur === 'n4a' && sv.coins === 77 && sv.upgrades.dmg === 2 && sv.best === 4 && sv.rev === 5, `${sv.cur} ${sv.best}`);
+    zb.saveGame();
+    const once = JSON.stringify(JSON.parse(localStorage.getItem(KEY7)).nodes);
+    zb.loadSave(); zb.saveGame();
+    check('migration is idempotent: loading the saved v2 again changes nothing', JSON.stringify(JSON.parse(localStorage.getItem(KEY7)).nodes) === once && JSON.parse(localStorage.getItem(KEY7)).v === 2);
+    localStorage.removeItem(KEY7); localStorage.setItem('zombie-bridge-best', '3');
+    zb.loadSave();
+    check('migration of the old best key: nodes up to best, those below best cleared, cur = main node of best', zb.SAVE.nodes.n1.cleared && zb.SAVE.nodes.n2.cleared && !zb.SAVE.nodes.n3a.cleared && zb.SAVE.nodes.n3a.entry === T.migrateEntry && zb.SAVE.cur === 'n3a', JSON.stringify(zb.SAVE.nodes));
+    localStorage.removeItem('zombie-bridge-best'); zb.resetSave();
+
+    // ---- the graph: unlocks and branches
+    const N = zb.nodeDef;
+    check('map: the authored graph - n2 branches into n3a / n3b, they lead on to n4a / n4b, both converge on n5, n5 continues to p6',
+      N('n2').next.join() === 'n3a,n3b' && N('n3a').next.join() === 'n4a' && N('n3b').next.join() === 'n4b' && N('n4a').next.join() === 'n5' && N('n4b').next.join() === 'n5' && N('n5').next.join() === 'p6');
+    check('map: the a-branch is harder and pays more (city / tunnel), the b-branch is easier (harbor / forest)', N('n3a').diffMul > 1 && N('n3a').coinMul > 1 && N('n3b').diffMul < 1 && N('n3a').scene === 'city' && N('n4a').scene === 'tunnel' && N('n3b').scene === 'harbor' && N('n4b').scene === 'forest');
+    zb.resetSave();
+    const st = id => zb.nodeState(id);
+    check('unlocks: a fresh save has only n1 open', st('n1') === 'open' && st('n2') === 'locked' && st('n3a') === 'locked');
+    const unl = [], clr = [];
+    const o1 = listen('nodeUnlocked', unl), o2 = listen('nodeCleared', clr);
+    const winNode = (id, squad) => {                               // plays a node to a win with `squad` survivors
+      zb.startNode(id);
+      G.squad = squad; G.weapon = 3; zb.syncSoldiers(); G.shield = 1e9;
+      skipToBoss();
+      let guard = 0; while (G.phase !== 'win' && guard++ < 8000) { G.shield = 1e9; zb.step(1 / 60); }
+      return G.phase === 'win';
+    };
+    check('startNode on a locked node is refused', zb.startNode('n3a') === false && G.node.id !== 'n3a');
+    const ok1 = winNode('n1', 20);
+    check('clearing n1 unlocks n2: nodeCleared{id,stars} then nodeUnlocked{id}', ok1 && clr.length === 1 && clr[0].id === 'n1' && clr[0].stars >= 1 && unl.map(u => u.id).join() === 'n2' && st('n2') === 'open' && st('n1') === 'cleared', JSON.stringify([clr, unl]));
+    check('carry-over: n2 gets the survivors as its entry, G.node / G.level follow the node', zb.SAVE.nodes.n2.entry === 20 && zb.entryFor('n2') === 20 && zb.entryFor(2) === 20);
+    zb.startNode('n2'); const gotEntry = G.squad, gotNode = G.node.id, gotLevel = G.level; zb.prepare(2);
+    check('startNode(n2): starts with the entry squad, G.node.id n2, G.level 2', gotEntry === 20 && gotNode === 'n2' && gotLevel === 2);
+    unl.length = 0;
+    winNode('n2', 33);
+    check('clearing n2 opens BOTH branches (a choice), each with the survivors as entry', unl.map(u => u.id).sort().join() === 'n3a,n3b' && st('n3a') === 'open' && st('n3b') === 'open' && zb.SAVE.nodes.n3a.entry === 33 && zb.SAVE.nodes.n3b.entry === 33, JSON.stringify(unl));
+    check('locked stays locked: n4a / n4b / n5 are still locked', st('n4a') === 'locked' && st('n4b') === 'locked' && st('n5') === 'locked');
+    unl.length = 0;
+    winNode('n3b', 41);
+    check('choosing b: clearing n3b unlocks n4b only (a stays open, n4a locked); entry follows the b path', unl.map(u => u.id).join() === 'n4b' && st('n4a') === 'locked' && st('n4b') === 'open' && zb.SAVE.nodes.n4b.entry === 41 && st('n3a') === 'open');
+    winNode('n4b', 38);
+    check('convergence: n5 opens from the b side and takes its survivors as entry', st('n5') === 'open' && zb.SAVE.nodes.n5.entry === 38);
+    winNode('n3a', 55); winNode('n4a', 61);
+    check('convergence: when the other branch is cleared later, n5 keeps the LARGER parent survivors (61)', zb.SAVE.nodes.n5.entry === 61 && zb.entryFor('n5') === 61);
+    winNode('n5', 70);
+    check('clearing n5 unlocks the procedural p6 (generated on demand), best moves to 6', st('p6') === 'open' && zb.SAVE.best === 6 && zb.unlockedDepth() === 6 && zb.nodeDef('p6').depth === 6);
+    o1(); o2();
+    const ev7 = []; const o3 = listen('mapSelect', ev7);
+    // mapSelect: logic prepares the chosen node and records it
+    zb.bus.emit('mapSelect', { id: 'n3b' });
+    check('mapSelect{id}: the node is prepared (phase menu) and SAVE.cur is set; a locked node is ignored', G.node.id === 'n3b' && G.phase === 'menu' && zb.SAVE.cur === 'n3b' && (zb.bus.emit('mapSelect', { id: 'p9a' }), G.node.id === 'n3b'));
+    o3();
+    // retry keeps the branch
+    zb.startNode('n3b'); zb.prepare(G.level);
+    check('prepare(G.level) (retry / menu) keeps the branch node; prepare(G.level + 1) goes on along the path; prepare(n) alone is the main path', G.node.id === 'n3b' && (zb.prepare(4), G.node.id === 'n4b') && (zb.prepare(3), G.node.id === 'n3a') && (zb.prepare('n3b'), G.node.id === 'n3b'));
+    // a loss keeps entries and unlocks nothing
+    zb.resetSave();
+    winNode('n1', 20);
+    zb.startNode('n2'); G.squad = 3; zb.syncSoldiers(); G.shield = 0; zb.spawnHorde({ kind: 'test', cx: G.x, w: 1, d: 1, count: 400, hp: 1 }, G.z - 0.3);
+    for (let i = 0; i < 120; i++) zb.step(1 / 60);
+    check('a lost node: no clear, no unlock, the stored entry is untouched', G.phase === 'over' && st('n2') === 'open' && !zb.SAVE.nodes.n2.cleared && st('n3a') === 'locked' && zb.SAVE.nodes.n2.entry === 20);
+
+    // ---- mapNodes
+    zb.resetSave();
+    let mn = zb.mapNodes();
+    check('mapNodes: fresh save shows the authored graph up to 2 beyond the furthest unlocked depth (1 + 2 = depth 3), only n1 open', mn.map(q => q.id).join() === 'n1,n2,n3a,n3b' && mn[0].state === 'open' && mn[1].state === 'locked', mn.map(q => q.id + ':' + q.state).join());
+    winNode('n1', 20); winNode('n2', 30);
+    mn = zb.mapNodes();
+    const byId = Object.fromEntries(mn.map(q => [q.id, q]));
+    check('mapNodes: states, stars and entry per node (cleared / open / locked)', byId.n1.state === 'cleared' && byId.n1.stars >= 1 && byId.n2.state === 'cleared' && byId.n3a.state === 'open' && byId.n3a.entry === 30 && byId.n3b.state === 'open' && byId.n4a.state === 'locked' && byId.n5 && byId.n5.state === 'locked' && !byId.p6, mn.map(q => q.id + ':' + q.state).join());
+    check('mapNodes: entries carry every presentation field (name, scene, next, x, y, diffMul, coinMul)', mn.every(q => q.name && SC7[q.scene] && Array.isArray(q.next) && typeof q.x === 'number' && typeof q.y === 'number' && q.diffMul > 0 && q.coinMul > 0));
+    // ---- procedural nodes
+    zb.nodeDef('p12');
+    const ids = zb.mapNodes().map(q => q.id);
+    const sig7 = () => JSON.stringify([6, 7, 8, 9, 10, 11, 12].flatMap(d => (d % 2 === 0 ? ['p' + d] : ['p' + d + 'a', 'p' + d + 'b']).map(id => { const q = zb.nodeDef(id); return [id, q.scene, q.next.join('/'), q.diffMul, q.coinMul, q.x, q.y, q.seed]; })));
+    const sA = sig7();
+    check('procedural nodes: p6 single, p7a / p7b a two-way branch, p8 single, ...; seeded: the same on a second read', zb.nodeDef('p6').next.join() === 'p7a,p7b' && zb.nodeDef('p7a').next.join() === 'p8' && zb.nodeDef('p8').next.join() === 'p9a,p9b' && zb.nodeDef('p7a').diffMul > zb.nodeDef('p7b').diffMul && zb.nodeDef('p7a').coinMul > zb.nodeDef('p7b').coinMul && sig7() === sA);
+    check('procedural nodes: a branch pair has two different scenes, neither is the parent scene; scenes are known scenes', [7, 9, 11].every(d => { const a = zb.nodeDef('p' + d + 'a'), b = zb.nodeDef('p' + d + 'b'), par = zb.nodeDef('p' + (d - 1)); return a.scene !== b.scene && a.scene !== par.scene && b.scene !== par.scene && SC7[a.scene] && SC7[b.scene]; }));
+    check('procedural nodes: x / y laid out (a left, b right, singles in the middle, y falling with depth), names carry the scene', zb.nodeDef('p7a').x < 0.5 && zb.nodeDef('p7b').x > 0.5 && zb.nodeDef('p8').x === 0.5 && zb.nodeDef('p8').y < zb.nodeDef('p7a').y && zb.nodeDef('p8').name.includes(zb.SCENES[zb.nodeDef('p8').scene].name));
+    check('procedural nodes: invalid ids are unknown', zb.nodeDef('zz') === null && zb.nodeDef('p0x') === null);
+    zb.resetSave();
   }
   T.critBase = crit0;
   return out;

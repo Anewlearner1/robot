@@ -114,7 +114,7 @@ function botRun(cfg) {
   const popLayer = document.getElementById('pops');
   if (!cfg.campaign && zb.resetSave) {                  // single-stage run: a clean save; stage n > 1 starts with a typical carried-over squad
     zb.resetSave();
-    if (cfg.stage > 1) zb.SAVE.stages[cfg.stage] = { entry: cfg.entry, stars: 0 };
+    if (cfg.stage > 1) zb.SAVE.nodes[zb.mainId(cfg.stage)] = { entry: cfg.entry, stars: 0, cleared: false };
     for (const k of Object.keys(cfg.ups || {})) zb.SAVE.upgrades[k] = cfg.ups[k];
   }
   zb.prepare(cfg.stage);
