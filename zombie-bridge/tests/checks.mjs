@@ -182,12 +182,12 @@ const results = await page.evaluate(() => {
       zb.spawnHorde({ kind: 'test', cx: G.x, w: 6, d: 2, count: 150, hp: 6 }, G.z - 3);
       for (let i = 0; i < 40 && G.phase === 'run'; i++) {
         zb.step(1 / 60); steps++;
-        if (G.soldiers.length !== Math.min(G.squad, 40) && G.phase === 'run') bad = `soldiers ${G.soldiers.length} vs squad ${G.squad} (step ${steps})`;
+        if (G.soldiers.length !== Math.min(G.squad, zb.TUNE.maxSquad) && G.phase === 'run') bad = `soldiers ${G.soldiers.length} vs squad ${G.squad} (step ${steps})`;
         for (const s of G.soldiers) if (!(isFinite(s.x) && isFinite(s.z))) bad = 'NaN soldier';
       }
     }
     check('heavy contact: soldier list always matches the squad count, no NaN', bad === null, bad);
-    check('heavy contact: squad shrank under contact (test is meaningful) and contacts were reported', G.squad < 40 && counts.contact > 0, `${G.squad} / ${counts.contact} contacts`);
+    check('heavy contact: squad shrank under contact (test is meaningful) and contacts were reported', counts.contact > 0 && G.squad < 40 + 12, `${G.squad} / ${counts.contact} contacts`);
     check('heavy contact: game over fired at most once', counts.gameOver <= 1, counts.gameOver);
   }
   // ---------------------------------------------------------------- 7. pool limits
@@ -1488,6 +1488,25 @@ const results = await page.evaluate(() => {
       check('split: procedural nodes sometimes (not mostly) have a split; its two sides are two different scenes, the left one the node scene', n >= 5 && n < total * 0.7 && bad === '', `${n}/${total}${bad}`);
     }
     zb.prepareNode('n1'); zb.resetSave();
+  }
+
+
+  // ================================================================ round 7 step 6: event order and the synchronous map select (front-end agreement)
+  {
+    zb.resetSave();
+    const order = [], offs = ['nodeCleared', 'nodeUnlocked', 'stageResult', 'win'].map(nm => listen(nm, { push: () => order.push(nm) }));
+    zb.startNode('n1'); G.squad = 25; zb.syncSoldiers(); G.shield = 1e9; skipToBoss();
+    let guard = 0; while (G.phase !== 'win' && guard++ < 8000) { G.shield = 1e9; zb.step(1 / 60); }
+    offs.forEach(f => f());
+    check('events: nodeCleared, then nodeUnlocked (before the result screen), then stageResult, then win', order.join() === 'nodeCleared,nodeUnlocked,stageResult,win', order.join());
+    zb.bus.emit('mapSelect', { id: 'n2' });
+    check('mapSelect{id} prepares the node synchronously: G.node, G.scene and G.level are set before emit returns, phase menu', G.node.id === 'n2' && G.scene === 'bridge' && G.level === 2 && G.phase === 'menu');
+    zb.bus.emit('mapSelect', { id: 'n3a' });
+    check('mapSelect of a locked node changes nothing', G.node.id === 'n2');
+    const mn = zb.mapNodes();
+    check('mapNodes fields: id, state, stars, entry, cleared, x, y, next, name, scene, depth, diffMul, coinMul', mn.every(q => ['id', 'state', 'stars', 'entry', 'cleared', 'x', 'y', 'next', 'name', 'scene', 'depth', 'diffMul', 'coinMul'].every(k => k in q)) && ['locked', 'open', 'cleared'].includes(mn[0].state));
+    check('procedural ids: p<d> for a single node (even depth), p<d>a / p<d>b for a two-way branch (odd depth)', zb.nodeDef('p6') && zb.nodeDef('p6').next.join() === 'p7a,p7b' && zb.nodeDef('p7a') && zb.nodeDef('p7b') && zb.nodeDef('p7') === null && zb.nodeDef('p8a') === null);
+    zb.resetSave(); zb.prepareNode('n1');
   }
 
   T.critBase = crit0;

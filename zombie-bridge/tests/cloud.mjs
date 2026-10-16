@@ -140,6 +140,22 @@ const settle = page => page.evaluate(async () => { await window.__zb.cloud.flush
   check('writes: pagehide flushes right away', ph === 4, ph);
   await page.close();
 }
+// ---- 2b. round 7: two devices played different branches - the node union keeps both, cleared is OR, stars / entry max, cur from the newer copy
+{
+  const nd = (entry, stars, cleared) => ({ entry, stars, cleared });
+  const local = S({ best: 4, coins: 10, rev: 3, updatedAt: 1000, cur: 'n4a', nodes: { n1: nd(1, 3, true), n2: nd(40, 2, true), n3a: nd(60, 2, true), n4a: nd(70, 0, false) } });
+  const cloud = S({ best: 4, coins: 20, rev: 5, updatedAt: 5000, cur: 'n4b', nodes: { n1: nd(1, 3, true), n2: nd(45, 3, true), n3a: nd(66, 1, false), n3b: nd(55, 3, true), n4b: nd(80, 0, false) } });
+  const page = await open({ cloudDoc: cloud }, local);
+  await settle(page);
+  const r = await page.evaluate(() => { const zb = window.__zb; return { save: JSON.parse(JSON.stringify(zb.SAVE)), st: ['n3a', 'n3b', 'n4a', 'n4b', 'n5'].map(id => zb.nodeState(id)), doc: window.__fake.doc }; });
+  const n = r.save.nodes;
+  check('merge (branches): both branches survive - n3a and n3b present, n4a and n4b present', ['n3a', 'n3b', 'n4a', 'n4b'].every(k => n[k]), Object.keys(n).join());
+  check('merge (branches): cleared is OR (n3a cleared on one device only), stars max, entry max', n.n3a.cleared === true && n.n3a.stars === 2 && n.n3a.entry === 66 && n.n2.stars === 3 && n.n2.entry === 45 && n.n3b.cleared && n.n3b.stars === 3, JSON.stringify(n));
+  check('merge (branches): cur comes from the newer copy; both depth-4 nodes are open after the merge, n5 still locked', r.save.cur === 'n4b' && r.st.join() === 'cleared,cleared,open,open,locked', r.save.cur + ' ' + r.st.join());
+  check('merge (branches): the merged document went back to the cloud with both branches', r.doc && r.doc.nodes.n3a && r.doc.nodes.n3b && r.doc.nodes.n3a.cleared && r.doc.nodes.n3b.cleared);
+  await page.close();
+}
+
 // ---- 3. view-only: set rejects invalid_argument
 {
   const page = await open({ failSet: 'invalid_argument' }, S({ best: 3, rev: 2, updatedAt: 5, stages: { 2: { entry: 20, stars: 1 } } }));
