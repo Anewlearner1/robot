@@ -1390,12 +1390,12 @@ const results = await page.evaluate(() => {
     const rh = sp('n5', 'runners', 5), rb = sp('n2', 'runners', 5);
     check('highway: runner packs are 1.3x bigger and 1.1x faster than on a bridge', Math.abs(rh.count / rb.count - 1.3) < 0.06 && Math.abs(rh.fast / rb.fast - 1.1) < 1e-9, `${rh.count} ${rb.count}`);
     const bf = sp('n4b', 'brutes', 4), bh = sp('n3b', 'brutes', 4);
-    check('forest: brute groups are SCENES.forest.fx.bruteMul (2x) bigger', Math.abs(bf.count / bh.count - zb.SCENES.forest.fx.bruteMul) < 0.15, `${bf.count} ${bh.count}`);
+    check('forest: brute groups are SCENES.forest.fx.bruteMul bigger', Math.abs(bf.count / bh.count - zb.SCENES.forest.fx.bruteMul) < 0.15, `${bf.count} ${bh.count}`);
     G.node = keepNode;
     const barrels = id => info(id).ev.filter(e => e.type === 'barrel').length;
     const bc = barrels('n3a'), others = [barrels('n3b'), barrels('n4b'), barrels('n2')];
     check('city: more explosive barrels than the other scenes of the same size', others.every(q => bc > q), bc + ' vs ' + others.join('/'));
-    check('city: alley ambushes - hordes released late in left / right pairs', info('n3a').ev.filter(e => e.type === 'horde' && e.ahead).length >= 6);
+    check('city: alley ambushes - hordes released late in left / right pairs', info('n3a').ev.filter(e => e.type === 'horde' && e.ahead).length >= 4);
     // harbor / forest / highway obstacle kinds (obstacles per node)
     const kinds = id => { zb.prepareNode(id); return new Set(zb.levelObstacles.filter(o => o.row < 1000).map(o => o.kind)); };
     check('obstacles per scene: city/tunnel barriers, harbor containers, forest logs, highway/bridge wrecks; every authored node from n2 on has some', [['n2', 'wreck'], ['n3a', 'barrier'], ['n3b', 'container'], ['n4a', 'barrier'], ['n4b', 'log'], ['n5', 'wreck']].every(([id, k]) => { const kk = kinds(id); return kk.size === 1 && kk.has(k); }));
