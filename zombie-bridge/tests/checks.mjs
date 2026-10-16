@@ -1221,6 +1221,118 @@ const results = await page.evaluate(() => {
     check('procedural nodes: invalid ids are unknown', zb.nodeDef('zz') === null && zb.nodeDef('p0x') === null);
     zb.resetSave();
   }
+
+  // ================================================================ round 7 step 3: obstacles
+  {
+    const labO = (squad, id) => {                       // a quiet stretch of road: nothing spawns, the squad never fires, no generated obstacles
+      T.obsOn = 0; zb.prepareNode(id || 'n2'); T.obsOn = 1;
+      zb.start();
+      for (const e of G.events) { if (e.type === 'horde') e.spawned = true; else if (e.type === 'gate') e.used = true; else if (e.type === 'weapon') e.taken = true; else if (e.type === 'hero') e.missed = true; }
+      G.phase = 'run'; G.z = -60; G.x = G.tx = 0; G.squad = squad; zb.syncSoldiers(); G.shield = 0;
+      for (const s of G.soldiers) { s.cd = 1e9; s.x = 0; s.z = G.z + 1; }
+      for (let i = 0; i < 30; i++) zb.step(1 / 60);        // let the formation settle
+    };
+    const addO = (kind, x, dz) => { const o = zb.makeObstacle(kind, x, G.z + dz, 0); G.events.push(o); return o; };
+    const run = n => { for (let i = 0; i < n && G.phase === 'run'; i++) zb.step(1 / 60); };
+    const hits = [], brk = [], go = [];
+    const o1 = listen('obstacleHit', hits), o2 = listen('obstacleBreak', brk), o3 = listen('gameOver', go);
+    const lostSum = () => hits.reduce((a, h) => a + h.n, 0);
+    const clr = () => { hits.length = 0; brk.length = 0; go.length = 0; };
+
+    // ---- soldiers overlapping an obstacle die
+    clr(); labO(6); addO('wreck', 0, -10);
+    run(260);
+    check('obstacle: driving a small squad head-on into a wreck loses every soldier that reaches it - gameOver cause obstacle, kind wreck', G.phase === 'over' && go.length === 1 && go[0].cause === 'obstacle' && go[0].kind === 'wreck' && lostSum() === 6, `${G.phase} ${JSON.stringify(go)} lost ${lostSum()}`);
+    check('obstacle: obstacleHit{x,z,n,kind} - once per obstacle per step, n soldiers, positions of the obstacle', hits.length > 0 && hits.every(h => h.kind === 'wreck' && h.n >= 1 && h.x === 0 && typeof h.z === 'number'), JSON.stringify(hits[0]));
+    clr(); labO(20); G.x = G.tx = -0.5; for (const s of G.soldiers) s.x = -0.5; addO('wreck', -2.6, -12);
+    run(300);
+    check('obstacle: grazing a wreck with the formation edge loses only the soldiers that overlap', G.phase === 'run' && lostSum() > 0 && lostSum() < 20 && G.squad === 20 - lostSum(), `${G.phase} lost ${lostSum()} squad ${G.squad}`);
+    clr(); labO(20); G.x = G.tx = 0.9; for (const s of G.soldiers) s.x = 0.9; addO('wreck', -2.6, -12);
+    run(300);
+    check('obstacle: steering to the free side avoids a wreck completely', G.phase === 'run' && lostSum() === 0 && G.squad === 20, `${G.phase} lost ${lostSum()}`);
+    clr(); labO(6); G.shield = 1e9; addO('log', 0, -10);
+    run(260);
+    check('obstacle: the mech shield protects the squad', G.phase === 'run' && lostSum() === 0 && G.squad === 6);
+
+    // ---- squeeze into the gap
+    clr(); labO(40); addO('wreck', -2.6, -14); addO('wreck', 2.6, -14);
+    check('squeeze: no obstacle near -> G.gap is null', G.gap === null && zb.pathBounds().gap === null);
+    run(75);
+    const gp = G.gap, pb = zb.pathBounds();
+    check('squeeze: with obstacles ahead G.gap = the gap that holds the squad centre (obstacle edges + margin), pathBounds().gap is the same', gp && Math.abs(gp.lo + 1.3) < 1e-6 && Math.abs(gp.hi - 1.3) < 1e-6 && pb.gap && pb.gap.lo === gp.lo, JSON.stringify(gp));
+    check('squeeze: the formation narrows to the gap (at most 5 columns for a 2.6 wide gap) and every soldier fits in it', pb.cols <= 5 && G.soldiers.every(s => Math.abs(s.x) < 1.3 + 0.05), `${pb.cols} cols, max |x| ${Math.max(...G.soldiers.map(s => Math.abs(s.x))).toFixed(2)}`);
+    run(320);
+    check('squeeze: a centred squad passes between two wrecks without a loss, then G.gap is null again and the formation widens', G.phase === 'run' && lostSum() === 0 && G.squad === 40 && G.gap === null && zb.pathBounds().cols > 5, `${G.phase} lost ${lostSum()} cols ${zb.pathBounds().cols}`);
+    clr(); labO(40); G.x = G.tx = 0; addO('wreck', 0, -14);
+    run(60);
+    check('squeeze: with the centre inside an obstacle the nearest gap is used', G.gap && (G.gap.hi < -1 || G.gap.lo > 1), JSON.stringify(G.gap));
+
+    // ---- bullets
+    clr(); labO(1); G.phase = 'boss';
+    const wr = addO('wreck', 0, -15);
+    const behind = mk3(0, wr.z - 3, 1000);
+    const hp0 = wr.hp;
+    check('obstacle hp: a wreck has 420 x (1 + 0.1 (depth - 1)) hp at depth 2 = 462; containers and logs have none (indestructible)', hp0 === Math.round(420 * 1.1) && wr.max === hp0 && addO('container', 2.6, -30).max === 0 && addO('log', -2.6, -30).max === 0, hp0);
+    for (let i = 0; i < 60; i++) zb.spawnBullet(0, wr.z + 3, 0, -1, 7, 0, 0);
+    for (let i = 0; i < 20; i++) zb.step(1 / 60);
+    check('obstacle: bullets stop at a wreck and take hp off it (60 x 7); nothing behind it is hurt', Math.abs(wr.hp - (hp0 - 420)) < 1e-6 && !wr.dead && behind.hp === 1000 && brk.length === 0, `${wr.hp} ${behind.hp}`);
+    for (let i = 0; i < 10; i++) zb.spawnBullet(0, wr.z + 3, 0, -1, 7, 0, 0);
+    for (let i = 0; i < 30; i++) zb.step(1 / 60);
+    check('obstacle: at 0 hp it breaks - dead, one obstacleBreak{x,z,kind}, and the surplus bullets fly on to the zombie behind', wr.dead && wr.hp === 0 && brk.length === 1 && brk[0].kind === 'wreck' && brk[0].x === 0 && brk[0].z === wr.z && behind.hp < 1000 && behind.hp >= 1000 - 4 * 7 - 1e-6, `${brk.length} ${behind.hp}`);
+    const ct = G.events.find(e => e.type === 'obstacle' && e.kind === 'container'), behind2 = mk3(2.6, ct.z - 4, 1000);
+    for (let i = 0; i < 80; i++) zb.spawnBullet(2.6, ct.z + 4, 0, -1, 7, 0, 0);
+    for (let i = 0; i < 30; i++) zb.step(1 / 60);
+    check('obstacle: a container is indestructible - it absorbs every shot, never breaks, flashes, and shields the zombie behind it', !ct.dead && ct.hp === 0 && brk.length === 1 && behind2.hp === 1000, `${ct.dead} ${behind2.hp}`);
+    check('obstacle: a bullet past the side of an obstacle is not blocked', (() => { const z0 = mk3(-2.6, wr.z - 1, 1000); const lg = G.events.find(e => e.type === 'obstacle' && e.kind === 'log'); lg.z = wr.z - 1; zb.spawnBullet(-0.9, lg.z + 3, 0, -1, 7, 0, 0); for (let i = 0; i < 10; i++) zb.step(1 / 60); return lg.max === 0 && z0.hp === 1000; })(), 'a log at x -2.6 covers -4.1..-1.1: a shot at -0.9 does not touch it');
+
+    // ---- zombies, the mech and the boss ignore obstacles
+    clr(); labO(1); G.phase = 'boss'; G.shield = 1e9;
+    const cz = addO('container', 0, -9), zz = mk3(0, cz.z - 2.6, 1000);
+    zz.sp = 3;
+    const zStart = zz.z;
+    for (let i = 0; i < 120; i++) zb.step(1 / 60);
+    check('obstacles ignore zombies: a zombie walks straight through a container footprint', zz.z > zStart + 3 && zz.z > cz.z + 0.5, `${(zz.z - zStart).toFixed(2)}`);
+
+    // ---- placement: seeded, per scene, rules
+    {
+      const ids = ['n1', 'n2', 'n3a', 'n3b', 'n4a', 'n4b', 'n5'];
+      for (let d = 6; d <= 30; d++) { if (d % 2 === 0) ids.push('p' + d); else ids.push('p' + d + 'a', 'p' + d + 'b'); }
+      let total = 0, rowsBad = 0, nearGun = 0, badSeg = 0, badKind = 0, offLane = 0, closeRows = 0, endBad = 0, nondet = 0, abBad = 0;
+      const sigO = () => JSON.stringify(zb.levelObstacles.map(o => [o.kind, o.x, +o.z.toFixed(3), o.hp, o.row]));
+      const sigN = () => JSON.stringify(G.events.filter(e => e.type !== 'obstacle').map(e => [e.type, +e.z.toFixed(3), +(e.x || 0).toFixed(3), e.val || 0, e.kind || '', e.spec ? [e.spec.kind, e.spec.count, +e.spec.hp.toFixed(3)] : 0]));
+      for (const id of ids) {
+        zb.prepareNode(id);
+        const obs = zb.levelObstacles.slice(), sg = sigO(), sn = sigN();
+        total += obs.length;
+        zb.prepareNode(id); if (sigO() !== sg) nondet++;
+        T.obsOn = 0; zb.prepareNode(id); T.obsOn = 1;
+        if (zb.levelObstacles.length !== 0 || sigN() !== sn) abBad++;
+        zb.prepareNode(id);
+        const rows = {};
+        for (const o of obs) (rows[o.row] = rows[o.row] || []).push(o);
+        for (const r of Object.values(rows)) if (!zb.obstacleGaps(r, -3.55, 3.55, T.obsPad).some(q => q[1] - q[0] >= T.obsMinGap)) rowsBad++;
+        const keys = Object.keys(rows).map(Number).sort((a, b) => a - b);
+        for (let k = 1; k < keys.length; k++) { const a = rows[keys[k - 1]], b = rows[keys[k]]; const aFar = Math.min(...a.map(o => o.z - o.d / 2)), bNear = Math.max(...b.map(o => o.z + o.d / 2)); if (aFar - bNear < 24) closeRows++; }
+        const pickups = G.events.filter(e => e.type === 'weapon' || e.type === 'gate' || e.type === 'hero');
+        for (const o of obs) {
+          for (const e of pickups) if (o.z + o.d / 2 > e.z - T.obsClear[0] && o.z - o.d / 2 < e.z + T.obsClear[1]) nearGun++;
+          for (const dz of [-8, 0, 12]) { const s = zb.segAt(o.z + dz); if (!s || (s.type !== 'straight' && s.type !== 'ambush')) badSeg++; }
+          if (o.kind !== zb.SCENES[G.node.scene].obstacle) badKind++;
+          if (!zb.LANES.includes(o.x)) offLane++;
+          if (o.z - o.d / 2 < -G.L + 20) endBad++;
+        }
+      }
+      check('obstacle placement: seeded - the same node twice gives the same obstacles; obsOn = 0 removes them and leaves every other event exactly as it was', nondet === 0 && abBad === 0, `${nondet} ${abBad}`);
+      check('obstacle placement: every row leaves a gap >= obsMinGap (never blocks all 3 lanes), rows are >= 24 apart', rowsBad === 0 && closeRows === 0, `${rowsBad} ${closeRows}`);
+      check('obstacle placement: never inside the keep-out zone of a gun row / gate / mech cluster (so a gun row\'s blank lane stays open)', nearGun === 0, nearGun);
+      check('obstacle placement: only on straight / ambush ground (never in a narrow, fork, split side, gauntlet or arena), never near the arena', badSeg === 0 && endBad === 0, `${badSeg} ${endBad}`);
+      check('obstacle placement: kind follows the scene (SCENES[scene].obstacle), x is a lane centre', badKind === 0 && offLane === 0 && total > 0, `${badKind} ${offLane} total ${total}`);
+      check('obstacle placement: n1 (the tutorial) has none', (zb.prepareNode('n1'), zb.levelObstacles.length === 0));
+    }
+    o1(); o2(); o3();
+    zb.resetSave();
+  }
+
   T.critBase = crit0;
   return out;
 });

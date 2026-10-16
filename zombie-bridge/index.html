@@ -611,6 +611,11 @@ const TUNE = {
   barrelChance: 0.7, barrelHp: 5, barrelR: 3.2, barrelDmg: 4, barrelCap: 20, barrelBoss: 0.5,   // a barrel blast hurts at most barrelCap zombies (so it never wipes a dense horde)
   exBase: 0.03, exStage: 0.012, exMax: 0.08, exploderR: 1.8, exploderDmg: 2, exploderCap: 6,   // exploder zombies: share of a horde, blast radius, blast damage (flat: it stops chaining once zombies have more hp than this)
   shBase: 0.03, shStage: 0.015, shMax: 0.12, shieldSlope: 0.5, shieldHp: 1.3, shieldBreak: 4,   // shield zombies: share, how off-axis a bullet must be to get past (|dx| of its direction), hp factor
+  // --- round 7: obstacles (lane-footprint blocks on the deck; see the round 7 obstacle contract)
+  obsOn: 1,                       // 0 = no obstacles at all (A/B switch for tests and balance runs)
+  obsHp: { wreck: 420, barrier: 260, container: 0, log: 0 }, obsHpStage: 0.1,   // hp 0 = indestructible (absorbs shots); hp grows 10% per depth
+  obsLook: 9, obsPad: 0.3, obsSoldierR: 0.12,     // the formation squeezes into a gap when an obstacle is within obsLook of its front; gap margin; soldier radius
+  obsMinGap: 1.5, obsClear: [11, 9], obsFirstZ: -66, obsEndClear: 30,   // narrowest gap a row may leave; keep-out zone around every gun row / gate / the mech cluster: an obstacle row may not lie within [pickup z - obsClear[0], pickup z + obsClear[1]] (the squeeze window, so a pickup is never taken while the formation is squeezed); first row; no rows this close to the arena
   specialGate: 0.5, mysteryHits: 20, rateGate: 20, levelGateRecruits: 3,     // chance a gate pair is special; shots that reveal a ? gate; a rate gate gives +20 (%) fire rate; recruits when a level gate finds the gun maxed
 };
 // Weapon roster. Contract shared by logic and presentation:
@@ -689,6 +694,20 @@ const MAP = [
   { id: 'n4b', depth: 4, name: '林間公路', scene: 'forest',  next: ['n5'],         diffMul: 0.95, coinMul: 1,    x: 0.74, y: 0.42 },
   { id: 'n5',  depth: 5, name: '終局高架', scene: 'highway', next: ['p6'],         diffMul: 1,    coinMul: 1.2,  x: 0.50, y: 0.24 },
 ];
+// OBSTACLES (round 7 step 3). Events { type: 'obstacle', kind, x, z, w, d, hp, max, dead, flash, row } in G.events (and __zb.levelObstacles); they have
+//   NO mesh: the front end builds one lazily (like barrels) and hides it once `dead` is set; `flash` counts down after a hit. kinds -> SCENES[].obstacle:
+//   wreck (w 2.0, d 3.2, hp 420) and barrier (w 2.4, d 0.9, hp 260) are destructible; container (w 2.4, d 5.6) and log (w 3.0, d 1.0) have hp 0 = indestructible
+//   (they absorb shots). hp scales x(1 + 0.1 (depth - 1)). x is a lane centre (LANES), z the centre of the footprint; the footprint is the box |dx| < w/2, |dz| < d/2.
+//   Placement is seeded per node (own stream, the base layout is untouched), only on straight / ambush stretches, never inside the keep-out zone TUNE.obsClear around a gun row (so a
+//   gun row's blank lane is never blocked and a pickup is never taken while squeezed), a gate or the mech cluster, never in a narrow / fork / gauntlet / arena; every
+//   row leaves >= 1 lane free and a gap >= TUNE.obsMinGap wide, rows are at least ~29 apart (0.85 x the scene row gap) so a gap can always be reached.
+//   RULES: a soldier overlapping a live obstacle (box grown by TUNE.obsSoldierR) dies, unless the mech shield is up; bus 'obstacleHit' { x, z, n, kind, e } once per
+//   obstacle per step (n soldiers lost); a lost run reports gameOver { cause: 'obstacle', kind: <obstacle kind> }. Bullets of the squad stop at an obstacle (the lob flies
+//   over it like it flies over the front rows); a destructible one loses hp and at 0 breaks: bus 'obstacleBreak' { x, z, kind, e }. Mech shells arc over obstacles.
+//   Zombies, the mech and the boss IGNORE obstacles (they are the squad's problem only; presentation: props the horde walks through).
+//   SQUEEZE: while a live obstacle is within TUNE.obsLook ahead of the squad's front (until its far edge is behind the rear rank) the formation narrows to the gap
+//   that holds the squad centre (else the nearest gap), exactly like a narrow road (colCap); G.gap = { lo, hi } is that gap's limits for the formation's outer
+//   edge (null when no obstacle is near), also in __zb.pathBounds().gap. The squad is NOT pushed into the gap: steer to its middle (+-0.3 is forgiven).
 // ---- round 7 logic: the node graph (authored MAP + procedural continuation)
 // Logic additions to MAP: n5.next = ['p6'] (the campaign continues). Procedural nodes ('p<depth>' single at even depths, 'p<depth>a' / 'p<depth>b'
 // at odd depths: a = harder (diffMul 1.12, coinMul 1.3), b = easier) are generated on demand, seeded by depth, with x / y laid out like the
@@ -861,7 +880,7 @@ let best = Math.max(SAVE.best, unlockedDepth());
 SAVE.best = best;
 
 const G = {
-  level: best, node: null, phase: 'menu', x: 0, tx: 0, z: 0, L: 200, squad: 1, weapon: 0, weaponLv: 1, kills: 0, time: 0,
+  level: best, node: null, gap: null, phase: 'menu', x: 0, tx: 0, z: 0, L: 200, squad: 1, weapon: 0, weaponLv: 1, kills: 0, time: 0,
   events: [], soldiers: [], shield: 0, mech: null, boss: null, shake: 0, dmgMul: 1, safe: false,
   // round 3 (logic writes, presentation reads): combo chain, coins earned this run, timed buffs { id: secondsLeft },
   // the squad this stage started with, and the last stage result (set right before `win` / `gameOver`).
@@ -1390,6 +1409,7 @@ function buildLevel(n) {
 
   G.events = [];
   levelBarrels.length = 0;
+  levelObstacles.length = 0;
   makeEvents(n, L);
 }
 
@@ -1719,6 +1739,7 @@ function makeEvents(n, L) {
   route.push({ type: 'arena', z0: -L, z1: -L - 60 });
   G.route = route;
   G.restrict = route.some(sg => sg.type === 'narrow' || sg.type === 'fork');
+  placeObstacles(plan, n, L);
 }
 
 // A '?' gate: its real value is drawn now from the stage's seeded stream, mostly good. Passing it (or shooting it TUNE.mysteryHits) reveals it.
@@ -1737,6 +1758,104 @@ function makeBarrel(x, z) {
   const e = { type: 'barrel', x, z, hp: TUNE.barrelHp, max: TUNE.barrelHp, dead: false, flash: 0 };
   levelBarrels.push(e);
   return e;
+}
+// ---------------------------------------------------------------- round 7: obstacles (contract above)
+const levelObstacles = [];
+const OBS_KINDS = { wreck: { w: 2.0, d: 3.2 }, barrier: { w: 2.4, d: 0.9 }, container: { w: 2.4, d: 5.6 }, log: { w: 3.0, d: 1.0 } };
+function makeObstacle(kind, x, z, row) {
+  const K = OBS_KINDS[kind], hp = Math.round((TUNE.obsHp[kind] || 0) * (1 + TUNE.obsHpStage * (G.level - 1)));
+  const e = { type: 'obstacle', kind, x, z, w: K.w, d: K.d, hp, max: hp, dead: false, flash: 0, row };
+  levelObstacles.push(e);
+  return e;
+}
+// The free gaps [a, b] between obstacles inside [lo, hi] (each obstacle grown by pad on both sides), sorted left to right. Pure.
+function obstacleGaps(list, lo, hi, pad) {
+  const iv = list.map(o => [o.x - o.w / 2 - pad, o.x + o.w / 2 + pad]).sort((a, b) => a[0] - b[0]);
+  const out = [];
+  let cur = lo;
+  for (const v of iv) {
+    if (v[0] > cur) out.push([cur, Math.min(v[0], hi)]);
+    if (v[1] > cur) cur = v[1];
+    if (cur >= hi) break;
+  }
+  if (cur < hi) out.push([cur, hi]);
+  return out.filter(g => g[1] - g[0] > 1e-6);
+}
+// Per scene: gap = mean z distance between rows, kinds, two = chance a row blocks two lanes, narrow = rows are runs of 1-3 pairs (harbor), from = first depth.
+// A route plan can override with plan.obs = { ... } or switch them off with plan.obs = false.
+const OBS_SCENE = {
+  bridge:  { gap: 58, kinds: ['wreck'],     two: 0.2, from: 2 },
+  highway: { gap: 40, kinds: ['wreck'],     two: 0.4, from: 1 },
+  tunnel:  { gap: 34, kinds: ['barrier'],   two: 0.5, from: 1 },
+  city:    { gap: 40, kinds: ['barrier'],   two: 0.4, from: 1 },
+  harbor:  { gap: 46, kinds: ['container'], two: 1,   from: 1, narrow: 1 },
+  forest:  { gap: 38, kinds: ['log'],       two: 0.3, from: 1 },
+};
+// Places the node's obstacle rows (own seeded stream R3: the horde / gate / gun layout never changes). Called at the end of makeEvents, when G.route exists.
+function placeObstacles(plan, n, L) {
+  const scn = G.node ? G.node.scene : 'bridge';
+  const prof = plan.obs === false ? null : Object.assign({}, OBS_SCENE[scn] || OBS_SCENE.bridge, plan.obs || {});
+  if (!TUNE.obsOn || !prof || n < (prof.from || 1)) return;
+  const R3 = mulberry((G.node ? G.node.seed : n) * 15485863 + 29);
+  const fixed = G.events.filter(e => e.type === 'weapon' || e.type === 'gate' || e.type === 'hero');
+  const segOk = (z0, z1) => { for (let q = z0; ; q -= 4) { q = Math.max(q, z1); const sg = segAt(q); if (!sg || (sg.type !== 'straight' && sg.type !== 'ambush')) return false; if (q <= z1) return true; } };   // the squeeze window of a run (squad front from run near edge + obsLook + 1 down to far edge - 12) lies on straight / ambush ground
+  const clearAt = (z0, z1) => { for (const e of fixed) if (z0 > e.z - TUNE.obsClear[0] && z1 < e.z + TUNE.obsClear[1]) return false; return true; };   // z0 >= z1: the run's near and far edge
+  let z = TUNE.obsFirstZ - R3() * 10, row = 0;
+  const stop = -L + TUNE.obsEndClear;
+  while (z > stop) {
+    const free = Math.floor(R3() * 3), two = R3() < prof.two, kind = prof.kinds[Math.floor(R3() * prof.kinds.length)];
+    const single = [0, 1, 2].filter(l => l !== free)[Math.floor(R3() * 2)];
+    const rep = prof.narrow ? 1 + (R3() < 0.6 ? 1 : 0) + (R3() < 0.25 ? 1 : 0) : 1;
+    const K = OBS_KINDS[kind], len = rep * (K.d + 1) - 1;
+    const lanes = two ? [0, 1, 2].filter(l => l !== free) : [single];
+    const probe = lanes.map(l => ({ x: LANES[l], w: K.w }));
+    const gaps = obstacleGaps(probe, -ROAD + 0.45, ROAD - 0.45, TUNE.obsPad);
+    if (gaps.every(g => g[1] - g[0] < TUNE.obsMinGap)) { z -= prof.gap * 0.5; continue; }        // (never with the current footprints; a safety net for new kinds)
+    if (segOk(z + K.d / 2 + TUNE.obsLook + 1, z - len - K.d / 2 - 12) && clearAt(z + K.d / 2, z - len - K.d / 2)) {
+      for (let r = 0; r < rep; r++) for (const l of lanes) G.events.push(makeObstacle(kind, LANES[l], z - r * (K.d + 1), row));
+      row++;
+      z -= len + prof.gap * (0.85 + R3() * 0.35);
+    } else z -= 5;                                          // no room here (a segment edge or a pickup): look a little further on
+  }
+}
+const activeO = [];             // obstacles a bullet can hit this step
+function squadRear() { let r = G.z; for (let i = 0; i < G.soldiers.length; i++) if (G.soldiers[i].z > r) r = G.soldiers[i].z; return r; }   // z of the rearmost soldier
+function damageObstacle(o, dmg) {
+  o.flash = 0.1;
+  if (o.max <= 0) return;                                  // indestructible: it just absorbs the shot
+  o.hp -= dmg;
+  if (o.hp <= 0) {
+    o.hp = 0; o.dead = true;
+    burst(o.x, 0.9, o.z, 20, [0.8, 0.7, 0.5], 4, 0.6);
+    bus.emit('obstacleBreak', { x: o.x, z: o.z, kind: o.kind, e: o });
+  }
+}
+// Soldiers that overlap a live obstacle die (the mech shield protects). Called from updateSquad once the soldiers have moved.
+function updateObstacles(dt) {
+  if (!levelObstacles.length) return;
+  const rear = squadRear();
+  for (let q = 0; q < levelObstacles.length; q++) {
+    const o = levelObstacles[q];
+    if (o.flash > 0) o.flash = Math.max(0, o.flash - dt);
+    if (o.dead || G.shield > 0) continue;
+    if (o.z - o.d / 2 > rear + 1 || o.z + o.d / 2 < G.z - 1) continue;
+    const hx = o.w / 2 + TUNE.obsSoldierR, hz = o.d / 2 + TUNE.obsSoldierR;
+    let lost = 0;
+    for (let i = G.soldiers.length - 1; i >= 0; i--) {
+      const sd = G.soldiers[i];
+      if (Math.abs(sd.x - o.x) < hx && Math.abs(sd.z - o.z) < hz) {
+        const was = G.soldiers.length;
+        killSoldier(i, 'obstacle', o.kind);
+        if (G.soldiers.length < was) lost++;
+        if (G.phase === 'over') break;
+      }
+    }
+    if (lost) {
+      pop('-' + lost, o.x, 2.4, o.z + o.d / 2 + 0.5, 'bad');
+      bus.emit('obstacleHit', { x: o.x, z: o.z, n: lost, kind: o.kind, e: o });
+    }
+    if (G.phase === 'over') return;
+  }
 }
 // Gate text. kinds: 'add' (+n / -n), 'mul' (x2), 'rate' (+fire rate), 'level' (+weapon level), 'mystery' (?).
 function gateLabel(e) {
@@ -1947,7 +2066,8 @@ function formationHalf() { return (perRow(G.soldiers.length) - 1) / 2 * SP; }
 
 // src: horde kind of the zombie (or 'boss') that caused the death. Safe to call while iterating Z or G.soldiers as long as the
 // caller stops iterating G.soldiers afterwards (the array is spliced / refilled by syncSoldiers).
-function killSoldier(i, src) {
+// src: 'boss' | 'obstacle' | the horde kind; kind (obstacle only): the obstacle kind, reported as gameOver.kind.
+function killSoldier(i, src, kind) {
   if (G.safe || G.phase === 'over' || G.phase === 'win') return;
   const s = G.soldiers[i];
   if (!s) return;
@@ -1959,7 +2079,10 @@ function killSoldier(i, src) {
   G.shake = Math.max(G.shake, 0.25);
   SFX.thud();
   syncSoldiers();
-  if (G.squad <= 0) gameOver('屍潮把最後一名隊員也拖下去了。', src === 'boss' ? 'boss' : 'horde', src);
+  if (G.squad <= 0) {
+    if (src === 'obstacle') gameOver('小隊全撞上了路障。下次走在障礙之間的空隙。', 'obstacle', kind || '');
+    else gameOver('屍潮把最後一名隊員也拖下去了。', src === 'boss' ? 'boss' : 'horde', src);
+  }
 }
 
 // ---------------------------------------------------------------- popups
@@ -2573,7 +2696,23 @@ function updateRoute() {
     else if (seg.type === 'fork') { if (seg.chosen > 0) pLo = seg.split + 0.45; else pHi = seg.split - 0.45; }
   }
   colCap = Math.max(1, Math.floor((pHi - pLo) / SP + 1e-6) + 1);
+  G.gap = null;
+  if (levelObstacles.length) {                               // round 7: squeeze the formation into the gap between the obstacles ahead (contract above)
+    const rear = squadRear();
+    obsNear.length = 0;
+    for (let q = 0; q < levelObstacles.length; q++) {
+      const o = levelObstacles[q];
+      if (!o.dead && o.z + o.d / 2 > G.z - TUNE.obsLook && o.z - o.d / 2 < rear + 0.3) obsNear.push(o);
+    }
+    if (obsNear.length) {
+      const gaps = obstacleGaps(obsNear, pLo, pHi, TUNE.obsPad);
+      let pick = null, bd = 1e9;
+      for (const g of gaps) { const d = G.x < g[0] ? g[0] - G.x : G.x > g[1] ? G.x - g[1] : 0; if (d < bd || (d === bd && g[1] - g[0] > pick[1] - pick[0])) { bd = d; pick = g; } }
+      if (pick) { G.gap = { lo: pick[0], hi: pick[1] }; colCap = Math.min(colCap, Math.max(1, Math.floor((pick[1] - pick[0]) / SP + 1e-6) + 1)); }
+    }
+  }
 }
+const obsNear = [];
 
 // Which side of the deck the squad is on when it crosses a gate line: by the mean x of the soldiers actually on the deck
 // (not the drag target). Inside the +-0.05 dead zone around the centre line the side holding more soldiers wins; on an
@@ -2677,6 +2816,7 @@ function updateSquad(dt) {
       bus.emit('shot', { x: s.x, z: s.z, w: G.weapon, lv: G.weaponLv });
     }
   }
+  updateObstacles(dt);
   // shield bubble
   if (G.shield > 0) {
     G.shield -= dt;
@@ -2806,6 +2946,8 @@ let lastBlockT = -9;
 function updateBullets(dt) {
   let nbar = 0;
   for (let i = 0; i < levelBarrels.length; i++) { const o = levelBarrels[i]; if (!o.dead && o.z < G.z + 2 && o.z > G.z - 36) activeB[nbar++] = o; }
+  let nob = 0;
+  for (let i = 0; i < levelObstacles.length; i++) { const o = levelObstacles[i]; if (!o.dead && o.z - o.d / 2 < G.z + 14 && o.z + o.d / 2 > G.z - 40) activeO[nob++] = o; }
   let na = 0;
   for (let i = 0; i < G.events.length; i++) {
     const e = G.events[i];
@@ -2839,6 +2981,11 @@ function updateBullets(dt) {
       if (low) for (let q = 0; q < nbar; q++) {
         const o = activeB[q];
         if (!o.dead && Math.abs(x - o.x) < 0.6 && Math.abs(z - o.z) < 0.7) { hitBarrel(o, dmg); bhit = true; break; }
+      }
+      if (bhit) { hit = true; if (tr === 'lob') splash(x, z, dmg, WB.splash); break; }
+      if (low && !kind) for (let q = 0; q < nob; q++) {         // obstacles stop the squad's shots (mech shells arc over them)
+        const o = activeO[q];
+        if (!o.dead && Math.abs(x - o.x) < o.w / 2 && Math.abs(z - o.z) < o.d / 2) { damageObstacle(o, dmg); bhit = true; break; }
       }
       if (bhit) { hit = true; if (tr === 'lob') splash(x, z, dmg, WB.splash); break; }
       if (b && b.alive && (tr !== 'lob' || by[i] < 3.4) && Math.abs(x - b.x) < 1.25 && Math.abs(z - b.z) < 0.9) {
@@ -4823,7 +4970,7 @@ function resetWorld() {
   for (const k in G.buffs) delete G.buffs[k];
   G.drops.length = 0;
   coinAcc = 0; coinT = -9; lastCritT = -9; chainDepth = 0; lastBlockT = -9;
-  G.seg = null; colCap = 99; pLo = -ROAD + 0.45; pHi = ROAD - 0.45;
+  G.seg = null; G.gap = null; colCap = 99; pLo = -ROAD + 0.45; pHi = ROAD - 0.45;
 }
 // prepare(level): level is a depth (older code and tests) or a node id. A depth means: the current node when it is its depth, the first node
 // after it when it is the next depth, otherwise the main-path node of that depth (mainId).
@@ -5500,7 +5647,7 @@ function resetSave() {
 }
 // Start stage n from the beginning with its entry squad (same as prepare(n) + startRun()).
 function startStage(n) { prepare(n); startRun(); }
-window.__zb = { MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
+window.__zb = { levelObstacles, obstacleGaps, makeObstacle, OBS_KINDS, damageObstacle, MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap, gap: G.gap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
   stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0), bw: Array.from(bw.subarray(0, nb)), bl: Array.from(bl.subarray(0, nb)), by: Array.from(by.subarray(0, nb)), bt: Array.from(bt.subarray(0, nb)), bs: Array.from(bs.subarray(0, nb)), bx: Array.from(bx.subarray(0, nb)), bz: Array.from(bz.subarray(0, nb)) }),
   perf: () => ({ pr: PR_STEPS[prIdx], steps: PR_STEPS, avg: Perf.avg, fxScale }) };
 })();
