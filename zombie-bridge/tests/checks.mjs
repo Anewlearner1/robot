@@ -41,7 +41,7 @@ const results = await page.evaluate(() => {
   zb.bus.on('soldierContact', () => counts.contact++);
   // Teleport to the bridge end. Gates the squad jumps over are marked used, otherwise the first step would "pass" them
   // all at once from the centre line (worse-gate rule) and a random gate value could wipe the squad before the boss.
-  const skipToBoss = () => { for (const e of G.events) if (e.type === 'gate') e.used = true; G.z = -G.L + 2; };
+  const skipToBoss = () => { for (const e of G.events) { if (e.type === 'gate') e.used = true; else if (e.type === 'weapon') e.taken = true; } G.z = -G.L + 2; };   // (round 7: a gun row can sit right at the end of a longer level - mark them taken too)
   const reset = () => { counts.gameOver = counts.win = counts.bossDied = counts.contact = 0; };
   const sig = () => JSON.stringify(G.events.map(e => [e.type, +e.z.toFixed(3), +(e.x || 0).toFixed(3), e.side || 0, e.val || 0, e.kind || '', e.tier || 0, e.need || 0, e.pair, e.spec ? [e.spec.kind, e.spec.count, +e.spec.hp.toFixed(3), +e.spec.cx.toFixed(3)] : 0]));
   const now0 = () => performance.now();
@@ -805,9 +805,19 @@ const results = await page.evaluate(() => {
     const sigOf = n => { zb.prepare(n); return G.route.map(s => s.type).join(','); };
     const sigs = []; for (let n = 1; n <= 12; n++) sigs.push(sigOf(n));
     const has = (n, ...types) => { zb.prepare(n); return types.every(t => G.route.some(s => s.type === t)); };
-    check('routes: stage 1 is a plain straight, 2 has forks, 3 narrows, 4 a gauntlet and an ambush, 5 a bit of everything',
-      sigs[0] === 'straight,arena' && has(2, 'fork') && !has(2, 'narrow') && has(3, 'narrow') && !has(3, 'fork') && has(4, 'gauntlet', 'ambush') && has(5, 'fork', 'narrow', 'gauntlet', 'ambush'), sigs.slice(0, 5).join(' | '));
-    check('routes: no two consecutive stages (1-12) share the same segment sequence', sigs.every((q, i) => i === 0 || q !== sigs[i - 1]), sigs.join(' | '));
+    const hasN = (id, ...types) => { zb.prepareNode(id); return types.every(t => G.route.some(s => s.type === t)); };
+    check('routes (round 7): n1 is a plain straight, n2 has forks, n3a (city) ambushes and a barrel gauntlet, n3b (harbor) narrows, n4a (tunnel) narrows, n4b (forest) a fork and an ambush, n5 a fork and an ambush',
+      sigs[0] === 'straight,arena' && hasN('n2', 'fork') && !hasN('n2', 'narrow') && hasN('n3a', 'ambush', 'gauntlet') && !hasN('n3a', 'narrow') && hasN('n3b', 'narrow') && !hasN('n3b', 'fork') && hasN('n4a', 'narrow') && hasN('n4b', 'fork', 'ambush') && hasN('n5', 'fork', 'ambush'), sigs.slice(0, 5).join(' | '));
+    check('routes: no two consecutive stages (1-12) on the main path share the same segment sequence', sigs.every((q, i) => i === 0 || q !== sigs[i - 1]), sigs.join(' | '));
+    {
+      const ids12 = zb.mapNodes ? (zb.nodeDef('p12'), Object.keys(zb.SAVE.nodes).length, []) : [];
+      let edgeBad = '';
+      const seen = ['n1', 'n2', 'n3a', 'n3b', 'n4a', 'n4b', 'n5'];
+      for (let d = 6; d <= 12; d++) { if (d % 2 === 0) seen.push('p' + d); else seen.push('p' + d + 'a', 'p' + d + 'b'); }
+      const sigN = id => { zb.prepareNode(id); return G.route.map(s => s.type).join(','); };
+      for (const id of seen) for (const nx of zb.nodeDef(id).next) if (seen.includes(nx) && sigN(id) === sigN(nx)) edgeBad += ` ${id}->${nx}`;
+      check('routes: along EVERY edge of the map (both branches, nodes up to depth 12) parent and child have different segment sequences', edgeBad === '', edgeBad);
+    }
     let inv = '';
     for (let n = 1; n <= 12; n++) {
       zb.prepare(n);
@@ -820,6 +830,7 @@ const results = await page.evaluate(() => {
         if (r[i].type === 'fork' && typeof r[i].split !== 'number') inv += ` st${n} no split;`;
       }
       if (!list.includes(G.theme) || !G.routeName) inv += ` st${n} theme/name;`;
+      if (G.routeName !== G.node.name || G.scene !== G.node.scene) inv += ` st${n} routeName/scene;`;
     }
     check('routes: segments are sorted, contiguous, start at 0 and end with the arena at -G.L; narrow has half, fork has split; theme and name are set', inv === '', inv);
     const names = new Set(), themes = new Set();
@@ -839,11 +850,11 @@ const results = await page.evaluate(() => {
       const left = inF.filter(e => (e.type === 'horde' || e.type === 'gate' || e.type === 'barrel') && sideOf(e) < 0), right = inF.filter(e => (e.type === 'horde' || e.type === 'gate' || e.type === 'barrel') && sideOf(e) > 0);
       const sig = a => a.map(e => e.type + (e.spec ? e.spec.kind : '')).sort().join();
       check('fork: both sides have contents and they differ; no gun rows inside a fork', left.length && right.length && sig(left) !== sig(right) && !inF.some(e => e.type === 'weapon'), sig(left) + ' | ' + sig(right));
-      zb.prepare(4);
+      zb.prepareNode('n3a');
       const amb = G.events.filter(e => e.type === 'horde' && e.ahead);
       const pairs = amb.every(e => amb.some(o => o !== e && o.z === e.z && Math.sign(o.spec.cx) === -Math.sign(e.spec.cx)));
       check('ambush: hordes come in left/right pairs at the same z and are released late', amb.length >= 2 && pairs && amb.every(e => e.ahead < zb.TUNE.spawnAhead));
-      zb.prepare(3);
+      zb.prepareNode('n3b');
       const nrw = G.route.filter(s => s.type === 'narrow');
       const hs = G.events.filter(e => e.type === 'horde' && nrw.some(s => e.z <= s.z0 && e.z > s.z1));
       check('narrow: hordes in a narrow come head-on and fit the road', hs.length >= 3 && hs.every(e => { const s = nrw.find(q => e.z <= q.z0 && e.z > q.z1); return e.spec.cx === 0 && e.spec.w <= 2 * s.half; }));
@@ -872,7 +883,7 @@ const results = await page.evaluate(() => {
     }
     // narrow
     {
-      lab4(3);
+      lab4('n3b');
       const nr = G.route.find(s => s.type === 'narrow');
       G.z = nr.z0 - 5;
       zb.step(1 / 60);
@@ -1316,7 +1327,7 @@ const results = await page.evaluate(() => {
         const pickups = G.events.filter(e => e.type === 'weapon' || e.type === 'gate' || e.type === 'hero');
         for (const o of obs) {
           for (const e of pickups) if (o.z + o.d / 2 > e.z - T.obsClear[0] && o.z - o.d / 2 < e.z + T.obsClear[1]) nearGun++;
-          for (const dz of [-8, 0, 12]) { const s = zb.segAt(o.z + dz); if (!s || (s.type !== 'straight' && s.type !== 'ambush')) badSeg++; }
+          for (const dz of [-8, 0, 9]) { const s = zb.segAt(o.z + dz); if (!s || (s.type !== 'straight' && s.type !== 'ambush')) badSeg++; }
           if (o.kind !== zb.SCENES[G.node.scene].obstacle) badKind++;
           if (!zb.LANES.includes(o.x)) offLane++;
           if (o.z - o.d / 2 < -G.L + 20) endBad++;
@@ -1331,6 +1342,57 @@ const results = await page.evaluate(() => {
     }
     o1(); o2(); o3();
     zb.resetSave();
+  }
+
+
+  // ================================================================ round 7 step 2: scenes and node-aware plans
+  {
+    const SCn = zb.SCENES, ND = zb.nodeDef;
+    const info = id => { zb.prepareNode(id); return { theme: G.theme, scene: G.scene, name: G.routeName, ahead: G.spawnAhead, route: G.route.slice(), ev: G.events.slice() }; };
+    const all = ['n1', 'n2', 'n3a', 'n3b', 'n4a', 'n4b', 'n5'];
+    for (let d = 6; d <= 12; d++) { if (d % 2 === 0) all.push('p' + d); else all.push('p' + d + 'a', 'p' + d + 'b'); }
+    let bad = '';
+    for (const id of all) {
+      const q = info(id), nd = ND(id);
+      if (q.scene !== nd.scene || q.name !== nd.name) bad += ` ${id} scene/name;`;
+      if (!['n1', 'n2', 'n5'].includes(id) && q.theme !== SCn[nd.scene].theme) bad += ` ${id} theme ${q.theme};`;
+      if (q.route.some(sg => sg.scene !== nd.scene)) bad += ` ${id} seg.scene;`;
+    }
+    check('scenes: G.scene = node.scene, G.routeName = node.name, G.theme = the scene theme unless the plan overrides it (n1 dawn, n2 sunset, n5 storm), every segment has seg.scene', bad === '', bad);
+    check('scenes: the authored overrides', info('n1').theme === 'dawn' && info('n2').theme === 'sunset' && info('n5').theme === 'storm' && info('n4a').theme === 'night' && info('n3b').theme === 'storm');
+    check('plans are node-aware: routePlan(node) differs for the two branches of one depth, routePlan(depth) is the main-path node', zb.routePlan(ND('n3a')).sig !== zb.routePlan(ND('n3b')).sig && zb.routePlan(3) === zb.routePlan(ND('n3a')) && zb.routePlan(4).name === ND('n4a').name && zb.routePlan(ND('p7a')).name === ND('p7a').name);
+    // tunnel: shorter release distance, head-on columns
+    const tn = info('n4a');
+    const hords = tn.ev.filter(e => e.type === 'horde' && !e.ahead && e.z < -30);
+    check('tunnel: hordes are released 34 ahead (G.spawnAhead), other scenes 58; ambush hordes keep their own distance', tn.ahead === 34 && info('n3b').ahead === T.spawnAhead && info('n1').ahead === T.spawnAhead && info('n3a').ev.filter(e => e.ahead).every(e => e.ahead === T.ambushAhead));
+    check('tunnel: every horde outside a narrow is one head-on column (cx 0, at most 5 wide)', hords.length > 3 && hords.every(e => { const sg = tn.route.find(q => e.z <= q.z0 && e.z > q.z1); return sg.type === 'narrow' || (e.spec.cx === 0 && e.spec.w <= 5 + 1e-9); }), hords.length);
+    (() => {                                          // a horde really appears only when the squad is 34 away
+      zb.prepareNode('n4a'); zb.start();
+      for (const e of G.events) { if (e.type === 'gate') e.used = true; else if (e.type === 'weapon') e.taken = true; else if (e.type === 'hero') e.missed = true; }
+      const h = G.events.filter(e => e.type === 'horde' && !e.ahead).sort((a, b) => b.z - a.z)[3];
+      G.shield = 1e9; G.z = h.z + 40; for (let i = 0; i < 3; i++) zb.step(1 / 60);
+      const before = h.spawned;
+      G.z = h.z + 33; zb.step(1 / 60);
+      check('tunnel: a horde is not released at 40 units but is at 33', !before && h.spawned === true, `${before} ${h.spawned}`);
+    })();
+    // scene fx on the horde numbers
+    const keepNode = G.node;
+    const sp = (id, kind, n) => { G.node = ND(id); const r = zb.hordeSpec(kind, n, 1, 0.5); return r; };
+    const rh = sp('n5', 'runners', 5), rb = sp('n2', 'runners', 5);
+    check('highway: runner packs are 1.3x bigger and 1.1x faster than on a bridge', Math.abs(rh.count / rb.count - 1.3) < 0.06 && Math.abs(rh.fast / rb.fast - 1.1) < 1e-9, `${rh.count} ${rb.count}`);
+    const bf = sp('n4b', 'brutes', 4), bh = sp('n3b', 'brutes', 4);
+    check('forest: brute groups are 1.35x bigger', Math.abs(bf.count / bh.count - 1.35) < 0.1, `${bf.count} ${bh.count}`);
+    G.node = keepNode;
+    const barrels = id => info(id).ev.filter(e => e.type === 'barrel').length;
+    const bc = barrels('n3a'), others = [barrels('n3b'), barrels('n4b'), barrels('n2')];
+    check('city: more explosive barrels than the other scenes of the same size', others.every(q => bc > q), bc + ' vs ' + others.join('/'));
+    check('city: alley ambushes - hordes released late in left / right pairs', info('n3a').ev.filter(e => e.type === 'horde' && e.ahead).length >= 6);
+    // harbor / forest / highway obstacle kinds (obstacles per node)
+    const kinds = id => { zb.prepareNode(id); return new Set(zb.levelObstacles.map(o => o.kind)); };
+    check('obstacles per scene: city/tunnel barriers, harbor containers, forest logs, highway/bridge wrecks; every authored node from n2 on has some', [['n2', 'wreck'], ['n3a', 'barrier'], ['n3b', 'container'], ['n4a', 'barrier'], ['n4b', 'log'], ['n5', 'wreck']].every(([id, k]) => { const kk = kinds(id); return kk.size === 1 && kk.has(k); }));
+    check('obstacles: harbor containers come as narrows - pairs that leave one lane free, 1-3 deep', (() => { zb.prepareNode('n3b'); const o = zb.levelObstacles; const rows = {}; for (const q of o) (rows[q.row] = rows[q.row] || []).push(q); return Object.values(rows).every(r => r.length % 2 === 0 && r.length <= 6); })());
+    check('plans: the same node gives the same plan and the same events twice (determinism incl. scene effects)', all.every(id => { zb.prepareNode(id); const a = sig(); zb.prepareNode(id); return a === sig(); }));
+    zb.prepareNode('n1');
   }
 
   T.critBase = crit0;

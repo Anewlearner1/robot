@@ -615,7 +615,7 @@ const TUNE = {
   obsOn: 1,                       // 0 = no obstacles at all (A/B switch for tests and balance runs)
   obsHp: { wreck: 420, barrier: 260, container: 0, log: 0 }, obsHpStage: 0.1,   // hp 0 = indestructible (absorbs shots); hp grows 10% per depth
   obsLook: 9, obsPad: 0.3, obsSoldierR: 0.12,     // the formation squeezes into a gap when an obstacle is within obsLook of its front; gap margin; soldier radius
-  obsMinGap: 1.5, obsClear: [11, 9], obsFirstZ: -66, obsEndClear: 30,   // narrowest gap a row may leave; keep-out zone around every gun row / gate / the mech cluster: an obstacle row may not lie within [pickup z - obsClear[0], pickup z + obsClear[1]] (the squeeze window, so a pickup is never taken while the formation is squeezed); first row; no rows this close to the arena
+  obsMinGap: 1.5, obsClear: [10, 8], obsFirstZ: -66, obsEndClear: 30,   // narrowest gap a row may leave; keep-out zone around every gun row / gate / the mech cluster: an obstacle row may not lie within [pickup z - obsClear[0], pickup z + obsClear[1]] (the squeeze window, so a pickup is never taken while the formation is squeezed); first row; no rows this close to the arena
   specialGate: 0.5, mysteryHits: 20, rateGate: 20, levelGateRecruits: 3,     // chance a gate pair is special; shots that reveal a ? gate; a rate gate gives +20 (%) fire rate; recruits when a level gate finds the gun maxed
 };
 // Weapon roster. Contract shared by logic and presentation:
@@ -672,19 +672,26 @@ const UPGRADES = [
 // SCENES: what a stage looks like and which hazards it favours. Logic owns the gameplay keys (obstacle, mix);
 //   presentation owns the look (props, palette) and maps `id` to it. `theme` is the default G.theme for the scene.
 const SCENES = {
-  bridge:  { name: '斷橋',     theme: 'haze',   obstacle: 'wreck',     desc: '吊橋與廢車，經典屍潮' },
-  highway: { name: '高架公路', theme: 'sunset', obstacle: 'wreck',     desc: '多車道高架，翻覆車輛擋路，奔跑屍多' },
-  tunnel:  { name: '地下隧道', theme: 'night',  obstacle: 'barrier',   desc: '昏暗隧道，視野短，屍群從前方湧來' },
-  city:    { name: '市區街道', theme: 'dawn',   obstacle: 'barrier',   desc: '高樓夾道，巷口伏擊、油桶多' },
-  harbor:  { name: '港口碼頭', theme: 'storm',  obstacle: 'container', desc: '貨櫃堆成窄道，兩側是海' },
-  forest:  { name: '林間公路', theme: 'dawn',   obstacle: 'log',       desc: '倒木擋道，濃霧中的大型殭屍' },
+  bridge:  { name: '斷橋',     theme: 'haze',   obstacle: 'wreck',     desc: '吊橋與廢車，經典屍潮',               fx: {} },
+  highway: { name: '高架公路', theme: 'sunset', obstacle: 'wreck',     desc: '多車道高架，翻覆車輛擋路，奔跑屍多', fx: { runMul: 1.3, runFast: 1.1 } },
+  tunnel:  { name: '地下隧道', theme: 'night',  obstacle: 'barrier',   desc: '昏暗隧道，視野短，屍群從前方湧來',   fx: { ahead: 34, headOn: 5 } },
+  city:    { name: '市區街道', theme: 'dawn',   obstacle: 'barrier',   desc: '高樓夾道，巷口伏擊、油桶多',         fx: { barrelMul: 1.43, barAdd: 2 } },
+  harbor:  { name: '港口碼頭', theme: 'storm',  obstacle: 'container', desc: '貨櫃堆成窄道，兩側是海',             fx: {} },
+  forest:  { name: '林間公路', theme: 'dawn',   obstacle: 'log',       desc: '倒木擋道，濃霧中的大型殭屍',         fx: { bruteMul: 1.35 } },
 };
+// Round 7 step 2 (logic): SCENES[].fx are the gameplay differences of a scene, applied while a node is built (a plan can override single keys with plan.fx):
+//   ahead     the horde release distance of the scene (G.spawnAhead; ambush hordes keep TUNE.ambushAhead) - the tunnel sees only 34 ahead instead of 58
+//   headOn    hordes are one head-on column at most this wide (cx 0, deeper with the same count) - the tunnel's hordes come straight down the road
+//   barrelMul explosive-barrel chance multiplier, barAdd extra barrels per barrel alley - the city
+//   runMul / runFast   runner packs are this much bigger / faster - the highway;        bruteMul   brute groups are this much bigger - the forest
+// A node's plan (routePlan(node)): the authored NODE_PLANS[node.id] or a seeded procedural plan from the node's scene; G.theme = plan.theme || SCENES[scene].theme,
+// G.scene = node.scene, G.routeName = node.name, G.spawnAhead = the release distance above. routePlan(depth) means the main-path node of that depth.
 // MAP: the campaign graph shown on the world map. Nodes are stages; `next` are the nodes a clear unlocks (two ids = the
 //   player chooses a branch). A node is playable when it is the root or any node listing it in `next` is cleared.
 //   depth drives base difficulty (what the stage number used to drive); diffMul / coinMul make one branch harder and
 //   richer than the other. x, y are map coordinates in 0..1 for presentation. Logic may extend the MAP (more chapters)
 //   and owns everything but x/y; after the last authored node the campaign continues procedurally (logic generates
-//   further nodes on demand with ids 'p<depth>', each with a seeded scene and a two-way branch every other depth).
+//   further nodes on demand with ids 'p<depth>' for a single node (even depths) and 'p<depth>a' / 'p<depth>b' for a two-way branch (odd depths), each with a seeded scene).
 const MAP = [
   { id: 'n1',  depth: 1, name: '新手橋',   scene: 'bridge',  next: ['n2'],         diffMul: 1,    coinMul: 1,    x: 0.50, y: 0.92 },
   { id: 'n2',  depth: 2, name: '雙岔路',   scene: 'bridge',  next: ['n3a', 'n3b'], diffMul: 1,    coinMul: 1,    x: 0.50, y: 0.76 },
@@ -708,6 +715,10 @@ const MAP = [
 //   SQUEEZE: while a live obstacle is within TUNE.obsLook ahead of the squad's front (until its far edge is behind the rear rank) the formation narrows to the gap
 //   that holds the squad centre (else the nearest gap), exactly like a narrow road (colCap); G.gap = { lo, hi } is that gap's limits for the formation's outer
 //   edge (null when no obstacle is near), also in __zb.pathBounds().gap. The squad is NOT pushed into the gap: steer to its middle (+-0.3 is forgiven).
+// Presentation-facing field summary (round 7, agreed with the front end): G.node (the node object), G.scene (= G.node.scene, set when a node is built), G.theme,
+//   G.routeName (= node.name); seg.scene on every G.route segment; mapNodes() entries { id, depth, name, scene, next, diffMul, coinMul, x, y, state, stars, entry, cleared };
+//   SAVE.nodes[id] = { entry, stars, cleared }, SAVE.cur = the last chosen node; events nodeCleared{id,stars} and nodeUnlocked{id} fire BEFORE stageResult (and before win);
+//   mapSelect{id} is handled synchronously (the node is prepared, G.node set, before bus.emit returns).
 // ---- round 7 logic: the node graph (authored MAP + procedural continuation)
 // Logic additions to MAP: n5.next = ['p6'] (the campaign continues). Procedural nodes ('p<depth>' single at even depths, 'p<depth>a' / 'p<depth>b'
 // at odd depths: a = harder (diffMul 1.12, coinMul 1.3), b = easier) are generated on demand, seeded by depth, with x / y laid out like the
@@ -880,7 +891,7 @@ let best = Math.max(SAVE.best, unlockedDepth());
 SAVE.best = best;
 
 const G = {
-  level: best, node: null, gap: null, phase: 'menu', x: 0, tx: 0, z: 0, L: 200, squad: 1, weapon: 0, weaponLv: 1, kills: 0, time: 0,
+  level: best, node: null, scene: 'bridge', spawnAhead: 58, gap: null, phase: 'menu', x: 0, tx: 0, z: 0, L: 200, squad: 1, weapon: 0, weaponLv: 1, kills: 0, time: 0,
   events: [], soldiers: [], shield: 0, mech: null, boss: null, shake: 0, dmgMul: 1, safe: false,
   // round 3 (logic writes, presentation reads): combo chain, coins earned this run, timed buffs { id: secondsLeft },
   // the squad this stage started with, and the last stage result (set right before `win` / `gameOver`).
@@ -1479,6 +1490,7 @@ function buildScenery(len, mid) {
 }
 
 // p = how far along the bridge the horde stands (0..1): later hordes are bigger and tougher because the squad is, too.
+const sceneFx = () => (SCENES[G.node ? G.node.scene : 'bridge'] || SCENES.bridge).fx || {};
 function hordeSpec(kind, n, side, p) {
   p = Math.pow(p || 0, TUNE.rampPow);
   const sd = Math.pow(n - 1, TUNE.stagePow);      // stage steps: concave when stagePow < 1 (later stages grow more slowly)
@@ -1486,14 +1498,15 @@ function hordeSpec(kind, n, side, p) {
   const hm = TUNE.stageHp[Math.min(n, TUNE.stageHp.length) - 1] * (G.node ? G.node.diffMul : 1);   // diffMul: one branch harder than the other
   const hp = (1 + sd * TUNE.hpPerStage) * (1 + TUNE.hpRamp * p) * hm;
   const C = TUNE.count;
+  const fx = sceneFx();
   const exFrac = Math.min(TUNE.exMax, TUNE.exBase + TUNE.exStage * (n - 1)), shFrac = Math.min(TUNE.shMax, TUNE.shBase + TUNE.shStage * (n - 1));
   switch (kind) {
     case 'wall':   return { kind, exFrac, shFrac, cx: side * 2.1, w: 3.4, d: 14, count: Math.round(C.wall * f), hp };
     case 'blob':   return { kind, exFrac, shFrac, cx: rnd(-1.6, 1.6), w: 3.6, d: 6, count: Math.round(C.blob * f), hp };
     case 'line':   return { kind, exFrac, shFrac, cx: 0, w: 7.4, d: 2.6, count: Math.round(C.line * f), hp };
     case 'swarm':  return { kind, exFrac, shFrac, cx: 0, w: 7.4, d: 10, count: Math.round(C.swarm * f), hp: 1 + (hp - 1) * 0.35 };          // a mass of weak ones: cheap bullets and area fire shine
-    case 'runners': return { kind, cx: 0, w: 7.4, d: 5, count: Math.round(C.runners * f), hp: hp * 0.8, fast: 1.9 };       // few and fast: reach and rate of fire shine
-    case 'brutes': return { kind, cx: 0, w: 6.4, d: 4, count: Math.round((TUNE.bruteBase + TUNE.brutePerStage * n) * (1 + TUNE.bruteRamp * p)), hp: Math.round((TUNE.bruteHp + n * TUNE.bruteHpPerStage) * (1 + TUNE.hpRamp * p) * hm), big: true };
+    case 'runners': return { kind, cx: 0, w: 7.4, d: 5, count: Math.round(C.runners * f * (fx.runMul || 1)), hp: hp * 0.8, fast: 1.9 * (fx.runFast || 1) };       // few and fast: reach and rate of fire shine
+    case 'brutes': return { kind, cx: 0, w: 6.4, d: 4, count: Math.round((TUNE.bruteBase + TUNE.brutePerStage * n) * (1 + TUNE.bruteRamp * p) * (fx.bruteMul || 1)), hp: Math.round((TUNE.bruteHp + n * TUNE.bruteHpPerStage) * (1 + TUNE.hpRamp * p) * hm), big: true };
     default:       return { kind: 'open', cx: -1.8, w: 3.6, d: 6, count: Math.round(C.open * (1 + sd * TUNE.hordeGrow)), hp: (1 + sd * TUNE.hpPerStage) * hm };
   }
 }
@@ -1528,79 +1541,103 @@ function weaponSlots(n) {
 // A fork segment has { left: [...], right: [...] } token lists (different contents on the two sides); the last non-arena segment may
 // carry `cycle` tokens that repeat until the bridge is full. Handcrafted plans for stages 1-5, seeded procedural ones from stage 6 on.
 const PATTERN = ['weapon', 'wall', 'gates', 'weapon', 'line', 'weapon', 'blob', 'gates', 'weapon', 'brutes', 'swarm', 'gates', 'runners', 'blob', 'gates', 'brutes'];
-const ROUTE_THEMES = ['dawn', 'haze', 'sunset', 'night', 'storm'];
 const SEG = (type, o) => Object.assign({ type }, o);
-const ROUTE_PLANS = {
-  // 1: a gentle, tutorial-ish straight - the classic order of crates, gates and hordes
-  1: { name: '新手橋', theme: 'dawn', segs: [SEG('straight', { tokens: [], cycle: PATTERN })] },
-  // 2: forks - pick the gate-and-horde side or the barrel-and-brute side
-  2: { name: '雙岔路', theme: 'sunset', extra: 45, segs: [
+// Round 7: one authored plan per MAP node (NODE_PLANS[node.id]); the name always comes from the node, the theme from the scene unless the plan sets one.
+// `obs` (optional) overrides the scene's obstacle profile (OBS_SCENE), `fx` the scene's fx, `extra` lengthens the level.
+const NODE_PLANS = {
+  // n1 bridge: the gentle, tutorial-ish straight - the classic order of crates, gates and hordes (no obstacles)
+  n1: { theme: 'dawn', segs: [SEG('straight', { tokens: [], cycle: PATTERN })] },
+  // n2 bridge: forks - pick the gate-and-horde side or the barrel-and-brute side (wrecks on the straights)
+  n2: { theme: 'sunset', extra: 90, segs: [
     SEG('straight', { tokens: ['weapon', 'wall', 'gates'] }),
     SEG('fork', { split: 0, left: ['gates', 'blob'], right: ['bar', 'brutes'] }),
-    SEG('straight', { tokens: ['weapon', 'swarm', 'gates'] }),
+    SEG('straight', { tokens: ['weapon', 'swarm', 'gates', 'blob'] }),
     SEG('fork', { split: 0, left: ['line', 'gates'], right: ['bar', 'blob'] }),
-    SEG('straight', { tokens: ['weapon', 'weapon'], cycle: ['wall', 'gates', 'swarm', 'brutes'] })] },
-  // 3: the narrow, wrecked bridge - hordes come head-on and the squad shrinks to a column
-  3: { name: '殘橋', theme: 'haze', extra: 25, segs: [
+    SEG('straight', { tokens: ['wall', 'blob', 'weapon', 'weapon'], cycle: ['swarm', 'gates', 'wall', 'brutes', 'gates'] })] },
+  // n3a city (the harder, richer branch): alley ambushes from both sides and a barrel gauntlet; barriers on the straights
+  n3a: { extra: 70, segs: [
     SEG('straight', { tokens: ['weapon', 'wall', 'gates'] }),
-    SEG('narrow', { half: 1.5, tokens: ['blob', 'line', 'bar'] }),
-    SEG('straight', { tokens: ['weapon', 'gates', 'weapon'] }),
-    SEG('narrow', { half: 1.2, tokens: ['runners', 'brutes'] }),
-    SEG('straight', { tokens: ['weapon', 'gates'], cycle: ['wall', 'swarm', 'gates', 'brutes'] })] },
-  // 4: a barrel gauntlet into an ambush
-  4: { name: '油桶廊道', theme: 'night', segs: [
-    SEG('straight', { tokens: ['weapon', 'line', 'gates'] }),
-    SEG('gauntlet', { tokens: ['bar', 'swarm', 'bar', 'blob', 'bar'] }),
-    SEG('straight', { tokens: ['weapon', 'gates', 'weapon'] }),
     SEG('ambush', { tokens: ['amb-wall', 'amb-blob'] }),
-    SEG('straight', { tokens: ['weapon', 'brutes', 'gates'], cycle: ['swarm', 'gates', 'wall', 'brutes'] })] },
-  // 5: the mixed finale - every segment type once
-  5: { name: '終局之橋', theme: 'storm', extra: 30, segs: [
+    SEG('straight', { tokens: ['weapon', 'gates', 'blob'] }),
+    SEG('gauntlet', { tokens: ['bar', 'swarm', 'bar', 'blob'] }),
+    SEG('straight', { tokens: ['weapon', 'gates', 'line', 'weapon'] }),
+    SEG('ambush', { tokens: ['amb-swarm', 'amb-wall'] }),
+    SEG('straight', { tokens: ['wall', 'blob', 'gates'], cycle: ['brutes', 'swarm', 'gates', 'wall'] })] },
+  // n3b harbor (the easier branch): narrow container lanes; container pairs leave a middle lane on the straights
+  n3b: { extra: 70, segs: [
     SEG('straight', { tokens: ['weapon', 'wall', 'gates'] }),
+    SEG('narrow', { half: 1.7, tokens: ['blob', 'line', 'bar'] }),
+    SEG('straight', { tokens: ['weapon', 'gates', 'swarm'] }),
+    SEG('narrow', { half: 1.5, tokens: ['swarm', 'bar'] }),
+    SEG('straight', { tokens: ['wall', 'blob', 'weapon', 'gates', 'weapon'], cycle: ['swarm', 'gates', 'wall', 'brutes'] })] },
+  // n4a tunnel (harder, richer): dense head-on columns released late (34 ahead), one narrowing, barriers
+  n4a: { extra: 40, segs: [
+    SEG('straight', { tokens: ['weapon', 'blob', 'gates'] }),
+    SEG('narrow', { half: 2.1, tokens: ['wall', 'line'] }),
+    SEG('straight', { tokens: ['weapon', 'gates', 'swarm', 'wall'] }),
+    SEG('narrow', { half: 1.9, tokens: ['blob', 'brutes'] }),
+    SEG('straight', { tokens: ['wall', 'line', 'weapon', 'gates'], cycle: ['blob', 'brutes', 'gates', 'wall', 'line', 'gates'] })] },
+  // n4b forest (easier): logs and big zombies - a fork between the gate side and the barrel-and-brute side
+  n4b: { extra: 40, segs: [
+    SEG('straight', { tokens: ['weapon', 'brutes', 'gates'] }),
+    SEG('fork', { split: 0, left: ['gates', 'blob'], right: ['bar', 'brutes'] }),
+    SEG('straight', { tokens: ['weapon', 'gates', 'swarm', 'brutes'] }),
+    SEG('ambush', { tokens: ['amb-blob'] }),
+    SEG('straight', { tokens: ['brutes', 'wall', 'weapon', 'gates'], cycle: ['swarm', 'brutes', 'gates', 'wall', 'brutes'] })] },
+  // n5 highway, the finale: runner packs and wrecks, a fork, an ambush
+  n5: { theme: 'storm', extra: 55, segs: [
+    SEG('straight', { tokens: ['weapon', 'wall', 'gates'] }),
+    SEG('straight', { tokens: ['weapon', 'runners', 'gates', 'line'] }),
     SEG('fork', { split: 0, left: ['gates', 'line'], right: ['bar', 'brutes'] }),
-    SEG('narrow', { half: 1.4, tokens: ['blob'] }),
-    SEG('straight', { tokens: ['weapon', 'gates', 'weapon'] }),
-    SEG('gauntlet', { tokens: ['bar', 'wall', 'bar'] }),
+    SEG('straight', { tokens: ['weapon', 'gates', 'runners', 'blob'] }),
     SEG('ambush', { tokens: ['amb-swarm'] }),
-    SEG('straight', { tokens: ['weapon', 'gates'], cycle: ['brutes', 'swarm', 'gates', 'wall'] })] },
+    SEG('straight', { tokens: ['runners', 'wall', 'weapon', 'gates'], cycle: ['swarm', 'brutes', 'gates', 'runners', 'wall', 'gates'] })] },
 };
-const ROUTE_NAMES = ['長橋', '連環橋', '危橋', '斷崖', '最後防線', '裂谷', '鐵索橋', '亡者之路'];
+// What each scene throws at the player (procedural plans): horde tokens (repeats = weight) and the special segments between the straights.
+const SCENE_MIX = {
+  bridge:  { H: ['wall', 'blob', 'line', 'swarm', 'runners', 'brutes'], mids: ['fork', 'narrow', 'gauntlet', 'ambush'] },
+  highway: { H: ['runners', 'wall', 'runners', 'line', 'swarm', 'blob', 'brutes'], mids: ['ambush', 'gauntlet', 'fork', 'ambush'] },
+  tunnel:  { H: ['wall', 'line', 'wall', 'blob', 'swarm', 'brutes'], mids: ['narrow', 'gauntlet', 'narrow', 'ambush'] },
+  city:    { H: ['wall', 'blob', 'swarm', 'line', 'brutes'], mids: ['ambush', 'gauntlet', 'ambush', 'fork'] },
+  harbor:  { H: ['blob', 'line', 'swarm', 'wall', 'brutes'], mids: ['narrow', 'fork', 'narrow', 'gauntlet'] },
+  forest:  { H: ['brutes', 'wall', 'brutes', 'blob', 'swarm'], mids: ['fork', 'gauntlet', 'ambush', 'fork'] },
+};
 const planCache = {};
-function proceduralPlan(n, salt) {
-  const r = mulberry(n * 6151 + 7 + salt * 977);
+function sceneProceduralPlan(node, salt) {
+  const r = mulberry(node.seed * 6151 + 7 + salt * 977);
   const pick = a => a[Math.floor(r() * a.length)];
-  const H = ['wall', 'blob', 'line', 'swarm', 'runners', 'brutes'];
-  const types = ['fork', 'narrow', 'gauntlet', 'ambush'];
+  const mix = SCENE_MIX[node.scene] || SCENE_MIX.bridge, H = mix.H;
   const k = 3 + (r() < 0.5 ? 1 : 0);
   const mids = [];
-  while (mids.length < k) { const t = pick(types); if (mids[mids.length - 1] !== t) mids.push(t); }
-  if (new Set(mids).size < 2) mids[1] = types[(types.indexOf(mids[0]) + 1) % 4];
-  const segs = [SEG('straight', { tokens: ['weapon', pick(H), 'gates'] })];
+  while (mids.length < k) { const t = pick(mix.mids); if (mids[mids.length - 1] !== t) mids.push(t); }
+  if (new Set(mids).size < 2) mids[1] = mix.mids.find(t => t !== mids[0]) || 'ambush';
+  const halves = node.scene === 'tunnel' ? [2.1, 1.9, 1.7] : node.scene === 'harbor' ? [1.7, 1.5, 1.4] : [1.5, 1.4, 1.3, 1.2];
+  const segs = [SEG('straight', { tokens: ['weapon', pick(H), 'gates', pick(H)] })];
   mids.forEach((t, i) => {
     if (t === 'fork') segs.push(SEG('fork', { split: 0, left: ['gates', pick(H)], right: ['bar', pick(['brutes', 'wall', 'swarm'])] }));
-    else if (t === 'narrow') segs.push(SEG('narrow', { half: pick([1.5, 1.4, 1.3, 1.2]), tokens: [pick(H), pick(H), 'bar'] }));
+    else if (t === 'narrow') segs.push(SEG('narrow', { half: pick(halves), tokens: [pick(H), pick(H), 'bar'] }));
     else if (t === 'gauntlet') segs.push(SEG('gauntlet', { tokens: ['bar', pick(H), 'bar', pick(H), 'bar'] }));
     else segs.push(SEG('ambush', { tokens: ['amb-' + pick(['wall', 'blob', 'swarm']), 'amb-' + pick(['wall', 'blob', 'swarm'])] }));
-    if (i < mids.length - 1) segs.push(SEG('straight', { tokens: i < 2 ? ['weapon', 'gates'] : ['gates', pick(H)] }));
+    if (i < mids.length - 1) segs.push(SEG('straight', { tokens: i < 2 ? ['weapon', 'gates', pick(H), pick(H), pick(H)] : ['gates', pick(H), pick(H)] }));
   });
-  segs.push(SEG('straight', { tokens: ['weapon', 'gates'], cycle: [pick(H), 'gates', pick(H), 'brutes'] }));
-  return { name: pick(ROUTE_NAMES) + '·' + n, theme: ROUTE_THEMES[(n * 3 + Math.floor(r() * 5)) % 5], segs };
+  segs.push(SEG('straight', { tokens: ['weapon', 'gates'], cycle: [pick(H), 'gates', pick(H), pick(H), 'gates', 'brutes'] }));
+  return { segs };
 }
-const planSig = plan => plan.segs.map(sg => sg.type).join(',');
-// routePlan(n): the plan of stage n (pure and seeded: the same stage always gets the same plan). Stages 6+ never repeat the type
-// sequence of the stage before.
+const planSig = plan => plan.segs.slice(0, 4).map(sg => sg.type).join(',');   // the first four segments: a long plan is cut short by the level length, the start is always built
+// routePlan(n): the plan of node n (an object from nodeDef, or a depth = the main-path node of that depth). Pure and seeded: the same node always gets the
+// same plan, and a procedural node never repeats the type sequence of any parent node.
 function routePlan(n) {
-  if (n && typeof n === 'object') n = n.depth;                // round 7 step 1: plans still follow the depth (scene-aware plans come in step 2)
-  if (planCache[n]) return planCache[n];
-  let plan;
-  if (n < 1) return routePlan(1);
-  if (ROUTE_PLANS[n]) plan = ROUTE_PLANS[n];
+  const node = n && typeof n === 'object' ? n : nodeDef(mainId(Math.max(1, n | 0)));
+  if (planCache[node.id]) return planCache[node.id];
+  let base;
+  if (NODE_PLANS[node.id]) base = NODE_PLANS[node.id];
   else {
-    const prev = planSig(routePlan(n - 1));
-    for (let salt = 0; salt < 50; salt++) { plan = proceduralPlan(n, salt); if (planSig(plan) !== prev) break; }
+    const prev = nodeParents(node.id).map(q => routePlan(q).sig);
+    for (let salt = 0; salt < 50; salt++) { base = sceneProceduralPlan(node, salt); if (!prev.includes(planSig(base))) break; }
   }
+  const plan = Object.assign({}, base, { name: node.name, theme: base.theme || SCENES[node.scene].theme });
   plan.sig = planSig(plan);
-  return planCache[n] = plan;
+  return planCache[node.id] = plan;
 }
 
 // Gun rows sit on lanes (LANES, x = -2.6 / 0 / 2.6). A single gun takes one lane, a pair two: the third lane is always blank (seeded).
@@ -1620,7 +1657,8 @@ function makeGunRow(z, slot) {
 function makeEvents(n, L) {
   const E = G.events;
   const plan = routePlan(G.node || n);
-  G.routeName = G.node && G.node.depth > 5 ? G.node.name : plan.name; G.theme = plan.theme;
+  const fx = Object.assign({}, sceneFx(), plan.fx || {});
+  G.routeName = plan.name; G.theme = plan.theme; G.scene = G.node ? G.node.scene : 'bridge'; G.spawnAhead = fx.ahead || TUNE.spawnAhead;
   let z = -24;
   // Opening that mirrors the ad: a horde, then a red gate beside a dormant mech with a rifle (middle lane) between them.
   E.push({ type: 'horde', z, spec: hordeSpec('open', n, -1) });
@@ -1676,7 +1714,7 @@ function makeEvents(n, L) {
       return zc - TUNE.gateGap;
     }
     if (tok === 'bar') {                                    // a barrel alley, staggered over ~14 units
-      const cnt = ctx.gaunt ? 5 : 3;
+      const cnt = (ctx.gaunt ? 5 : 3) + (fx.barAdd || 0);
       for (let q = 0; q < cnt; q++) {
         const lo = ctx.half ? -(ctx.half - 0.55) : ctx.side ? ctx.lo : -2.8, hi = ctx.half ? ctx.half - 0.55 : ctx.side ? ctx.hi : 2.8;
         E.push(makeBarrel(rnd2(lo, hi), zc - q * 2.8 - rnd2(0, 1.2)));
@@ -1686,7 +1724,7 @@ function makeEvents(n, L) {
     if (tok.startsWith('amb-')) {                           // ambush: the same horde split in two, coming from both sides, released late
       const spec = hordeSpec(tok.slice(4), n, 1, Math.min(1, -zc / L));
       for (const sd of [-1, 1]) E.push({ type: 'horde', z: zc, ahead: TUNE.ambushAhead, spec: Object.assign({}, spec, { cx: sd * 2.55, w: 2.2, count: Math.ceil(spec.count / 2) }) });
-      if (R2() < TUNE.barrelChance) barrelsAt({}, zc, 1);
+      if (R2() < Math.min(1, TUNE.barrelChance * (fx.barrelMul || 1))) barrelsAt({}, zc, 1);
       return zc - spec.d - rnd(TUNE.hordeGap[0], TUNE.hordeGap[1]);
     }
     const spec = hordeSpec(tok, n, R() < 0.5 ? -1 : 1, Math.min(1, -zc / L));
@@ -1697,11 +1735,15 @@ function makeEvents(n, L) {
       const w = Math.min(spec.w, 2.4);
       spec.d = spec.d * Math.min(2, spec.w / w); spec.w = w; spec.cx = ctx.side * 2.05;
     }
+    else if (fx.headOn) {                                   // the tunnel: one head-on column (cx 0), deeper for the same count
+      const w = Math.min(spec.w, fx.headOn);
+      spec.d = spec.d * Math.min(2, spec.w / w); spec.w = w; spec.cx = 0;
+    }
     E.push({ type: 'horde', z: zc, spec });
     // explosive barrels standing where the horde will be when the squad opens fire: shoot one at the right moment
     if (tok !== 'runners') {
       if (ctx.gaunt) barrelsAt(ctx, zc, 3);
-      else if (R2() < TUNE.barrelChance) barrelsAt(ctx, zc, tok === 'wall' || tok === 'swarm' ? 2 : 1);
+      else if (R2() < Math.min(1, TUNE.barrelChance * (fx.barrelMul || 1))) barrelsAt(ctx, zc, (tok === 'wall' || tok === 'swarm' ? 2 : 1) + (fx.barAdd ? 1 : 0));
     }
     return zc - spec.d - rnd(TUNE.hordeGap[0], TUNE.hordeGap[1]) * (ctx.gaunt ? 0.6 : 1);
   };
@@ -1712,7 +1754,7 @@ function makeEvents(n, L) {
   for (let k = 0; k < plan.segs.length; k++) {
     const sd = plan.segs[k];
     if (k > 0 && zs <= limit) break;                        // no room left: the rest of the plan is dropped
-    const seg = { type: sd.type, z0: zs, z1: zs };
+    const seg = { type: sd.type, z0: zs, z1: zs, scene: G.node ? G.node.scene : 'bridge' };   // seg.scene: the scene of this stretch (a split has seg.left.scene / seg.right.scene instead)
     if (sd.type === 'narrow') seg.half = sd.half;
     if (sd.type === 'fork') seg.split = sd.split || 0;
     if (k > 0) zc = zs - 6;                                 // a lead-in before the new segment's first token
@@ -1736,7 +1778,7 @@ function makeEvents(n, L) {
   }
   if (route.length) route[route.length - 1].z1 = -L;
   for (let i = 1; i < route.length; i++) route[i].z0 = route[i - 1].z1;
-  route.push({ type: 'arena', z0: -L, z1: -L - 60 });
+  route.push({ type: 'arena', z0: -L, z1: -L - 60, scene: G.node ? G.node.scene : 'bridge' });
   G.route = route;
   G.restrict = route.some(sg => sg.type === 'narrow' || sg.type === 'fork');
   placeObstacles(plan, n, L);
@@ -1764,7 +1806,7 @@ const levelObstacles = [];
 const OBS_KINDS = { wreck: { w: 2.0, d: 3.2 }, barrier: { w: 2.4, d: 0.9 }, container: { w: 2.4, d: 5.6 }, log: { w: 3.0, d: 1.0 } };
 function makeObstacle(kind, x, z, row) {
   const K = OBS_KINDS[kind], hp = Math.round((TUNE.obsHp[kind] || 0) * (1 + TUNE.obsHpStage * (G.level - 1)));
-  const e = { type: 'obstacle', kind, x, z, w: K.w, d: K.d, hp, max: hp, dead: false, flash: 0, row };
+  const lane = laneOf(x), e = { type: 'obstacle', kind, x, z, lane, lanes: [lane], w: K.w, d: K.d, hp, max: hp, dead: false, flash: 0, row };   // lane / lanes: the lane index (0..2) the footprint is centred on
   levelObstacles.push(e);
   return e;
 }
@@ -1784,12 +1826,12 @@ function obstacleGaps(list, lo, hi, pad) {
 // Per scene: gap = mean z distance between rows, kinds, two = chance a row blocks two lanes, narrow = rows are runs of 1-3 pairs (harbor), from = first depth.
 // A route plan can override with plan.obs = { ... } or switch them off with plan.obs = false.
 const OBS_SCENE = {
-  bridge:  { gap: 58, kinds: ['wreck'],     two: 0.2, from: 2 },
-  highway: { gap: 40, kinds: ['wreck'],     two: 0.4, from: 1 },
-  tunnel:  { gap: 34, kinds: ['barrier'],   two: 0.5, from: 1 },
-  city:    { gap: 40, kinds: ['barrier'],   two: 0.4, from: 1 },
-  harbor:  { gap: 46, kinds: ['container'], two: 1,   from: 1, narrow: 1 },
-  forest:  { gap: 38, kinds: ['log'],       two: 0.3, from: 1 },
+  bridge:  { gap: 44, kinds: ['wreck'],     two: 0.2, from: 2 },
+  highway: { gap: 32, kinds: ['wreck'],     two: 0.4, from: 1 },
+  tunnel:  { gap: 30, kinds: ['barrier'],   two: 0.5, from: 1 },
+  city:    { gap: 34, kinds: ['barrier'],   two: 0.4, from: 1 },
+  harbor:  { gap: 36, kinds: ['container'], two: 1,   from: 1, narrow: 1 },
+  forest:  { gap: 32, kinds: ['log'],       two: 0.3, from: 1 },
 };
 // Places the node's obstacle rows (own seeded stream R3: the horde / gate / gun layout never changes). Called at the end of makeEvents, when G.route exists.
 function placeObstacles(plan, n, L) {
@@ -2600,7 +2642,7 @@ function findTargets() {
 function updateEvents(dt) {
   for (const e of G.events) {
     if (e.type === 'horde') {
-      if (!e.spawned && e.z > G.z - (e.ahead || TUNE.spawnAhead)) {
+      if (!e.spawned && e.z > G.z - (e.ahead || G.spawnAhead)) {
         e.spawned = true;
         // the bridge layout is fixed per stage, but every release of a horde is a little bigger or smaller (+-hordeJitter), so one
         // attempt is not a copy of the last and the difficulty curve is not a cliff
@@ -5647,7 +5689,7 @@ function resetSave() {
 }
 // Start stage n from the beginning with its entry squad (same as prepare(n) + startRun()).
 function startStage(n) { prepare(n); startRun(); }
-window.__zb = { levelObstacles, obstacleGaps, makeObstacle, OBS_KINDS, damageObstacle, MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap, gap: G.gap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
+window.__zb = { hordeSpec, sceneFx, levelObstacles, obstacleGaps, makeObstacle, OBS_KINDS, damageObstacle, MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap, gap: G.gap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
   stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0), bw: Array.from(bw.subarray(0, nb)), bl: Array.from(bl.subarray(0, nb)), by: Array.from(by.subarray(0, nb)), bt: Array.from(bt.subarray(0, nb)), bs: Array.from(bs.subarray(0, nb)), bx: Array.from(bx.subarray(0, nb)), bz: Array.from(bz.subarray(0, nb)) }),
   perf: () => ({ pr: PR_STEPS[prIdx], steps: PR_STEPS, avg: Perf.avg, fxScale }) };
 })();
