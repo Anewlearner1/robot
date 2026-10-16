@@ -19,7 +19,7 @@ for (let i = 2; i < process.argv.length; i++) {
   if (nxt === undefined || nxt.startsWith('--')) args[k] = true; else { args[k] = nxt; i++; }
 }
 const opt = {
-  stages: String(args.stages || '1,2,3').split(',').map(Number),
+  stages: String(args.stages || '1,2,3').split(',').map(v => /^\d+$/.test(v) ? Number(v) : v),   // depths (main path) or node ids: n3b,p7a ...
   n: Number(args.n || 40),
   seed: Number(args.seed || 1),
   opening: String(args.opening || 'auto'),         // auto | rifle | gate | battery | weapons | all | allw (all + weapons)
@@ -38,9 +38,11 @@ const opt = {
   ups: args.ups ? JSON.parse(String(args.ups)) : {},               // single-stage runs: permanent upgrade levels, e.g. '{"dmg":3,"rate":3}'
   campaign: !!args.campaign,                                       // play stage 1 -> cstages in a row, carrying the squad (see README)
   cstages: Number(args.cstages || 5),
+  path: args.path ? String(args.path) : 'a',                       // campaign (round 7): which branch to walk - a (city / tunnel), b (harbor / forest) or both
+  obsAvoid: args['no-avoid'] ? 0 : 1,                              // 0 = the bot ignores obstacles (to measure what they cost)
   upgrades: !!args.upgrades,                                       // campaign: buy upgrades greedily with the coins between stages
   retries: Number(args.retries || 0),                              // campaign: how often a lost stage is retried (after buying upgrades) before giving up
-  fork: args.fork ? String(args.fork) : '',                       // experiment: always take the 'left' or 'right' side of a fork (default: the bot chooses)
+  fork: args.fork ? String(args.fork) : '',      // (also applies to splits)                       // experiment: always take the 'left' or 'right' side of a fork (default: the bot chooses)
   line: !!args.line,                                 // one-line summary per row instead of the table (for sweeps)
   quiet: !!args.quiet,
   trace: !!args.trace,                               // print a coarse timeline for the first attempts of each row
@@ -71,6 +73,8 @@ function botRun(cfg) {
     zb.bus.on('bossDied', () => { window.__log.bossDeadT = G.time; });
     zb.bus.on('gameOver', d => { const L = window.__log; L.reason = d.reason; L.cause = d.cause; L.kind = d.kind; L.overT = G.time; L.overPhase = d.phase; });
     zb.bus.on('win', () => { window.__log.won = true; });
+    zb.bus.on('obstacleHit', d => { const L = window.__log; L.obsLost = (L.obsLost || 0) + d.n; (L.hitLog = L.hitLog || []).length < 12 && L.hitLog.push(`${d.kind}@${d.x.toFixed(1)},${d.z.toFixed(0)} n${d.n} Gx${G.x.toFixed(2)} gap${G.gap ? G.gap.lo.toFixed(2) + '..' + G.gap.hi.toFixed(2) : '-'} sq${G.squad} cols${zb.pathBounds().cols}`); });
+    zb.bus.on('obstacleBreak', () => { const L = window.__log; L.obsBroken = (L.obsBroken || 0) + 1; });
     zb.bus.on('heroActivated', () => { window.__log.hero = true; });
     // --hold: a forced gun stays no matter which pickup the squad walks over (other guns are ignored, the same gun still levels up)
     window.__hold = null;
@@ -114,7 +118,8 @@ function botRun(cfg) {
   const popLayer = document.getElementById('pops');
   if (!cfg.campaign && zb.resetSave) {                  // single-stage run: a clean save; stage n > 1 starts with a typical carried-over squad
     zb.resetSave();
-    if (cfg.stage > 1) zb.SAVE.stages[cfg.stage] = { entry: cfg.entry, stars: 0 };
+    const nid = typeof cfg.stage === 'string' ? cfg.stage : zb.mainId(cfg.stage);
+    if (nid !== 'n1') zb.SAVE.nodes[nid] = { entry: cfg.entry, stars: 0, cleared: false };
     for (const k of Object.keys(cfg.ups || {})) zb.SAVE.upgrades[k] = cfg.ups[k];
   }
   zb.prepare(cfg.stage);
@@ -200,16 +205,17 @@ function botRun(cfg) {
   function decide() {
     const h = half();
     const pb = zb.pathBounds ? zb.pathBounds() : { lo: -ROAD + 0.45, hi: ROAD - 0.45 };
-    const xLo = Math.min(pb.lo + h, (pb.lo + pb.hi) / 2), xHi = Math.max(pb.hi - h, (pb.lo + pb.hi) / 2);
+    let xLo = Math.min(pb.lo + h, (pb.lo + pb.hi) / 2), xHi = Math.max(pb.hi - h, (pb.lo + pb.hi) / 2);
     // a fork ahead that the squad has not entered yet: how good is each side (gates and barrels up, hordes down)?
     let fork = null;
     if (zb.G.route) for (const sg of zb.G.route) {
-      if (sg.type === 'fork' && sg.chosen === undefined && G.z <= sg.z0 + 40 && G.z > sg.z1) {
+      if ((sg.type === 'fork' || sg.type === 'split') && sg.chosen === undefined && G.z <= sg.z0 + 40 && G.z > sg.z1) {
         const hp0 = Math.max(1, hitsPerSec()), sc = { '-1': 0, '1': 0 };
         for (const e of G.events) {
           if (e.z > sg.z0 || e.z <= sg.z1) continue;
           if (e.type === 'gate' && e.pair === undefined) sc[e.side] += e.val;
           else if (e.type === 'barrel') sc[e.x >= sg.split ? 1 : -1] += 1.5;
+          else if (e.type === 'obstacle') sc[e.x >= sg.split ? 1 : -1] -= 0.8;
           else if (e.type === 'horde') sc[e.spec.cx >= sg.split ? 1 : -1] -= 0.5 * e.spec.count * e.spec.hp / hp0;
         }
         if (cfg.fork === 'left') { sc['-1'] = 99; sc['1'] = 0; } else if (cfg.fork === 'right') { sc['1'] = 99; sc['-1'] = 0; }
@@ -231,6 +237,19 @@ function botRun(cfg) {
         dang[b] += w;
       }
     }
+    // obstacles ahead: steer the formation into the middle of a gap (the engine squeezes it to the gap's width, so the allowed centre range
+    // is the gap shrunk by the squeezed half width); wide squads get few options, so decide early
+    let og = null, ogW = 0;
+    if (cfg.obsAvoid && zb.levelObstacles && zb.levelObstacles.length) {
+      const near = [];
+      for (const e of zb.levelObstacles) { if (e.dead) continue; const dz = G.z - e.z; if (dz > -2.5 - e.d / 2 - 8 && dz < 30) near.push(e); }
+      if (near.length) {
+        og = zb.obstacleGaps(near, pb.lo, pb.hi, zb.TUNE.obsPad);
+        const dmin = Math.min(...near.map(e => G.z - e.z));
+        ogW = dmin < 22 ? 1 : Math.max(0, (30 - dmin) / 8);
+      }
+    }
+    if (og && ogW > 0) { xLo = pb.lo + 0.3; xHi = pb.hi - 0.3; }       // the formation will be squeezed: any centre in the road is possible
     const reach = Math.round((h + 0.5) / GRID);
     // collect upcoming events
     const gates = [], others = [];
@@ -306,6 +325,16 @@ function botRun(cfg) {
         for (let b = b0 - reach; b <= b0 + reach; b++) if (b >= 0 && b < BINS) dsum += dang[b];
         c += dsum * 0.09 * persona.dodge;
       }
+      if (og && ogW > 0) {
+        let pen = 300;
+        for (const g of og) {
+          const hsq = Math.min(h, Math.max(0, Math.floor((g[1] - g[0] - zb.TUNE.obsSlack) / SP + 1e-6)) * SP / 2);
+          const a = g[0] + hsq, b = g[1] - hsq, d = x < a ? a - x : x > b ? x - b : 0;
+          const mid = (g[0] + g[1]) / 2;
+          pen = Math.min(pen, d * 150 + Math.abs(x - mid) * 4);
+        }
+        c += ogW * pen;
+      }
       c += Math.abs(x - tx) * 0.04;                    // hysteresis: do not twitch
       if (c < bestC - 1e-9) { bestC = c; bestX = x; }
     }
@@ -343,7 +372,7 @@ function botRun(cfg) {
     bossKilled: LOG.bossDeadT !== undefined,
     bossHpLeft: G.boss ? Math.max(0, G.boss.hp / G.boss.max) : null,
     entry: G.entrySquad, stars: G.result ? G.result.stars : 0, coinsRun: G.result ? G.result.coins : 0, comboBest: G.comboBest, stage: cfg.stage,
-    gateDiffs: LOG.gateDiffs || [], deathZ: G.z, trace: cfg.trace ? trace : undefined, hero: !!LOG.hero, heroCharge: (() => { const h = G.events.find(e => e.type === 'hero'); return h ? Math.round(h.charge) + '/' + h.need : null; })(), tier: LOG.tier || 0, pickups: LOG.pickups || 0, badGates: LOG.badGates || 0,
+    gateDiffs: LOG.gateDiffs || [], obsLost: LOG.obsLost || 0, hitLog: LOG.hitLog, obsBroken: LOG.obsBroken || 0, deathZ: G.z, trace: cfg.trace ? trace : undefined, hero: !!LOG.hero, heroCharge: (() => { const h = G.events.find(e => e.type === 'hero'); return h ? Math.round(h.charge) + '/' + h.need : null; })(), tier: LOG.tier || 0, pickups: LOG.pickups || 0, badGates: LOG.badGates || 0,
   };
   return res;
 }
@@ -371,15 +400,16 @@ function botCampaign(cfg) {
     }
   }
   const stages = [];
+  const pid = d => d <= 5 ? ['n1', 'n2', 'n3' + cfg.path, 'n4' + cfg.path, 'n5'][d - 1] : (d % 2 === 0 ? 'p' + d : 'p' + d + cfg.path);   // the node of depth d on branch a / b
   for (let st = 1; st <= cfg.cstages; st++) {
     let tries = 0, res;
     for (;;) {
-      res = window.__botRun(Object.assign({}, cfg, { campaign: true, stage: st, seed: cfg.seed + st * 7919 + tries * 104729 }));
+      res = window.__botRun(Object.assign({}, cfg, { campaign: true, stage: pid(st), seed: cfg.seed + st * 7919 + tries * 104729 }));
       if (res.won || tries >= cfg.retries) break;
       tries++;
       if (cfg.upgrades) buyGreedy();
     }
-    stages.push({ stage: st, won: res.won, tries, entry: res.entry, squad: res.squad, stars: res.stars, coins: res.coinsRun, boss: res.bossSecs, cause: res.cause, wallet: zb.SAVE.coins });
+    stages.push({ stage: st, node: pid(st), obsLost: res.obsLost, won: res.won, tries, entry: res.entry, squad: res.squad, stars: res.stars, coins: res.coinsRun, boss: res.bossSecs, cause: res.cause, wallet: zb.SAVE.coins });
     if (!res.won) break;
     if (cfg.upgrades) buyGreedy();
   }
@@ -404,7 +434,7 @@ async function newPage() {
   await page.evaluate(([a, b]) => { window.__botRun = (0, eval)('(' + a + ')'); window.__botCampaign = (0, eval)('(' + b + ')'); }, [botRun.toString(), botCampaign.toString()]);
   await page.evaluate(tune => {
     for (const [k, v] of Object.entries(tune)) {
-      const parts = k.split('.'); let o = parts[0] === 'WEAPONS' || parts[0] === 'UPGRADES' ? window.__zb : window.__zb.TUNE;   // e.g. WEAPONS.1.rate, UPGRADES.0.per
+      const parts = k.split('.'); let o = parts[0] === 'WEAPONS' || parts[0] === 'UPGRADES' || parts[0] === 'MAP' || parts[0] === 'SCENES' ? window.__zb : window.__zb.TUNE;   // e.g. WEAPONS.1.rate, UPGRADES.0.per, SCENES.forest.fx.bruteMul, MAP.2.diffMul (index into the authored MAP: n1 0, n2 1, n3a 2, n3b 3, n4a 4, n4b 5, n5 6)
       for (let i = 0; i < parts.length - 1; i++) o = o[parts[i]];
       if (!(parts[parts.length - 1] in o)) throw new Error('unknown TUNE key ' + k);
       o[parts[parts.length - 1]] = v;
@@ -438,30 +468,33 @@ if (opt.campaign) {
   await page_campaign();
 }
 async function page_campaign() {
-  const cfgs = [];
-  for (let i = 0; i < opt.n; i++) cfgs.push({ noise: opt.noise, opening: 'auto', seed: opt.seed * 100003 + i * 7919 + 1, maxSeconds: opt.maxSeconds, dodge: opt.dodge, cstages: opt.cstages, upgrades: opt.upgrades, retries: opt.retries });
-  const out = new Array(cfgs.length);
-  let next = 0;
-  await Promise.all(pages.map(async page => {
-    for (;;) { const j = next++; if (j >= cfgs.length) return; out[j] = await page.evaluate(c => window.__botCampaign(c), cfgs[j]); }
-  }));
-  console.log(`campaign: ${opt.n} runs, stages 1-${opt.cstages}, upgrades ${opt.upgrades ? 'greedy' : 'none'}, retries ${opt.retries}, seed ${opt.seed}`);
-  console.log('stage  reached  cleared|reached  cumulative  tries  entry  survivors  stars  coins/run  boss s');
-  for (let st = 1; st <= opt.cstages; st++) {
-    const at = out.filter(r => r.stages.length >= st).map(r => r.stages[st - 1]);
-    const won = at.filter(x => x.won);
-    const first = at.filter(x => x.tries === 0);
-    const m = (a, f) => a.length ? (a.reduce((x, y) => x + f(y), 0) / a.length) : NaN;
-    console.log([st, pct(at.length, opt.n), pct(won.length, at.length), pct(won.length, opt.n), f1(m(at, x => x.tries)), f1(m(at, x => x.entry)), f1(m(won, x => x.squad)), f1(m(won, x => x.stars)), f1(m(at, x => x.coins)), f1(m(won.filter(x => x.boss != null), x => x.boss))].map((v, i) => String(v).padEnd(i ? 14 : 7)).join(''));
+  const paths = opt.path === 'both' ? ['a', 'b'] : [opt.path];
+  for (const path of paths) {
+    const cfgs = [];
+    for (let i = 0; i < opt.n; i++) cfgs.push({ noise: opt.noise, opening: 'auto', seed: opt.seed * 100003 + i * 7919 + 1, maxSeconds: opt.maxSeconds, dodge: opt.dodge, cstages: opt.cstages, upgrades: opt.upgrades, retries: opt.retries, path, obsAvoid: opt.obsAvoid });
+    const out = new Array(cfgs.length);
+    let next = 0;
+    await Promise.all(pages.map(async page => {
+      for (;;) { const j = next++; if (j >= cfgs.length) return; out[j] = await page.evaluate(c => window.__botCampaign(c), cfgs[j]); }
+    }));
+    console.log(`campaign path ${path}: ${opt.n} runs, depths 1-${opt.cstages}, upgrades ${opt.upgrades ? 'greedy' : 'none'}, retries ${opt.retries}, seed ${opt.seed}`);
+    console.log('node   reached  cleared|reached  cumulative  tries  entry  survivors  stars  coins/run  boss s  lost to obstacles');
+    for (let st = 1; st <= opt.cstages; st++) {
+      const at = out.filter(r => r.stages.length >= st).map(r => r.stages[st - 1]);
+      const won = at.filter(x => x.won);
+      const m = (a, f) => a.length ? (a.reduce((x, y) => x + f(y), 0) / a.length) : NaN;
+      console.log([at.length ? at[0].node : '?', pct(at.length, opt.n), pct(won.length, at.length), pct(won.length, opt.n), f1(m(at, x => x.tries)), f1(m(at, x => x.entry)), f1(m(won, x => x.squad)), f1(m(won, x => x.stars)), f1(m(at, x => x.coins)), f1(m(won.filter(x => x.boss != null), x => x.boss)), f1(m(at, x => x.obsLost || 0))].map((v, i) => String(v).padEnd(i ? 14 : 7)).join(''));
+    }
+    const upsAvg = {};
+    for (const r of out) for (const [k, v] of Object.entries(r.ups)) upsAvg[k] = (upsAvg[k] || 0) + v / out.length;
+    console.log('mean upgrade levels at the end: ' + Object.entries(upsAvg).map(([k, v]) => k + ' ' + v.toFixed(1)).join(', ') + '; mean leftover wallet ' + f1(out.reduce((a, r) => a + r.wallet, 0) / out.length));
   }
-  const upsAvg = {};
-  for (const r of out) for (const [k, v] of Object.entries(r.ups)) upsAvg[k] = (upsAvg[k] || 0) + v / out.length;
-  console.log('mean upgrade levels at the end: ' + Object.entries(upsAvg).map(([k, v]) => k + ' ' + v.toFixed(1)).join(', ') + '; mean leftover wallet ' + f1(out.reduce((a, r) => a + r.wallet, 0) / out.length));
   console.log('page errors: ' + errors.length);
   if (errors.length) console.log(errors.slice(0, 10).join('\n'));
   await browser.close();
   process.exit(errors.length ? 1 : 0);
 }
+const depthOf = id => typeof id === 'number' ? id : +/\d+/.exec(id)[0];
 const ENTRY_AUTO = [1, 1, 50, 90, 80, 70, 70];   // typical survivors carried into stage n (index = n) for single-stage runs
 const GUNS = ['pistol', 'rifle', 'shotgun', 'gatling', 'sniper', 'flamer', 'rocket'];
 const gunIndex = v => { const i = GUNS.indexOf(v); return i >= 0 ? i : Number(v); };
@@ -479,9 +512,10 @@ for (const stage of opt.stages) {
   for (const row of openings) {
     const opening = row.label;
     const jobs = [];
-    for (let i = 0; i < opt.n; i++) jobs.push({ fork: opt.fork, entry: opt.entry === 'auto' ? ENTRY_AUTO[Math.min(stage, ENTRY_AUTO.length - 1)] : Number(opt.entry), ups: opt.ups, noise: opt.noise, trace: opt.trace && i < 3, stage, opening: row.opening, hold: row.hold, holdTake: opt.holdTake, seed: opt.seed * 100003 + stage * 1009 + i * 7919 + 1, maxSeconds: opt.maxSeconds, dodge: opt.dodge });
+    for (let i = 0; i < opt.n; i++) jobs.push({ fork: opt.fork, entry: opt.entry === 'auto' ? ENTRY_AUTO[Math.min(depthOf(stage), ENTRY_AUTO.length - 1)] : Number(opt.entry), obsAvoid: opt.obsAvoid, ups: opt.ups, noise: opt.noise, trace: opt.trace && i < 3, stage, opening: row.opening, hold: row.hold, holdTake: opt.holdTake, seed: opt.seed * 100003 + depthOf(stage) * 1009 + (typeof stage === 'string' ? stage.charCodeAt(stage.length - 1) : 0) * 31 + i * 7919 + 1, maxSeconds: opt.maxSeconds, dodge: opt.dodge });
     const res = await runJobs(jobs);
     if (opt.trace) for (const r of res) if (r.trace) { console.log(`--- stage ${stage} ${opening} won=${r.won} cause=${r.cause} gates=${r.gateDiffs.join(',')}`); console.log(r.trace.join('\n')); }
+    if (args.hits) for (const r of res.slice(0, 6)) if (r.hitLog) console.log(`--- ${stage} won=${r.won} lost=${r.obsLost}\n  ` + r.hitLog.join('\n  '));
     if (opt.dump) fs.appendFileSync(opt.dump, res.map((r, i) => JSON.stringify({ stage, opening, seed: jobs[i].seed, ...r })).join('\n') + '\n');
     const wins = res.filter(r => r.won);
     const atBoss = res.filter(r => r.reachedBoss);
@@ -498,7 +532,7 @@ for (const stage of opt.stages) {
       reached: atBoss.length / res.length,
       bossSecsWin: mean(winFights.map(r => r.bossSecs)),
       bossSecsAll: mean(fights.map(r => r.bossSecs)),
-      causes,
+      causes, obsLost: mean(res.map(r => r.obsLost || 0)),
     });
     if (opt.json) fs.writeFileSync(opt.json, JSON.stringify({ opt, rows, errors }, null, 1));
   }
@@ -510,10 +544,10 @@ if (opt.line) {
   await browser.close();
   process.exit(errors.length ? 1 : 0);
 }
-const hdr = ['stage', 'open', 'n', 'win', 'prog%', 'atBoss', 'squad@boss', 'wpn@boss', 'mech@boss', 'boss s (win)', 'boss s (all)', 'cause of death'];
+const hdr = ['stage', 'open', 'n', 'win', 'prog%', 'atBoss', 'squad@boss', 'wpn@boss', 'mech@boss', 'boss s (win)', 'boss s (all)', 'obst lost', 'cause of death'];
 const lines = rows.map(r => [
   r.stage, r.opening, r.n, pct(r.win * r.n, r.n), f1(r.prog), pct(r.reached * r.n, r.n), f1(r.squadBoss), r.weaponBoss || '-',
-  Number.isFinite(r.mechBoss) ? pct(r.mechBoss * 10, 10) : '-', f1(r.bossSecsWin), f1(r.bossSecsAll),
+  Number.isFinite(r.mechBoss) ? pct(r.mechBoss * 10, 10) : '-', f1(r.bossSecsWin), f1(r.bossSecsAll), f1(r.obsLost),
   Object.entries(r.causes).map(([k, v]) => k + ' ' + pct(v, r.n)).join(', ') || '-',
 ]);
 const widths = hdr.map((h, i) => Math.max(h.length, ...lines.map(l => String(l[i]).length)));
