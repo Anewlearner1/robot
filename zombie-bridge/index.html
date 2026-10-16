@@ -353,6 +353,70 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 }
 @media (prefers-reduced-motion: reduce) { .upi .tot.fresh, .upi .pp i.fresh { animation: none; } .star.on, .newbest, .carry, .resc.go h2, .upi .pp i.fresh, .cico.bump, .chest.shake { animation: none; } .resc h2 { opacity: 1; } .chest .lid { transition: none; } .trow.bonus { transition: none; } #combo { transition: none; } }
 
+/* ---- round 7: world map (replaces the stage stepper on the menu) ---- */
+#menu { display: block; padding: 0; background: linear-gradient(180deg, rgba(12,16,22,.9), rgba(12,16,22,.94)); }
+.stagepick, #entryLine, #bestLine { display: none !important; }
+.mapv { position: absolute; inset: 0; display: flex; flex-direction: column; box-sizing: border-box; max-width: 520px; margin: 0 auto; }
+.mapv-top { display: flex; align-items: center; gap: 8px; padding: calc(env(safe-area-inset-top, 0px) + 10px) 14px 6px; }
+.mapv-brand { display: grid; gap: 0; margin-right: auto; text-align: left; min-width: 0; }
+.mapv-brand b { font: 900 22px/1.1 var(--body); letter-spacing: .08em; text-shadow: 0 2px 0 var(--ink), 0 0 14px rgba(226,54,59,.5); white-space: nowrap; }
+.mapv-brand small { font: 400 12px var(--display); letter-spacing: .18em; color: var(--hazard); }
+.mapv-top .walletrow { display: flex; align-items: center; gap: 6px; }
+.mapv-help { pointer-events: auto; cursor: pointer; border: 0; width: 32px; height: 32px; border-radius: 50%; background: var(--panel); color: var(--paper); font: 900 15px var(--body); padding: 0; flex: none; }
+.mapv-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; position: relative; touch-action: pan-y; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 22px, #000 calc(100% - 14px), transparent 100%); mask-image: linear-gradient(180deg, transparent 0, #000 22px, #000 calc(100% - 14px), transparent 100%); }
+.mapv-inner { position: relative; width: 100%; }
+.mapv-inner svg.mapbg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.mnode { position: absolute; transform: translate(-50%, -26px); display: grid; justify-items: center; gap: 2px; width: 132px; padding: 0; border: 0; background: none; color: var(--paper); font-family: var(--body); cursor: pointer; text-align: center; }
+.mnode .mdisc { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--sc, #8fa3b3); box-shadow: 0 0 0 3px var(--ink), 0 0 0 5px rgba(255,255,255,.35), 0 6px 12px rgba(0,0,0,.45); position: relative; }
+.mnode .mdisc svg { width: 28px; height: 28px; fill: none; stroke: #10151b; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.mnode .mname { background: rgba(16,21,27,.62); border-radius: 8px; padding: 1px 8px; font: 900 13px/1.25 var(--body); letter-spacing: .06em; text-shadow: 0 2px 0 var(--ink), 0 0 8px rgba(0,0,0,.6); white-space: nowrap; }
+.mnode .msub { background: rgba(16,21,27,.5); border-radius: 8px; padding: 0 7px; display: flex; gap: 5px; align-items: center; font: 900 11px var(--body); color: var(--muted); text-shadow: 0 1px 2px #000; min-height: 14px; }
+.mnode .msub .ms { color: #ffd34d; letter-spacing: 1px; } .mnode .msub .ms i { color: rgba(255,255,255,.25); font-style: normal; }
+.mnode .mchip { font: 900 10.5px var(--body); letter-spacing: .04em; border-radius: 999px; padding: 2px 8px; background: rgba(16,21,27,.85); color: #ffd0d0; box-shadow: 0 0 0 1.5px #e2363b; white-space: nowrap; }
+.mnode .mchip.gold { color: #ffe08a; box-shadow: 0 0 0 1.5px #ffb020; }
+.nc-pill.gold { background: rgba(255,176,32,.16); color: #ffe08a; box-shadow: inset 0 0 0 1.5px #ffb020; }
+.mnode .mchip.easy { color: #bfe8ff; box-shadow: 0 0 0 1.5px #54a7d8; }
+.mnode.locked { cursor: default; } .mnode.locked .mdisc { background: #3a4350; box-shadow: 0 0 0 3px var(--ink), 0 0 0 5px rgba(255,255,255,.12); }
+.mnode.locked .mdisc svg { stroke: rgba(255,255,255,.45); } .mnode.locked .mname { color: rgba(255,255,255,.5); }
+.mnode.locked .mchip { opacity: .55; }
+.mnode.open .mdisc { animation: mpulse 1.6s ease-in-out infinite; }
+.mnode.cleared .mdisc::after { content: ''; position: absolute; right: -4px; bottom: -4px; width: 20px; height: 20px; border-radius: 50%; background: #3fcf6a url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2310151b' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/14px no-repeat; box-shadow: 0 0 0 2.5px var(--ink); }
+.mnode.sel .mdisc { box-shadow: 0 0 0 3px var(--ink), 0 0 0 6px var(--hazard), 0 0 18px rgba(255,176,32,.7); }
+.mnode:focus-visible .mdisc { outline: 3px solid var(--holo); outline-offset: 6px; }
+@keyframes mpulse { 50% { transform: scale(1.07); } }
+.mfork { position: absolute; transform: translate(0, -50%); font: 900 11px var(--body); letter-spacing: .12em; color: #10151b; background: var(--hazard); border-radius: 6px; padding: 2px 7px; box-shadow: 0 2px 0 var(--hazard-deep); pointer-events: none; white-space: nowrap; }
+.mfork::after { content: ''; position: absolute; right: 100%; top: 50%; margin-top: -5px; border: 5px solid transparent; border-right-color: var(--hazard); }
+.mapv-more { position: absolute; left: 0; right: 0; text-align: center; font: 900 12px var(--body); letter-spacing: .2em; color: rgba(255,255,255,.4); pointer-events: none; }
+.mapv-card { margin: 4px 12px calc(env(safe-area-inset-bottom, 0px) + 12px); padding: 12px 14px; border-radius: 16px; background: rgba(22,28,36,.96); box-shadow: 0 0 0 2px rgba(255,255,255,.14), 0 10px 24px rgba(0,0,0,.5); display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; align-items: center; text-align: left; }
+.mapv-card .nc-h { display: flex; align-items: center; gap: 8px; min-width: 0; grid-column: 1 / -1; }
+.mapv-card .nc-ico { width: 34px; height: 34px; border-radius: 50%; background: var(--sc, #8fa3b3); display: grid; place-items: center; flex: none; }
+.mapv-card .nc-ico svg { width: 22px; height: 22px; fill: none; stroke: #10151b; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.mapv-card .nc-t { display: grid; min-width: 0; }
+.mapv-card .nc-t small { font: 400 11px var(--display); letter-spacing: .16em; color: var(--hazard); }
+.mapv-card .nc-t b { font: 900 19px/1.15 var(--body); letter-spacing: .06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mapv-card .nc-d { grid-column: 1 / -1; font: 500 13px/1.4 var(--body); color: var(--muted); }
+.mapv-card .nc-m { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; grid-column: 1; }
+.nc-pill { font: 900 13px var(--body); border-radius: 999px; padding: 3px 10px; background: rgba(255,255,255,.1); white-space: nowrap; letter-spacing: .04em; }
+.nc-pill.st { color: #ffd34d; } .nc-pill.st i { font-style: normal; color: rgba(255,255,255,.28); }
+.nc-pill.hard { background: rgba(226,54,59,.2); color: #ffc4c4; box-shadow: inset 0 0 0 1.5px #e2363b; }
+.nc-pill.easy { background: rgba(84,167,216,.18); color: #bfe8ff; box-shadow: inset 0 0 0 1.5px #54a7d8; }
+.mapv-card .nc-b { grid-column: 2; grid-row: 3 / span 2; display: grid; gap: 6px; justify-items: stretch; }
+.mapv-card .btn { padding: 11px 22px; font-size: 19px; border-radius: 12px; box-shadow: 0 4px 0 var(--hazard-deep), 0 8px 16px rgba(0,0,0,.35); }
+.mapv-card .btn.ghost { padding: 7px 14px; font-size: 14px; box-shadow: inset 0 0 0 2px rgba(243,241,236,.45); }
+.mapv-card .btn:disabled { background: rgba(255,255,255,.14); color: rgba(255,255,255,.45); box-shadow: none; cursor: default; transform: none; }
+#rulesOv { z-index: 6; background: rgba(12,16,22,.88); }
+@media (max-height: 700px) { .mapv-top { padding-top: calc(env(safe-area-inset-top, 0px) + 6px); } .mapv-brand b { font-size: 19px; } .mapv-card { padding: 9px 12px; gap: 4px 10px; margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); } .mapv-card .nc-d { font-size: 12px; } .mapv-card .nc-t b { font-size: 17px; } .mapv-card .btn { padding: 9px 20px; font-size: 17px; } }
+@media (max-height: 520px) and (min-width: 560px) {
+  .mapv { max-width: none; display: grid; grid-template-columns: 1fr 330px; grid-template-rows: auto 1fr; }
+  .mapv-top { grid-column: 1 / -1; } .mapv-scroll { grid-column: 1; grid-row: 2; } .mapv-card { grid-column: 2; grid-row: 2; align-self: center; margin: 0 14px; }
+  .mapv-card .nc-b { grid-row: auto; grid-column: 1 / -1; grid-template-columns: 1fr auto; }
+}
+.unlock { font: 900 15px var(--body); letter-spacing: .06em; color: #10151b; background: linear-gradient(#ffd76a, #f2a416); border-radius: 12px; padding: 7px 14px; box-shadow: 0 3px 0 var(--hazard-deep), 0 0 18px rgba(255,176,32,.45); animation: unlockpop .6s cubic-bezier(.2,1.5,.4,1); max-width: 100%; box-sizing: border-box; }
+.unlock b { font-weight: 900; }
+@keyframes unlockpop { 0% { transform: scale(.6); opacity: 0; } 100% { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .mnode.open .mdisc { animation: none; } .unlock { animation: none; } }
+
 </style>
 </head>
 <body>
@@ -395,28 +459,40 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 <div id="hudCloudPop" class="cloudpop" role="status" hidden><p id="hudCloudPopText"></p></div>
 
 <section class="overlay" id="menu">
-  <div class="card">
-    <div class="walletrow menu-wallet"><span class="chip coin" id="menuWallet"><svg class="cico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="#ffd34d" stroke="#a86a00" stroke-width="2"/><circle cx="12" cy="12" r="6.2" fill="none" stroke="#c98a00" stroke-width="2"/></svg><b id="menuCoins">0</b></span><button class="chip hudcloud" id="menuCloud" type="button"></button></div>
-    <div class="stagepick">
-      <button class="step" id="stagePrev" type="button" aria-label="上一關" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
-      <span class="eyebrow" id="menuLevel">STAGE 1</span>
-      <button class="step" id="stageNext" type="button" aria-label="下一關" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
+  <div class="mapv">
+    <div class="mapv-top">
+      <div class="mapv-brand"><small>WORLD MAP</small><b>屍潮斷橋</b></div>
+      <div class="walletrow menu-wallet"><span class="chip coin" id="menuWallet"><svg class="cico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="#ffd34d" stroke="#a86a00" stroke-width="2"/><circle cx="12" cy="12" r="6.2" fill="none" stroke="#c98a00" stroke-width="2"/></svg><b id="menuCoins">0</b></span><button class="chip hudcloud" id="menuCloud" type="button"></button></div>
+      <button class="mapv-help" id="btnRules" type="button" aria-label="玩法說明">?</button>
     </div>
-    <div class="entryline" id="entryLine"></div>
-    <h1>屍潮斷橋</h1>
-    <p class="lede">已經有很多人倒在這座橋上。你能帶著小隊衝到對岸嗎？</p>
+    <div class="stagepick">
+      <button class="step" id="stagePrev" type="button" aria-label="上一關" hidden></button>
+      <span class="eyebrow" id="menuLevel">STAGE 1</span>
+      <button class="step" id="stageNext" type="button" aria-label="下一關" hidden></button>
+    </div>
+    <div class="entryline" id="entryLine"></div><span class="best" id="bestLine"></span>
+    <div class="mapv-scroll" id="mapScroll"><div class="mapv-inner" id="mapInner"></div></div>
+    <div class="mapv-card" id="nodeCard">
+      <div class="nc-h"><span class="nc-ico" id="ncIco"></span><span class="nc-t"><small id="ncStage">STAGE 1</small><b id="ncName">新手橋</b></span></div>
+      <div class="nc-d" id="ncDesc"></div>
+      <div class="nc-m" id="ncMeta"></div>
+      <div class="nc-b"><button class="btn" id="btnStart" type="button">出發</button><button class="btn ghost" id="btnShop" type="button">強化</button></div>
+    </div>
+  </div>
+</section>
+
+<section class="overlay" id="rulesOv" hidden role="dialog" aria-modal="true" aria-label="玩法說明">
+  <div class="card">
+    <h2>玩法</h2>
     <ul class="rules">
       <li><span><strong>左右拖曳</strong>移動，小隊會自動朝前方開火。</span></li>
       <li style="--c: var(--ally)"><span><strong>射擊數字門</strong>讓數字變大，穿過去就能補兵。紅色負數會扣人。</span></li>
       <li style="--c: var(--holo)"><span><strong>打滿電池</strong>召喚機甲；<strong>撿槍</strong>換武器（共 <span id="ruleGuns">7</span> 種），撿到同一把就<strong>升級</strong>，最高 Lv<span id="ruleLv">3</span>。</span></li>
       <li style="--c: #c06bff"><span><strong>連殺</strong>拿金幣、炸<strong>油桶</strong>清一片；金色、紫色、<strong>?</strong> 門有特殊獎勵。</span></li>
       <li style="--c: var(--blood)"><span><strong>擊倒巨屍</strong>才算過關，活下來的隊員<strong>帶到下一關</strong>。</span></li>
+      <li style="--c: var(--hazard)"><span><strong>世界地圖</strong>上遇到岔路可以二選一：難度高的那條金幣也比較多。</span></li>
     </ul>
-    <div class="btnrow">
-      <button class="btn" id="btnStart" type="button">出發</button>
-      <button class="btn ghost" id="btnShop" type="button">強化</button>
-    </div>
-    <span class="best" id="bestLine"></span>
+    <button class="btn ghost wide" id="rulesBack" type="button">知道了</button>
   </div>
 </section>
 
@@ -460,6 +536,7 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
     <div class="newbest" id="resNew" hidden>新紀錄！</div>
     <p class="lede" id="resLede"></p>
     <div class="carry" id="resCarry" hidden></div>
+    <div class="unlock" id="resUnlock" hidden></div>
     <div class="tally">
       <div class="trow"><span>擊殺</span><b id="resKills">0</b></div>
       <div class="trow"><span>最高連殺</span><b id="resCombo">0</b></div>
@@ -1494,6 +1571,7 @@ function buildScenery(len, mid) {
   });
   sky.frustumCulled = false;
   levelGroup.add(sky);
+  levelGroup.userData.fxBase = { towers, tw, sky, city };       // presentation hides these where a scene of its own takes over (fxCullBase)
   dummy.scale.setScalar(1);
 }
 
@@ -4452,7 +4530,7 @@ function updateWorld(t) {
 }
 // sprites for glowing things, pushed into the fire system just before it is flushed
 function worldSprites() {
-  fxLampSprites();
+  fxLampSprites(); fxObsSprites(G.time);
   const pu = reduced ? 0.6 : 0.5 + 0.5 * Math.sin(G.time * 7);
   for (const e of worldList) {
     if (!e.grp || !e.grp.visible || G.z - e.z < -3 || G.z - e.z > 60) continue;
@@ -4562,7 +4640,7 @@ const LIGHTNING = new T.Color(0xdbe6ff), tmpTc = new T.Color();
 function fxApplyTheme(id) {
   const th = THEMES[id] || THEMES.haze;
   TH.id = id; TH.cur = th; TH.fApplied = -1; TH.ltIn = rr(3, 6);
-  scene.fog.near = th.fogNear; scene.fog.far = th.fogFar;
+  scene.fog.near = th.fogNear * SCN.fogK; scene.fog.far = th.fogFar * SCN.fogK;
   hemi.color.setHex(th.hemiSky); hemi.groundColor.setHex(th.hemiGnd);
   sun.color.setHex(th.sun); sun.intensity = th.sunI; sun.position.set(th.sunPos[0], th.sunPos[1], th.sunPos[2]);
 }
@@ -4591,6 +4669,7 @@ rainMesh.frustumCulled = false; rainMesh.visible = false;
 scene.add(rainMesh);
 function fxUpdateTheme(dt) {
   const id = THEMES[G.theme] ? G.theme : 'haze';
+  fxUpdateSceneFx(dt);
   if (id !== TH.id) fxApplyTheme(id);
   const th = TH.cur;
   rainMesh.visible = !!th.rain;
@@ -4605,7 +4684,8 @@ function fxUpdateTheme(dt) {
   const f = Math.round(TH.flash * 50) / 50;
   if (f !== TH.fApplied) {
     TH.fApplied = f;
-    tmpTc.setHex(th.sky).lerp(LIGHTNING, f * 0.55);
+    scene.fog.near = th.fogNear * SCN.fogK; scene.fog.far = th.fogFar * SCN.fogK;
+    tmpTc.setHex(th.sky).lerp(SCN.sky, SCN.mix).lerp(LIGHTNING, f * 0.55);
     scene.background.copy(tmpTc); scene.fog.color.copy(tmpTc);
     hemi.intensity = th.hemiI + f * 1.1;
   }
@@ -4648,10 +4728,410 @@ function fxProp(name) {
       const mark = boxes([[0.1, 0.42, 0.09, 0, 2.42, 0.1, 0x1a1a1a], [0.1, 0.1, 0.09, 0, 2.12, 0.1, 0x1a1a1a]]);
       g = fxMerge([post, plate, mark]); break;
     }
-    default: g = boxes([[1, 1, 1, 0, 0.5, 0, 0xffffff]]);
+    default: g = fxProp2(name);
   }
   g.userData.shared = true;
   return PROPG[name] = g;
+}
+// ---- round 7: scene props (merged once, instanced everywhere). Colours are vertex colours; an instance colour tints the whole prop.
+function fxPlane(w, h, hex, x, y, z, face) {          // a flat window / sign quad facing +x ('x'), +z ('z') or up ('y')
+  let g = new T.PlaneGeometry(w, h);
+  if (face === 'x') g.rotateY(Math.PI / 2); else if (face === 'y') g.rotateX(-Math.PI / 2);
+  return fxColored(g.translate(x, y, z), hex);
+}
+// a building facing +x (the road side); the right-hand side is the same model turned half a circle
+function fxBuilding(w, h, d, seed) {
+  const r = mulberry(seed), awn = [0xc9453a, 0x2f7d8a, 0xd9a21b, 0x6a4c9c, 0x3d8f4f][(r() * 5) | 0];
+  const wall = [0x8d8f94, 0x9a8f82, 0x7e8794, 0xa4978a, 0x87807a, 0x6f7a86][(r() * 6) | 0];
+  const parts = [[w, h, d, 0, h / 2, 0, wall], [w + 0.3, 0.4, d + 0.3, 0, h + 0.2, 0, 0x555960],
+    [0.14, 2.4, d * 0.9, w / 2 + 0.04, 1.25, 0, 0x2a4351],                                  // shop window
+    [0.9, 0.16, d * 0.84, w / 2 + 0.5, 2.7, 0, awn],                                          // awning
+    [0.16, 0.5, d * 0.7, w / 2 + 0.06, 3.2, 0, 0x30343a]];                                    // shop sign
+  if (r() < 0.65) parts.push([w * 0.4, 1.3, d * 0.35, (r() - 0.5) * w * 0.3, h + 1.0, (r() - 0.5) * d * 0.4, 0x666a72]);
+  const geos = [boxes(parts)];
+  const floors = Math.max(1, Math.floor((h - 4.4) / 3.0)), nz = Math.max(1, Math.floor((d - 0.8) / 1.8)), nx = Math.max(1, Math.floor((w - 0.8) / 1.8));
+  for (let f = 0; f < floors; f++) {
+    const y = 4.6 + f * 3.0;
+    for (let j = 0; j < nz; j++) geos.push(fxPlane(1.05, 1.35, r() < 0.55 ? 0xffe39a : 0x1c2631, w / 2 + 0.03, y, (j - (nz - 1) / 2) * 1.8, 'x'));
+    for (let j = 0; j < nx; j++) geos.push(fxPlane(1.05, 1.35, r() < 0.55 ? 0xffe39a : 0x1c2631, (j - (nx - 1) / 2) * 1.8, y, d / 2 + 0.03, 'z'));
+  }
+  return fxMerge(geos);
+}
+function fxContainer(x, y, z, hex) {                    // a shipping container, long side along z
+  const p = [[2.4, 2.5, 5.9, x, y + 1.25, z, hex], [2.52, 0.1, 5.9, x, y + 2.52, z, 0x7a7e84]];
+  for (let k = -2; k <= 2; k++) { p.push([0.1, 2.3, 0.14, x + 1.24, y + 1.25, z + k * 1.1, 0x9aa0a6], [0.1, 2.3, 0.14, x - 1.24, y + 1.25, z + k * 1.1, 0x9aa0a6]); }
+  return boxes(p);
+}
+function fxTree(kind) {
+  const col = (hex) => hex;
+  if (kind === 1) {
+    const t = boxes([[0.3, 1.4, 0.3, 0, 0.7, 0, 0x5b4330]]);
+    const c1 = fxColored(new T.ConeGeometry(1.5, 2.8, 5).translate(0, 2.5, 0), 0x2f6b3a), c2 = fxColored(new T.ConeGeometry(1.15, 2.4, 5).translate(0, 3.9, 0), 0x38793f), c3 = fxColored(new T.ConeGeometry(0.8, 1.9, 5).translate(0, 5.1, 0), 0x438a46);
+    return fxMerge([t, c1, c2, c3]);
+  }
+  if (kind === 2) {
+    const t = boxes([[0.36, 1.8, 0.36, 0, 0.9, 0, 0x6a4f38]]);
+    const a = fxColored(new T.IcosahedronGeometry(1.6, 0).scale(1, 0.9, 1).translate(0, 3.2, 0), 0x4d8f3c), b = fxColored(new T.IcosahedronGeometry(1.1, 0).translate(0.9, 2.6, 0.4), 0x5ea146);
+    return fxMerge([t, a, b]);
+  }
+  return fxMerge([fxColored(new T.IcosahedronGeometry(0.8, 0).scale(1, 0.7, 1).translate(0, 0.5, 0), 0x3f7a35), fxColored(new T.IcosahedronGeometry(0.55, 0).translate(0.6, 0.35, 0.3), 0x4f8f40)]);
+}
+function fxProp2(name) {
+  switch (name) {
+    case 'wallH': return boxes([[0.55, 0.55, 3.0, 0, 0.27, 0, 0xaaa69f], [0.36, 0.6, 3.0, 0, 0.85, 0, 0xc4c0b8], [0.6, 0.12, 0.14, 0, 0.6, 1.5, 0x8f8b84], [0.6, 0.12, 0.14, 0, 0.6, -1.5, 0x8f8b84]]);
+    case 'gantry': return boxes([[0.32, 6.1, 0.32, -4.6, 3.05, 0, 0x555b63], [0.32, 6.1, 0.32, 4.6, 3.05, 0, 0x555b63], [9.5, 0.5, 0.4, 0, 5.95, 0, 0x4a5058],
+      [2.9, 1.4, 0.12, -2.0, 4.9, 0.26, 0x1f6f4c], [2.9, 1.4, 0.12, 2.0, 4.9, 0.26, 0x1f6f4c], [2.2, 0.16, 0.13, -2.0, 5.1, 0.34, 0xf1f1f1], [1.6, 0.14, 0.13, -2.0, 4.7, 0.34, 0xf1f1f1], [2.2, 0.16, 0.13, 2.0, 5.1, 0.34, 0xf1f1f1], [1.6, 0.14, 0.13, 2.0, 4.7, 0.34, 0xf1f1f1]]);
+    case 'wreckflip': return boxes([[1.5, 0.45, 3.4, 0, 1.1, 0, 0x30343a], [1.7, 0.5, 3.5, 0, 0.55, 0, 0x8a4f3c], [1.4, 0.4, 1.6, 0, 0.2, -0.1, 0x3d4349], [0.28, 0.5, 0.55, -0.9, 1.5, 1.1, 0x181818], [0.28, 0.5, 0.55, 0.9, 1.5, 1.1, 0x181818], [0.28, 0.5, 0.55, -0.9, 1.5, -1.1, 0x181818], [0.28, 0.5, 0.55, 0.9, 1.5, -1.1, 0x181818]]);
+    case 'tunwall': return boxes([[0.8, 6.8, 6.1, 0, 3.4, 0, 0x5c677b], [0.16, 1.2, 6.1, 0.4, 1.0, 0, 0x6a7385], [0.14, 0.18, 6.1, 0.42, 5.4, 0, 0xfff0c0], [0.12, 0.12, 6.1, 0.42, 2.0, 0, 0xe3a820],
+      [0.14, 6.6, 0.22, 0.42, 3.3, 3.0, 0x2c313b], [0.1, 1.7, 0.9, 0.42, 0.95, 1.6, 0x2f9e5a], [0.1, 0.2, 0.9, 0.42, 1.9, 1.6, 0xffffff]]);
+    case 'tunrib': return boxes([[0.5, 0.5, 0.5, -4.7, 6.6, 0, 0x2a2e36], [0.5, 0.5, 0.5, 4.7, 6.6, 0, 0x2a2e36], [2.4, 0.18, 0.3, -3.4, 6.85, 0, 0x343944], [2.4, 0.18, 0.3, 3.4, 6.85, 0, 0x343944]]);      // arch ribs only near the walls: the middle stays open to the camera
+    case 'tunlamp': return boxes([[0.34, 0.12, 1.5, 0, 6.3, 0, 0xffe9b0], [0.06, 0.5, 0.06, 0, 6.65, 0, 0x2a2e36]]);
+    case 'bld0': return fxBuilding(8, 11, 9, 11);
+    case 'bld1': return fxBuilding(9, 16, 10, 23);
+    case 'bld2': return fxBuilding(8, 24, 11, 37);
+    case 'bld3': return fxBuilding(10, 33, 9, 53);
+    case 'alley': return boxes([[6.5, 0.03, 5.2, -2.6, 0.02, 0, 0x14171c], [1.1, 0.8, 1.0, -1.4, 0.4, -1.2, 0x3f6a44], [0.8, 0.5, 0.8, -3.2, 0.25, 1.4, 0x6a5a48], [0.6, 0.12, 4.4, -5.4, 2.2, 0, 0x7b3a3a]]);
+    case 'tlight': return boxes([[0.16, 5.2, 0.16, 0, 2.6, 0, 0x2f3338], [3.8, 0.14, 0.14, -1.9, 5.0, 0, 0x2f3338], [0.5, 1.3, 0.34, -3.7, 4.5, 0, 0x22262b], [0.26, 0.26, 0.14, -3.7, 4.85, 0.2, 0xe2363b], [0.26, 0.26, 0.14, -3.7, 4.5, 0.2, 0x5a4a14], [0.26, 0.26, 0.14, -3.7, 4.15, 0.2, 0x2fbf5a]]);
+    case 'ctn1': return fxContainer(0, 0, 0, 0xe8e8e8);
+    case 'ctn2': return fxMerge([fxContainer(0, 0, 0, 0xe8e8e8), fxContainer(0, 2.6, 0, 0xdcdcdc)]);
+    case 'ctn3': return fxMerge([fxContainer(-1.3, 0, 0, 0xe8e8e8), fxContainer(1.3, 0, 0, 0xdcdcdc), fxContainer(0, 2.6, 0.4, 0xeeeeee)]);
+    case 'bollard': return fxMerge([fxColored(new T.CylinderGeometry(0.16, 0.2, 0.6, 6).translate(0, 0.3, 0), 0x3a3e44), fxColored(new T.CylinderGeometry(0.17, 0.17, 0.12, 6).translate(0, 0.5, 0), 0xe2b023)]);
+    case 'crane': return boxes([[0.5, 17, 0.5, -1.7, 8.5, 1.7, 0xd0a21c], [0.5, 17, 0.5, 1.7, 8.5, 1.7, 0xd0a21c], [0.5, 17, 0.5, -1.7, 8.5, -1.7, 0xd0a21c], [0.5, 17, 0.5, 1.7, 8.5, -1.7, 0xd0a21c],
+      [4.4, 1.0, 4.4, 0, 17.2, 0, 0x8a6f12], [18, 0.9, 1.2, 8, 18.2, 0, 0xd0a21c], [1.4, 1.4, 1.8, 2.5, 17.2, 0, 0x2f343a], [0.1, 6, 0.1, 13, 15, 0, 0x2f343a], [1.4, 1.1, 1.1, 13, 12.2, 0, 0x555b63]]);
+    case 'tree1': return fxTree(1);
+    case 'tree2': return fxTree(2);
+    case 'bush': return fxTree(3);
+    case 'puddle': return fxColored(new T.CircleGeometry(1, 9).rotateX(-Math.PI / 2).translate(0, 0.05, 0), 0x6f8ea0);
+    case 'patch': return fxColored(new T.CircleGeometry(0.7, 7).rotateX(-Math.PI / 2).translate(0, 0.043, 0), 0xffffff);
+    case 'manhole': return fxMerge([fxColored(new T.CircleGeometry(0.5, 10).rotateX(-Math.PI / 2).translate(0, 0.02, 0), 0x2b2e33), fxColored(new T.CircleGeometry(0.34, 10).rotateX(-Math.PI / 2).translate(0, 0.026, 0), 0x41454c)]);
+    case 'zebra': return boxes([[0.5, 0.02, 3.0, 0, 0.022, 0, 0xeeeeea]]);
+    case 'cleat': return boxes([[0.46, 0.07, 0.22, 0, 0.05, 0, 0x30353b], [0.12, 0.16, 0.14, -0.14, 0.14, 0, 0x30353b], [0.12, 0.16, 0.14, 0.14, 0.14, 0, 0x30353b], [0.44, 0.07, 0.12, 0, 0.22, 0, 0x3d434a]]);
+    case 'lipwall': return boxes([[0.3, 0.45, 1.7, 0, 0.225, 0, 0xb7b3aa], [0.34, 0.06, 1.7, 0, 0.48, 0, 0xdad6cd], [0.08, 0.6, 0.08, 0, 0.78, 0.8, 0x3a3e44], [0.08, 0.6, 0.08, 0, 0.78, -0.8, 0x3a3e44], [0.07, 0.07, 1.7, 0, 1.0, 0, 0x6a7078], [0.06, 0.06, 1.7, 0, 0.75, 0, 0x555b63]]);
+    case 'cushion': return boxes([[1.2, 0.7, 0.8, 0, 0.35, 0, 0xf2c230], [1.22, 0.72, 0.16, 0, 0.36, 0.34, 0x1a1a1a], [0.7, 0.5, 0.5, 0, 0.25, 0.62, 0xf2c230]]);
+    case 'treeO': return fxMerge([boxes([[0.42, 4.8, 0.42, 0, 2.4, 0, 0x5a4430]]), fxColored(new T.IcosahedronGeometry(1.65, 0).scale(1, 0.85, 1).translate(0.9, 5.4, 0), 0x4f9440), fxColored(new T.IcosahedronGeometry(1.0, 0).translate(-0.1, 4.6, 0.9), 0x5fa64a), fxColored(new T.IcosahedronGeometry(1.1, 0).translate(1.2, 4.7, -0.8), 0x468a38)]);
+    case 'arrowf': return fxColored(new T.CircleGeometry(0.9, 3).rotateX(-Math.PI / 2).rotateY(Math.PI / 2).translate(0, 0.045, 0), 0xffffff);
+    case 'obsWreck': return boxes([[1.7, 0.5, 3.5, 0, 0.5, 0, 0x2b2724], [1.45, 0.5, 1.7, 0, 0.98, -0.1, 0x1a1919], [1.5, 0.2, 1.0, 0, 0.82, 1.25, 0x3a2a22], [0.25, 0.45, 0.55, -0.88, 0.25, 1.1, 0x0d0d0d], [0.25, 0.45, 0.55, 0.88, 0.25, 1.1, 0x0d0d0d], [0.25, 0.45, 0.55, -0.88, 0.25, -1.1, 0x0d0d0d], [0.25, 0.45, 0.55, 0.88, 0.25, -1.1, 0x0d0d0d],
+      [0.6, 0.06, 0.9, 0.4, 0.78, 1.1, 0x8a3f1e], [1.0, 0.05, 0.7, -0.2, 1.25, -0.1, 0x23303a], [0.5, 0.05, 1.2, -0.55, 0.77, -0.8, 0x6a3418]]);
+    case 'obsBarrier': return boxes([[0.9, 0.8, 0.8, -0.78, 0.4, 0, 0xbab6ae], [0.9, 0.8, 0.8, 0.78, 0.4, 0, 0xbab6ae], [2.4, 0.2, 0.14, 0, 1.05, 0.1, 0xf4f4f4],
+      [0.3, 0.2, 0.16, -0.9, 1.05, 0.1, 0xd23a32], [0.3, 0.2, 0.16, -0.3, 1.05, 0.1, 0xd23a32], [0.3, 0.2, 0.16, 0.3, 1.05, 0.1, 0xd23a32], [0.3, 0.2, 0.16, 0.9, 1.05, 0.1, 0xd23a32],
+      [0.16, 0.5, 0.16, -1.0, 0.9, 0.1, 0x3a3e44], [0.16, 0.5, 0.16, 1.0, 0.9, 0.1, 0x3a3e44], [0.2, 0.12, 0.2, -1.0, 1.22, 0.1, 0x3f8cff], [0.2, 0.12, 0.2, 1.0, 1.22, 0.1, 0xe2363b]]);
+    case 'obsContainer': return fxContainer(0, 0, 0, 0xdedede);
+    case 'obsLog': return fxMerge([fxColored(new T.CylinderGeometry(0.5, 0.56, 3.2, 7).rotateZ(Math.PI / 2).translate(0, 0.55, 0), 0x6a4a30), fxColored(new T.CylinderGeometry(0.42, 0.42, 0.06, 7).rotateZ(Math.PI / 2).translate(1.62, 0.55, 0), 0xa98558),
+      fxColored(new T.IcosahedronGeometry(0.62, 0).translate(-1.7, 0.6, 0.05), 0x56402a), boxes([[0.12, 0.12, 0.9, 0.6, 0.95, 0.5, 0x4a3a28], [0.1, 0.1, 0.7, -0.5, 0.9, -0.5, 0x4a3a28], [0.1, 0.1, 0.6, 0.1, 1.0, -0.45, 0x4a3a28]])]);
+    case 'logd': return boxes([[0.5, 0.5, 3.2, 0, 0.25, 0, 0x5b4330], [0.3, 0.3, 0.2, 0, 0.3, 1.65, 0x8a6a48]]);
+    default: return boxes([[1, 1, 1, 0, 0.5, 0, 0xffffff]]);
+  }
+}
+// ---- round 7: scenes. The scene of a stage is G.node.scene / G.scene (engine); a segment may carry its own `seg.scene`, a split gives each
+// side its own (`seg.left.scene`, `seg.right.scene`). Everything below is built once per stage into ROUTE.group, as instances or merged boxes.
+const fxStageScene = () => (G.node && G.node.scene) || G.scene || 'bridge';
+const fxSegScene = (seg, side) => (seg && seg.type === 'split' && (side < 0 ? seg.left : seg.right) && (side < 0 ? seg.left : seg.right).scene) || (seg && seg.scene) || fxStageScene();
+// fog / sky per scene: tunnels and forests are short-sighted, harbors are bright and wet
+const SCENE_FX = {
+  bridge:  { fogK: 1, sky: 0x8fa3b3, mix: 0 },
+  highway: { fogK: 1, sky: 0xd78552, mix: 0 },
+  tunnel:  { fogK: 0.8, sky: 0x0a0f1e, mix: 0.92 },
+  city:    { fogK: 0.9, sky: 0xe3b79c, mix: 0 },
+  harbor:  { fogK: 1.25, sky: 0x7d98a8, mix: 0.4 },
+  forest:  { fogK: 0.72, sky: 0x9fb89a, mix: 0.7 },
+};
+const SCN = { fogK: 1, mix: 0, sky: new T.Color(0x8fa3b3), ver: 0 };
+const fxSceneAtZ = z => { const r = G.route; if (!r || !r.length) return fxStageScene(); let seg = r[0]; for (let i = 0; i < r.length; i++) if (z <= r[i].z0) seg = r[i]; return fxSegScene(seg, G.x < 0 ? -1 : 1); };
+function fxUpdateSceneFx(dt) {
+  const f = SCENE_FX[G.phase === 'menu' ? fxStageScene() : fxSceneAtZ(G.z)] || SCENE_FX.bridge, a = Math.min(1, dt * 1.4);
+  const ok = SCN.fogK, om = SCN.mix;
+  SCN.fogK += (f.fogK - SCN.fogK) * a; SCN.mix += (f.mix - SCN.mix) * a;
+  tmpTc.setHex(f.sky); SCN.sky.lerp(tmpTc, a);
+  if (Math.abs(SCN.fogK - ok) > 1e-4 || Math.abs(SCN.mix - om) > 1e-4) TH.fApplied = -1;
+}
+// hide the bridge's own towers / skyline where a scene of its own takes over
+function fxCullBase() {
+  const b = levelGroup && levelGroup.userData.fxBase;
+  if (!b) return;
+  const zero = new T.Matrix4().makeScale(0, 0, 0), m = new T.Matrix4();
+  const scAt = z => { const r = G.route; if (!r || !r.length) return fxStageScene(); let seg = r[0]; for (let i = 0; i < r.length; i++) if (z <= r[i].z0) seg = r[i]; return fxSegScene(seg, 1); };
+  b.tw.forEach((t, i) => {
+    const sc = scAt(t[2]);
+    if (sc === 'bridge') { dummy.position.set(t[0], t[1], t[2]); dummy.rotation.set(0, 0, 0); dummy.scale.set(t[3], t[4], t[5]); dummy.updateMatrix(); b.towers.setMatrixAt(i, dummy.matrix); } else b.towers.setMatrixAt(i, zero);
+  });
+  b.towers.instanceMatrix.needsUpdate = true;
+  b.city.forEach((c, i) => {
+    const sc = scAt(c[2]);
+    if (sc === 'bridge' || sc === 'highway' || sc === 'city') { dummy.position.set(c[0], c[1], c[2]); dummy.rotation.set(0, 0, 0); dummy.scale.set(c[3], c[4], c[5]); dummy.updateMatrix(); b.sky.setMatrixAt(i, dummy.matrix); } else b.sky.setMatrixAt(i, zero);
+  });
+  b.sky.instanceMatrix.needsUpdate = true;
+  dummy.scale.setScalar(1);
+}
+// ---- round 7b: surfaces that carry a scene's identity ON the road (plank decking, paving, dirt) and water with a shimmer
+const FX_TEX = {}, FX_MATS = {};
+function fxTex(name) {
+  if (FX_TEX[name]) return FX_TEX[name];
+  const c = document.createElement('canvas'), r = mulberry(name.length * 977 + 5);
+  let x;
+  if (name === 'plank') {                                   // dock decking: boards run across the road, seams, butt joints, nails (tile = 8 x 2 units)
+    c.width = 512; c.height = 128; x = c.getContext('2d');
+    const tones = ['#8b7653', '#82704f', '#90795a', '#7a6749', '#86724f'];
+    for (let row = 0; row < 4; row++) {
+      const y = row * 32;
+      x.fillStyle = tones[(r() * 5) | 0]; x.fillRect(0, y, 512, 32);
+      x.fillStyle = 'rgba(255,255,255,.06)'; for (let k = 0; k < 14; k++) x.fillRect(r() * 512, y + 4 + r() * 22, 20 + r() * 60, 1.5);
+      x.fillStyle = 'rgba(28,20,10,.85)'; x.fillRect(0, y, 512, 3.5);
+      const jx = r() * 512; x.fillRect(jx, y, 3.5, 32); x.fillRect((jx + 256) % 512, y, 3.5, 32);
+      x.fillStyle = 'rgba(40,40,40,.6)'; for (const nx of [jx + 10, jx - 8, (jx + 256) % 512 + 10, (jx + 256) % 512 - 8]) { x.fillRect(nx, y + 8, 3, 3); x.fillRect(nx, y + 21, 3, 3); }
+    }
+  } else {                                                  // paving slabs (tile = 2 x 2 units, a slab is 1 x 1)
+    c.width = c.height = 128; x = c.getContext('2d');
+    x.fillStyle = '#b8b4ab'; x.fillRect(0, 0, 128, 128);
+    for (let i = 0; i < 4; i++) { x.fillStyle = 'rgba(' + (r() > 0.5 ? '255,255,255' : '0,0,0') + ',.06)'; x.fillRect((i & 1) * 64, (i >> 1) * 64, 64, 64); }
+    x.fillStyle = 'rgba(70,66,60,.8)'; x.fillRect(0, 0, 128, 3.5); x.fillRect(0, 62, 128, 3.5); x.fillRect(0, 0, 3.5, 128); x.fillRect(62, 0, 3.5, 128);
+  }
+  const t = new T.CanvasTexture(c); t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = 4;
+  return FX_TEX[name] = t;
+}
+// meshes that share a material (decking, paving, water of every segment) become one draw call
+function fxAddMerged(grp, meshes) {
+  const by = new Map();
+  for (const m of meshes) { if (!by.has(m.material)) by.set(m.material, []); by.get(m.material).push(m); }
+  for (const [mat, list] of by) {
+    if (list.length === 1) { grp.add(list[0]); continue; }
+    const names = ['position', 'normal', 'uv', 'color'].filter(n => list[0].geometry.attributes[n]), data = {}, idx = [];
+    for (const n of names) data[n] = [];
+    let base = 0;
+    for (const m of list) {
+      const g = m.geometry, cnt = g.attributes.position.count;
+      for (const n of names) data[n].push(...g.attributes[n].array);
+      for (const i of g.index.array) idx.push(i + base);
+      base += cnt; g.dispose();
+    }
+    const geo = new T.BufferGeometry();
+    for (const n of names) geo.setAttribute(n, new T.Float32BufferAttribute(data[n], list[0].geometry.attributes[n].itemSize));
+    geo.setIndex(idx); geo.computeBoundingSphere();
+    const mm = new T.Mesh(geo, mat); mm.frustumCulled = false; grp.add(mm);
+  }
+}
+function fxTexPlane(c, name, tint, x0, x1, z0, z1, y, uSc, vSc) {
+  const len = z0 - z1, w = x1 - x0, g = new T.PlaneGeometry(w, len, 1, Math.max(1, Math.ceil(len / 4))).rotateX(-Math.PI / 2).translate((x0 + x1) / 2, y, (z0 + z1) / 2);
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / uSc, uv.getY(i) * len / vSc);
+  const key = name + tint;
+  const mat = FX_MATS[key] || (FX_MATS[key] = new T.MeshLambertMaterial({ map: fxTex(name), color: tint, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
+  const m = new T.Mesh(g, mat); m.frustumCulled = false; c.extra.push(m);
+}
+let FX_WATER = null;                                        // lambert + vertex colours + two travelling glint patterns
+function fxWaterMat() {
+  if (FX_WATER) return FX_WATER;
+  const m = new T.MeshLambertMaterial({ vertexColors: true });
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uTime = CLOCK.uTime;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWp;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWp = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWp; uniform float uTime;')
+      .replace('#include <dithering_fragment>', `#include <dithering_fragment>
+{ float s = sin(vWp.x * 2.3 + uTime * 1.5) * sin(vWp.z * 1.4 - uTime * 1.1) + 0.5 * sin(vWp.x * 5.1 - vWp.z * 3.3 + uTime * 2.4);
+  gl_FragColor.rgb += vec3(0.1, 0.17, 0.2) * smoothstep(0.5, 1.15, s); }`);
+  };
+  m.customProgramCacheKey = () => 'water1';
+  return FX_WATER = m;
+}
+function fxWater(c, x0, x1, z0, z1, y, hex) {
+  const len = z0 - z1, g = new T.PlaneGeometry(x1 - x0, len, 1, Math.max(1, Math.ceil(len / 6))).rotateX(-Math.PI / 2).translate((x0 + x1) / 2, y, (z0 + z1) / 2);
+  const cl = new T.Color(hex), n = g.attributes.position.count, col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) col.set([cl.r, cl.g, cl.b], i * 3);
+  g.setAttribute('color', new T.BufferAttribute(col, 3));
+  const m = new T.Mesh(g, fxWaterMat()); m.frustumCulled = false; c.extra.push(m);
+}
+// side: 0 = both sides of the road, -1 / +1 = only that half (a split road side). c = build context of fxBuildRoute.
+function fxDecor(sc, side, z0, z1, c) {
+  const len = z0 - z1, mid = (z0 + z1) / 2, sg = Math.max(1, Math.ceil(len / 4)), rr_ = c.rr, rng = c.rng, sides = side ? [side] : [-1, 1];
+  const ground = (w, h, x, y, color) => c.gp.push([w, h, len, x, y, mid, color, sg]);
+  const rx0 = side < 0 ? -ROAD : side > 0 ? 0 : -ROAD, rx1 = side < 0 ? 0 : ROAD;      // the road surface this call owns
+  const road = (color, top) => { const h = top + 0.03; c.gp.push([rx1 - rx0, h, len, (rx0 + rx1) / 2, top - h / 2, mid, color, sg]); };
+  const lanesX = side ? [side * 2.6] : LANES;
+  switch (sc) {
+    case 'highway': {
+      for (const s of sides) {
+        ground(3.6, 0.5, s * (ROAD + 2.1), -0.27, 0x6d6964);
+        c.gp.push([0.12, 0.02, len, s * (ROAD - 0.4), 0.025, mid, 0xf2c230, sg]);
+        for (let z = z0 - 1.5; z > z1 + 0.5; z -= 3.1) c.add('wallH', s * (ROAD + 3.8), 0, z, 0, 0, 1);
+        for (let z = z0 - rr_(8, 20); z > z1 + 3; z -= rr_(26, 46)) c.add('wreckflip', s * (ROAD + rr_(1.4, 2.4)), 0, z, rr_(-0.5, 0.5), 0, 1, [0xd2d2d2, 0xb8745a, 0x6f8aa0, 0xa8a060][(rng() * 4) | 0]);
+        for (let z = z0 - 6; z > z1 + 2; z -= 22) c.add('lamp', s * (ROAD + 3.3), 0, z, s > 0 ? 0 : Math.PI, 0, 1);
+      }
+      if (!side) for (let z = z0 - rr_(8, 22); z > z1 + 3; z -= rr_(58, 80)) c.add('gantry', 0, 0, z, 0, 0, 1);
+      break;
+    }
+    case 'tunnel': {
+      road(0x383c45, 0.012);
+      for (const s of sides) for (let z = z0 - 3; z > z1 - 2.9; z -= 6.1) c.add('tunwall', s * (ROAD + 0.75), 0, z, s < 0 ? 0 : Math.PI, 0, 1);
+      for (let z = z0 - 4.5; z > z1 + 1; z -= 9) {
+        if (!side) c.add('tunrib', 0, 0, z, 0, 0, 1);
+        for (const s of sides) { c.add('tunlamp', s * 3.5, 0, z - 4.5, 0, 0, 1); c.lamps.push([s * 3.5, 6.1, z - 4.5, 1]); }
+      }
+      break;
+    }
+    case 'city': {
+      road(0x4b4e55, 0.012);                                                       // asphalt, with the paint a street has
+      for (let z = z0 - rr_(8, 24); z > z1 + 4; z -= rr_(32, 46)) for (const lx of lanesX) for (let k = 0; k < 2; k++) c.add('arrowf', lx, 0, z - k * 2.6, 0, 0, 1.25, 0xf0efe8);
+      for (let z = z0 - rr_(6, 16); z > z1 + 3; z -= rr_(14, 26)) c.add('manhole', side ? side * rr_(1.0, 3.4) : rr_(-3.4, 3.4), 0, z, rr_(0, 6.28), 0, rr_(0.85, 1.1));
+      for (let z = z0 - rr_(18, 30); z > z1 + 8; z -= rr_(46, 64)) {                // crosswalk: bars along the road, a stop line before it
+        for (let k = 0; k < (side ? 5 : 10); k++) c.add('zebra', side ? side * (0.7 + k * 0.7) : (k - 4.5) * 0.8, 0, z, 0, 0, 1);
+        c.gp.push([side ? ROAD : ROAD * 2, 0.026, 0.4, (rx0 + rx1) / 2, 0.003, z + 3.4, 0xf0efe8, 1]);
+        if (!side || side > 0) c.add('tlight', ROAD + 0.6, 0, z - 2.5, 0, 0, 1);
+        if (!side || side < 0) c.add('tlight', -ROAD - 0.6, 0, z - 2.5, Math.PI, 0, 1);
+      }
+      for (const s of sides) {
+        ground(2.4, 0.4, s * (ROAD + 0.3 + 1.2), 0.0, 0x9e9b95);                   // raised sidewalk (top 0.2) with a curb edge
+        ground(0.2, 0.44, s * (ROAD + 0.3 + 0.1), 0.0, 0xd6d2ca);
+        fxTexPlane(c, 'pave', 0xffffff, Math.min(s * (ROAD + 0.5), s * (ROAD + 2.7)), Math.max(s * (ROAD + 0.5), s * (ROAD + 2.7)), z0, z1, 0.205, 2, 2);
+        ground(64, 0.5, s * (ROAD + 2.7 + 32), -0.32, 0x3a3e45);
+        let z = z0 - 1;
+        while (z > z1 + 2) {
+          const d = rr_(8, 12);
+          if (rng() < 0.2) { c.add('alley', s * (ROAD + 2.7), 0, z - d / 2, s < 0 ? 0 : Math.PI, 0, 1); z -= 5.6; continue; }
+          const v = (rng() * 4) | 0, wv = [8, 9, 8, 10][v], dv = [9, 10, 11, 9][v];
+          c.add('bld' + v, s * (ROAD + 2.75 + wv / 2 + rr_(0, 0.3)), 0, z - dv / 2, s < 0 ? 0 : Math.PI, 0, 1, tmpTc.setScalar(0.85 + rng() * 0.3).getHex());
+          z -= dv + rr_(0.2, 0.8);
+        }
+        for (let zz = z0 - 6; zz > z1 + 2; zz -= 16) c.add('lamp', s * (ROAD + 0.7), 0, zz, s > 0 ? 0 : Math.PI, 0, 1);
+      }
+      break;
+    }
+    case 'harbor': {
+      fxTexPlane(c, 'plank', 0xffffff, rx0, rx1, z0, z1, 0.012, 8, 2);             // dock decking
+      for (const s of sides) {
+        c.gp.push([0.22, 0.02, len, s * (ROAD - 0.32), 0.02, mid, 0xf2c230, sg]);       // painted quay edge
+        fxWater(c, Math.min(s * (ROAD + 0.3), s * 95), Math.max(s * (ROAD + 0.3), s * 95), z0, z1, -0.8, 0x2d7f9a);     // water right beside the deck
+        c.gp.push([0.2, 0.02, len, s * (ROAD + 0.42), -0.78, mid, 0xd8eef4, sg]);       // foam line
+        ground(4.8, 0.5, s * (ROAD + 1.4 + 2.4), -0.25, 0x8e9298);                      // the far quay: containers and cranes stand on it
+        c.gp.push([0.22, 0.02, len, s * (ROAD + 1.55), 0.012, mid, 0xf2c230, sg]);
+        for (let z = z0 - 3; z > z1 + 3; z -= rr_(6.2, 9)) {
+          if (rng() < 0.15) continue;
+          c.add(['ctn1', 'ctn2', 'ctn3'][(rng() * 3) | 0], s * (ROAD + 3.3 + rr_(0, 0.4)), 0, z, rr_(-0.04, 0.04), 0, 1, [0xd9503f, 0x3f78c2, 0xe39a2b, 0x3f9a62, 0xe8e8e8, 0xc9b02b, 0x7a5aa8][(rng() * 7) | 0]);
+        }
+        for (let z = z0 - 2; z > z1 + 1; z -= 4.8) c.add('bollard', s * (ROAD + 1.7), 0, z, 0, 0, 1);
+        for (let z = z0 - 5; z > z1 + 2; z -= 7.5) c.add('cleat', s * (ROAD - 0.62), 0, z, rr_(-0.2, 0.2), 0, 1);
+        for (let z = z0 - rr_(10, 30); z > z1 + 8; z -= rr_(52, 74)) c.add('crane', s * (ROAD + 5.4), 0, z, s < 0 ? 0 : Math.PI, 0, 1);
+        for (let z = z0 - 5; z > z1 + 2; z -= 20) c.add('lamp', s * (ROAD + 0.9), 0, z, s > 0 ? 0 : Math.PI, 0, 1);
+      }
+      break;
+    }
+    case 'forest': {
+      road(0x7a6240, 0.03);                                                          // packed dirt over the dashes, with two tyre ruts on the lane lines
+      for (const lx of (side ? [side * 1.3] : [-1.3, 1.3])) c.gp.push([0.55, 0.02, len, lx, 0.04, mid, 0x4c3b27, sg]);
+      for (let z = z0 - 1; z > z1; z -= rr_(1.8, 3.2)) c.add('patch', rr_(rx0 + 0.3, rx1 - 0.3), 0, z, rr_(0, 6.28), 0, rr_(0.5, 1.5), [0x8f7550, 0x6a5538, 0x9a8460, 0x5b4a31][(rng() * 4) | 0]);
+      for (const s of sides) {
+        ground(1.8, 0.5, s * (ROAD + 0.3 + 0.9), -0.25, 0x6fa44c);                  // grass verge
+        ground(60, 0.5, s * (ROAD + 2.1 + 30), -0.26, 0x4a6b3a);
+        for (let z = z0 - rr_(0.5, 3); z > z1; z -= rr_(4.2, 6.8)) c.add('treeO', s * (ROAD + rr_(1.2, 1.9)), 0, z, s < 0 ? 0 : Math.PI, 0, rr_(0.95, 1.25), tmpTc.setScalar(0.85 + rng() * 0.25).getHex());    // canopies lean over the road edge
+        for (let z = z0 - 0.5; z > z1; z -= rr_(1.8, 3)) {
+          const x = s * (ROAD + 2.6 + rr_(0, 5)), k = rng(), t = k < 0.55 ? 'tree1' : k < 0.82 ? 'tree2' : 'bush';
+          c.add(t, x, 0, z, rr_(0, 6.28), 0, rr_(0.9, 1.5), tmpTc.setScalar(0.8 + rng() * 0.35).getHex());
+        }
+        for (let z = z0 - 1; z > z1; z -= rr_(3, 5)) c.add(rng() < 0.7 ? 'tree1' : 'tree2', s * (ROAD + rr_(8, 24)), 0, z, rr_(0, 6.28), 0, rr_(1.2, 2.2), tmpTc.setScalar(0.7 + rng() * 0.3).getHex());
+        for (let z = z0 - 9; z > z1 + 2; z -= rr_(40, 70)) c.add('logd', s * (ROAD + rr_(1.2, 2.5)), 0, z, rr_(-0.4, 0.4) + Math.PI / 2 * (rng() < 0.4), 0, 1);
+      }
+      for (let z = z0 - 4; z > z1 + 2; z -= rr_(12, 20)) c.add('puddle', rr_(rx0 + 0.9, rx1 - 0.9), 0, z, rr_(0, 6.28), 0, rr_(0.7, 1.5));
+      break;
+    }
+    default: break;            // bridge: the base scenery is the look
+  }
+}
+// ---- split segments: one road becomes two. Gameplay keeps the same coordinates (each side is a half of the deck), so the separation is drawn
+// inside that width: a hatched gore wedge and a crash cushion at the entry, then a chasm (or a water channel) that is darker toward its
+// centre, with a kerb and a guard rail on each lip and props of each side's own scene hugging it.
+const FX_SIGNS = [];
+const FX_SPLIT = { list: [], t: 0 };
+const fxFontOk = () => !!(document.fonts && document.fonts.check && document.fonts.check('900 40px "Noto Sans TC"'));
+function fxSplitSign(seg, grp) {
+  const ln = SCENES[fxSegScene(seg, -1)] || SCENES.bridge, rn = SCENES[fxSegScene(seg, 1)] || SCENES.bridge;
+  const cp = canvasPlane(9.4, 2.35, 1024, 256);
+  const draw = () => {
+    const x = cp.ctx;
+    x.clearRect(0, 0, 1024, 256);
+    x.fillStyle = 'rgba(16,21,27,.93)'; rrect(x, 4, 4, 1016, 248, 26); x.fill();
+    x.lineWidth = 8; x.strokeStyle = '#ffb020'; x.stroke();
+    x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round';
+    x.font = '900 74px "Noto Sans TC", sans-serif'; x.fillStyle = '#ffd34d'; x.fillText('選擇路線', 512, 76);
+    x.strokeStyle = 'rgba(255,255,255,.3)'; x.lineWidth = 4; x.beginPath(); x.moveTo(512, 128); x.lineTo(512, 236); x.stroke();
+    x.font = '900 56px "Noto Sans TC", sans-serif';
+    x.fillStyle = MAP_SC[fxSegScene(seg, -1)] || '#fff'; x.fillText('← ' + ln.name, 256, 184);
+    x.fillStyle = MAP_SC[fxSegScene(seg, 1)] || '#fff'; x.fillText(rn.name + ' →', 768, 184);
+    cp.tex.needsUpdate = true;
+  };
+  draw();
+  FX_SIGNS.push(draw);
+  cp.mesh.material.userData.own = true; cp.mesh.material.opacity = 0.96; cp.mesh.renderOrder = 3;
+  cp.mesh.position.set(0, 5.6, seg.z0 - 3); cp.mesh.frustumCulled = false;
+  grp.add(cp.mesh);
+  const posts = new T.Mesh(boxes([[0.3, 5.6, 0.3, -4.7, 2.8, 0, 0x555b63], [0.3, 5.6, 0.3, 4.7, 2.8, 0, 0x555b63], [9.8, 0.3, 0.3, 0, 6.85, -0.05, 0x555b63]]), M.vc);
+  posts.position.set(0, 0, seg.z0 - 3.15); posts.frustumCulled = false; grp.add(posts);
+}
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { for (const d of FX_SIGNS) d(); }).catch(() => {});
+function fxSplitBuild(seg, ctx, grp) {
+  const z0 = seg.z0, z1 = seg.z1, add = ctx.add, GORE = Math.min(8, (z0 - z1) * 0.12), zs = z0 - GORE, len = zs - z1;
+  fxDecor(fxSegScene(seg, -1), -1, z0, z1, ctx);
+  fxDecor(fxSegScene(seg, 1), 1, z0, z1, ctx);
+  const GMAX = 0.5, LIP = 0.62, g = t => GMAX * Math.min(1, Math.min(t, 1 - t) / 0.2) ** 0.8;      // the chasm opens after the gore and closes again at z1
+  const water = fxSegScene(seg, -1) === 'harbor' || fxSegScene(seg, 1) === 'harbor';
+  FX_SPLIT.list.push({ zs, z1, g, water });
+  // chasm: three vertices across a row (edge, centre, edge); the centre is darker (a cut with depth), water gets a blue core and a shimmer
+  const N = Math.max(8, Math.ceil(len / 2)), pos = [], nor = [], cl = [], idx = [];
+  const ce = new T.Color(water ? 0x3a97b0 : 0x232c3b), cc = new T.Color(water ? 0x0b3a57 : 0x000000);
+  for (let i = 0; i <= N; i++) {
+    const t = i / N, z = zs - len * t, gg = g(t) + 0.03;
+    for (const [x, c] of [[-gg, ce], [0, cc], [gg, ce]]) { pos.push(x, 0.045, z); nor.push(0, 1, 0); cl.push(c.r, c.g, c.b); }
+    if (i) { const a = (i - 1) * 3, b = i * 3; idx.push(a, a + 1, b, a + 1, b + 1, b, a + 1, a + 2, b + 1, a + 2, b + 2, b + 1); }
+  }
+  const geo = new T.BufferGeometry();
+  geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); geo.setAttribute('normal', new T.Float32BufferAttribute(nor, 3)); geo.setAttribute('color', new T.Float32BufferAttribute(cl, 3));
+  geo.setIndex(idx); geo.computeBoundingSphere();
+  const gm = new T.Mesh(geo, water ? fxWaterMat() : M.vc); gm.frustumCulled = false; gm.renderOrder = 1; grp.add(gm);
+  // gore: a hatched wedge that points at the squad, and a crash cushion at its base
+  { const gp = [], gn = [], gc = [], K = 8, ya = new T.Color(0xf0efe8), yb = new T.Color(0xe6b020);
+    for (let k = 0; k < K; k++) {
+      const za = z0 - GORE * k / K, zb = z0 - GORE * (k + 1) / K, ha = LIP * k / K, hb = LIP * (k + 1) / K, c = k & 1 ? ya : yb;
+      for (const q of [[-ha, za], [ha, za], [-hb, zb], [hb, zb]]) { gp.push(q[0], 0.05, q[1]); gc.push(c.r, c.g, c.b); gn.push(0, 1, 0); }
+    }
+    const gi = []; for (let k = 0; k < K; k++) gi.push(k * 4, k * 4 + 1, k * 4 + 2, k * 4 + 1, k * 4 + 3, k * 4 + 2);
+    const gg2 = new T.BufferGeometry(); gg2.setAttribute('position', new T.Float32BufferAttribute(gp, 3)); gg2.setAttribute('normal', new T.Float32BufferAttribute(gn, 3)); gg2.setAttribute('color', new T.Float32BufferAttribute(gc, 3)); gg2.setIndex(gi); gg2.computeBoundingSphere();
+    const gore = new T.Mesh(gg2, M.vc); gore.frustumCulled = false; gore.renderOrder = 1; grp.add(gore);
+    add('cushion', 0, 0, zs - 0.35, 0, 0, 1); }
+  // kerb + guard rail on both lips; each side's own scene hugs the gap
+  for (let i = 1; i < N; i++) {
+    const t = (i + 0.5) / N, z = zs - len * t;
+    const gg = g(t);
+    if (gg < 0.07) continue;
+    for (const s of [-1, 1]) add('lipwall', s * (gg + 0.2), 0, z, 0, 0, 1);
+  }
+  for (const s of [-1, 1]) {
+    const sc = fxSegScene(seg, s), col = new T.Color(MAP_SC[sc] || '#ffffff').getHex();
+    for (let k = 0; k < 3; k++) add('arrowf', s * 2.2, 0, z0 - 3.5 - k * 2.6, -s * 0.3, 0, 1.5, col);       // chevrons lean out toward their own road
+    for (let z = zs - 4; z > z1 + 5; z -= 6.5) {
+      const gg = g((zs - z) / len), x = s * (gg + 0.62);
+      if (gg < 0.2) continue;
+      switch (sc) {
+        case 'city': add('lamp', x, 0, z, s > 0 ? 0 : Math.PI, 0, 0.8); break;
+        case 'forest': add('bush', x, 0, z, rr_ctx(z), 0, 0.7); break;
+        case 'harbor': add('bollard', x, 0, z, 0, 0, 1); break;
+        case 'tunnel': add('cone', x, 0, z, 0, 0, 1); break;
+        default: add('jersey', x, 0, z, 0, 0, 0.8);
+      }
+    }
+  }
+  fxSplitSign(seg, grp);
+}
+const rr_ctx = z => (Math.sin(z * 12.9898) * 43758.5453 % 1) * 6.28;
+// the void sheds a little dust and rubble now and then (a water gap shimmers instead)
+function fxSplitFx(dt) {
+  if (reduced || G.paused || G.phase === 'menu' || !FX_SPLIT.list.length) return;
+  for (const sp of FX_SPLIT.list) {
+    if (G.z > sp.zs + 10 || G.z < sp.z1 - 4) continue;
+    FX_SPLIT.t -= dt;
+    if (FX_SPLIT.t > 0) return;
+    FX_SPLIT.t = 0.07;
+    const z = clamp(G.z - rr(2, 20), sp.z1 + 2, sp.zs - 1), gg = sp.g((sp.zs - z) / (sp.zs - sp.z1));
+    if (gg > 0.15 && !sp.water) burst(rr(-gg, gg) * 0.8, 0.12, z, 1, [0.5, 0.5, 0.56], 0.35, 1.1);
+    return;
+  }
 }
 const ROUTE = { route: null, lg: null, theme: null, group: null, lamps: [] };
 const hashF = n => { const x = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return x - Math.floor(x); };
@@ -4667,8 +5147,12 @@ function fxBuildRoute() {
   const add = (t, x, y, z, ry, rz, sc, col) => (inst[t] || (inst[t] = [])).push([x, y, z, ry, rz, sc, col == null ? 0xffffff : col]);
   const flats = [];       // { x0, x1, z0, z1, opacity } dark / scorch rectangles on the road
   const scorch = [];
+  FX_SPLIT.list.length = 0;
+  const gp = [], ctx = { add, rng, rr: rr_, gp, lamps: ROUTE.lamps, extra: [] };       // gp: merged ground boxes (shoulders, quays, forest floor ...)
+  ROUTE.scene = fxStageScene();
   for (const seg of G.route || []) {
     const z0 = seg.z0, z1 = seg.z1, len = z0 - z1, mid = (z0 + z1) / 2;
+    if (seg.type === 'split') fxSplitBuild(seg, ctx, grp); else if (seg.type !== 'arena') fxDecor(fxSegScene(seg, 0), 0, z0, z1, ctx);
     switch (seg.type) {
       case 'narrow': {
         const h = seg.half || 2.6;
@@ -4716,6 +5200,9 @@ function fxBuildRoute() {
     m.frustumCulled = false; grp.add(m);
   };
   for (const t in inst) mkInst(t, inst[t]);
+  if (gp.length) { const gm = new T.Mesh(boxes(gp), M.vc); gm.frustumCulled = false; grp.add(gm); }
+  fxAddMerged(grp, ctx.extra);
+  fxCullBase();
   // flat decals: dark road outside a narrow section, scorch marks, arena plaza
   if (flats.length) {
     const mat = new T.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
@@ -4751,7 +5238,7 @@ function fxBuildRoute() {
   }
 }
 function fxEnsureRoute() {
-  if (ROUTE.route === G.route && ROUTE.lg === levelGroup && ROUTE.theme === TH.id && ROUTE.n === (G.route || []).length) return;
+  if (ROUTE.route === G.route && ROUTE.lg === levelGroup && ROUTE.theme === TH.id && ROUTE.n === (G.route || []).length && ROUTE.scene === fxStageScene()) return;
   ROUTE.n = (G.route || []).length;
   fxBuildRoute();
 }
@@ -4823,13 +5310,111 @@ function fxUpdateLanes(t) {
   for (let k = nl; k < 2; k++) laneLabels[k].visible = false;
 }
 
+
+// ================================================================ round 7: obstacles (events { type: 'obstacle', kind, x, z, lanes, w, d, hp, dead })
+// One InstancedMesh per kind, filled each frame from the live obstacles near the squad. Dead ones vanish (the break FX covers it).
+const OBS = {
+  wreck:     { prop: 'obsWreck',     w: 1.8, d: 3.6, bw: 1.8, bd: 3.5 },
+  barrier:   { prop: 'obsBarrier',   w: 2.4, d: 1.0, bw: 2.4, bd: 0.8 },
+  container: { prop: 'obsContainer', w: 2.5, d: 6.0, bw: 2.52, bd: 5.9 },
+  log:       { prop: 'obsLog',       w: 3.2, d: 1.2, bw: 3.2, bd: 1.2 },
+};
+const OBS_COL = [0xd9503f, 0x3f78c2, 0xe39a2b, 0x3f9a62, 0xe8e8e8, 0xc9b02b];
+for (const k in OBS) {
+  const m = new T.InstancedMesh(fxProp(OBS[k].prop), M.vc, 48);
+  m.instanceMatrix.setUsage(T.DynamicDrawUsage); m.setColorAt(0, tmpC.setRGB(1, 1, 1)); m.instanceColor.setUsage(T.DynamicDrawUsage);
+  m.frustumCulled = false; m.count = 0; m.visible = false; scene.add(m);
+  OBS[k].mesh = m;
+}
+let obsEv = null, obsN = 0, obsList = [];
+const obsW = e => e.w || (OBS[e.kind] || OBS.barrier).w, obsD = e => e.d || (OBS[e.kind] || OBS.barrier).d;
+function fxObsLanes(e) {
+  if (e.lanes && e.lanes.length) return e.lanes;
+  const out = [], w = obsW(e) / 2 + 0.3;
+  for (let i = 0; i < 3; i++) if (Math.abs(LANES[i] - e.x) < w + 1.1) out.push(i);
+  return out;
+}
+function fxObsSprites(t) {            // a burnt car still smoulders (pushed into the fire system by worldSprites)
+  for (const e of obsList) {
+    if (e.kind !== 'wreck' || e.dead) continue;
+    const d = G.z - e.z; if (d < -45 || d > 10 || fireSys.full()) continue;
+    const fl = reduced ? 0.6 : 0.55 + 0.45 * Math.sin(t * 9 + e.z * 2);
+    fireSys.push(e.x + 0.1, 1.35, e.z - 0.2, 1, 0.45 + 0.2 * fl, 0.08, 0.28 + 0.2 * fl, 0.9);
+  }
+}
+function fxDrawObstacles(t) {
+  if (obsEv !== G.events || obsN !== G.events.length) { obsEv = G.events; obsN = G.events.length; obsList = G.events.filter(e => e.type === 'obstacle'); }
+  const cnt = {};
+  for (const k in OBS) cnt[k] = 0;
+  for (const e of obsList) {
+    const o = OBS[e.kind]; if (!o || e.dead) continue;
+    const d = G.z - e.z; if (d < -90 || d > 12) continue;
+    const m = o.mesh, i = cnt[e.kind]; if (i >= 48) continue;
+    cnt[e.kind]++;
+    const h = hashF(e.z * 3.7 + e.x), yaw = e.kind === 'wreck' || e.kind === 'log' ? (h - 0.5) * 0.22 : 0;
+    dummy.position.set(e.x, 0, e.z); dummy.rotation.set(0, yaw, 0); dummy.scale.set(obsW(e) / o.bw, 1, obsD(e) / o.bd); dummy.updateMatrix();
+    m.setMatrixAt(i, dummy.matrix);
+    m.setColorAt(i, tmpC.setHex(e.kind === 'container' ? OBS_COL[(h * 6) | 0] : 0xffffff));
+  }
+  dummy.scale.setScalar(1); dummy.rotation.set(0, 0, 0);
+  for (const k in OBS) {
+    const m = OBS[k].mesh, n = cnt[k];
+    m.count = n; m.visible = n > 0;
+    m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true;
+  }
+}
+// warning: the lanes an obstacle blocks light up red as it comes within ~15 units, like the gun-row lane strips
+const obsWarn = Array.from({ length: 6 }, () => {
+  const m = new T.Mesh(new T.PlaneGeometry(2.3, 16.5).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ map: LANE_TEX, color: 0xff4a2a, transparent: true, opacity: 0, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+  m.visible = false; m.frustumCulled = false; scene.add(m);
+  return m;
+});
+function fxUpdateObsWarn(t) {
+  let n = 0;
+  if (G.phase === 'run' && !G.paused) {
+    const near = obsList.filter(e => !e.dead && G.z - e.z > -0.5 && G.z - e.z < 15.5).sort((a, b) => b.z - a.z);
+    const pulse = reduced ? 0.5 : 0.5 + 0.5 * Math.sin(t * 8);
+    for (const e of near) for (const l of fxObsLanes(e)) {
+      if (n >= obsWarn.length) break;
+      const d = G.z - e.z, m = obsWarn[n++];
+      m.visible = true; m.position.set(LANES[l], 0.034, e.z + 7.2 - obsD(e) / 2 + 0.2);
+      m.material.opacity = clamp((15.5 - d) / 4, 0, 1) * (0.34 + 0.2 * pulse);
+    }
+  }
+  for (let i = n; i < obsWarn.length; i++) obsWarn[i].visible = false;
+}
+const OBS_DEBRIS = { wreck: [0.32, 0.26, 0.22], barrier: [0.78, 0.76, 0.72], container: [0.8, 0.5, 0.3], log: [0.5, 0.34, 0.2] };
+bus.on('obstacleHit', d => {                 // the squad ran into it: dust, chunks, a red ring, a jolt
+  const c = OBS_DEBRIS[d.kind] || OBS_DEBRIS.barrier, n = Math.min(8, d.n || 1);
+  burst(d.x, 0.8, d.z, 8 + n * 3, c, 4.2, 0.6);
+  burst(d.x, 0.9, d.z, 6, [1, 0.4, 0.3], 3, 0.4);
+  smokeSys.add(d.x, 0.7, d.z, rr(-0.5, 0.5), 0.5, rr(-0.5, 0.5), 0.8, 0.6, 1.8, [0.6, 0.57, 0.52], [0.3, 0.3, 0.32], 0.45, 1.3);
+  shock(d.x, d.z, 0xff4048, 2.0, 0.35);
+  flashAt(d.x, 1.0, d.z, 0.1, 1, 0.45, 0.3);
+  FX.shake = Math.max(FX.shake, 0.28); vibrate([25, 20, 30]); vignette(0.5, 320);
+});
+bus.on('obstacleBreak', d => {               // shot apart: a proper break, kind-flavoured
+  const c = OBS_DEBRIS[d.kind] || OBS_DEBRIS.barrier, wreck = d.kind === 'wreck';
+  burst(d.x, 0.9, d.z, wreck ? 34 : 24, c, 6.5, 0.8);
+  for (let i = 0, nF = Math.ceil((wreck ? 8 : 4) * fxScale); i < nF; i++) {
+    const a = rr(0, 6.283), sp = rr(1, 3.2);
+    if (wreck) fireSys.add(d.x, rr(0.6, 1.2), d.z, Math.cos(a) * sp, rr(0.8, 2.4), Math.sin(a) * sp, rr(0.3, 0.5), 0.7, 2.2, [1, 0.85, 0.45], [0.9, 0.22, 0.05], 0.85, 2.2);
+  }
+  for (let i = 0, nS = Math.ceil(5 * fxScale); i < nS; i++) smokeSys.add(d.x + rr(-0.6, 0.6), rr(0.6, 1.2), d.z + rr(-0.8, 0.8), rr(-0.8, 0.8), rr(0.5, 1.4), rr(-0.8, 0.8), rr(0.9, 1.4), 0.9, 3, [0.55, 0.5, 0.46], [0.22, 0.22, 0.24], 0.5, 1.4);
+  flashAt(d.x, 1.1, d.z, 0.14, 1.2, 0.9, 0.5);
+  shock(d.x, d.z, wreck ? 0xffa040 : 0xe8e2d0, 2.6, 0.45); shock(d.x, d.z, 0xffffff, 1.4, 0.22);
+  FX.shake = Math.max(FX.shake, 0.22); vibrate(20);
+  if (wreck) SFX.explode(); else SFX.boom();
+});
+
 // ---- stage intro card (title + route name); never blocks input
 const introEl = $('#intro');
 let introPhase = null;
 function fxIntro() {
   if (G.phase !== introPhase) {
     if (introPhase === 'menu' && G.phase === 'run') {
-      introEl.children[0].textContent = 'STAGE ' + G.level;
+      introEl.children[0].textContent = 'STAGE ' + G.level + '　' + (SCENES[fxStageScene()] || SCENES.bridge).name;
+      RS.unlocked.length = 0;
       introEl.children[1].textContent = G.routeName || '';
       if (introEl.animate) {
         introEl.getAnimations().forEach(a => a.cancel());
@@ -4842,15 +5427,21 @@ function fxIntro() {
     introPhase = G.phase;
   }
 }
-const SEG_LABEL = { narrow: ['窄橋', '隊伍被擠在中間'], fork: ['分岔路', '選一條路'], gauntlet: ['火線走廊', '小心油桶'], ambush: ['伏擊！', '兩側有屍群'], arena: ['決戰廣場', '巨屍就在前方'] };
+const SEG_LABEL = { split: ['選擇路線', ''], narrow: ['窄橋', '隊伍被擠在中間'], fork: ['分岔路', '選一條路'], gauntlet: ['火線走廊', '小心油桶'], ambush: ['伏擊！', '兩側有屍群'], arena: ['決戰廣場', '巨屍就在前方'] };
+let lastSegScene = null;
 bus.on('routeSegment', d => {
   const seg = d.seg || {}, l = SEG_LABEL[seg.type];
-  if (l) bannerPush(l[0], '#ffd34d', l[1], 1);
+  if (d.index === 0) lastSegScene = null;
+  if (seg.type === 'split') bannerPush('選擇路線', '#ffd34d', '左：' + (SCENES[fxSegScene(seg, -1)] || SCENES.bridge).name + '　右：' + (SCENES[fxSegScene(seg, 1)] || SCENES.bridge).name, 1);
+  else if (l) bannerPush(l[0], '#ffd34d', l[1], 1);
+  const sc = seg.type === 'split' ? null : fxSegScene(seg, 0);       // crossing into another scene: say where we are
+  if (sc && lastSegScene && sc !== lastSegScene && !l) bannerPush((SCENES[sc] || SCENES.bridge).name, '#9fd0ff', (SCENES[sc] || SCENES.bridge).desc, 1);
+  if (seg.type !== 'split') lastSegScene = sc;
 });
 
 // ---- extra world sprites for the theme (street lamp glows)
 function fxLampSprites() {
-  if (!TH.cur.lamps) return;
+  if (!ROUTE.lamps.length) return;
   for (const l of ROUTE.lamps) { const d = G.z - l[2]; if (d < -4 || d > 62) continue; if (fireSys.full()) break; fireSys.push(l[0], l[1], l[2], 1, 0.82, 0.45, 0.55, 2.6); }
 }
 
@@ -4983,6 +5574,7 @@ function fxUpdate(dt) {
   fxEnsureRoute();
   fxUpdateBend(dt);
   fxUpdateLanes(G.time);
+  fxDrawObstacles(G.time); fxUpdateObsWarn(G.time); fxSplitFx(dt);
   fxIntro();
 }
 
@@ -5200,6 +5792,7 @@ function goMenu() {
   hideResult(); shopEl.hidden = true;
   $('#menu').hidden = false;
   syncMenu();
+  MAPV.built = true; mapOpen();
 }
 function syncMenu() {
   $('#menuCoins').textContent = String(SAVE.coins | 0);
@@ -5210,6 +5803,7 @@ function syncMenu() {
   prev.hidden = next.hidden = !multi;
   prev.style.visibility = G.level > 1 ? 'visible' : 'hidden';
   next.style.visibility = G.level < best ? 'visible' : 'hidden';
+  if (typeof mapRefresh === 'function' && MAPV.built) mapRefresh();
 }
 function pickStage(n) {
   if (G.phase !== 'menu') return;
@@ -5219,7 +5813,183 @@ function pickStage(n) {
 }
 $('#stagePrev').addEventListener('click', () => pickStage(G.level - 1));
 $('#stageNext').addEventListener('click', () => pickStage(G.level + 1));
-$('#btnStart').addEventListener('click', startRun);
+// ================================================================ round 7: world map (replaces the stage stepper)
+// All map data goes through mapNodeStates(): [{ id, depth, name, scene, next[], diffMul, coinMul, x, y, state: 'locked'|'open'|'cleared', stars, entry }].
+// The engine's mapNodes() (same shape) replaces the fallback below at merge; this is the only place that knows how states are derived.
+const MAP_SC = { bridge: '#8fa3b3', highway: '#e39a64', tunnel: '#7f8fd0', city: '#efc29f', harbor: '#5cb0d4', forest: '#7cc863' };
+const MAP_ICON = {
+  bridge: '<path d="M2 17h20M5 17V9m14 8V9M5 9c3 6 11 6 14 0M3 21h18"/>',
+  highway: '<path d="M4 21L9 3m11 18L15 3M12 4v3m0 4v3m0 4v3"/>',
+  tunnel: '<path d="M3 21V12a9 9 0 0 1 18 0v9M7 21v-8a5 5 0 0 1 10 0v8"/>',
+  city: '<path d="M4 21V9h6v12M10 21V4h7v17M17 21v-9h3v9M13 8h1m-1 4h1m-1 4h1M6 13h2m-2 4h2M3 21h18"/>',
+  harbor: '<path d="M12 4v13m-4-9h8M12 4a1.6 1.6 0 1 0 0 .1M4 14c0 4 4 6 8 6s8-2 8-6M4 14l3 1m13-1l-3 1"/>',
+  forest: '<path d="M12 3l5 7h-3l4 6H6l4-6H7zM12 16v5"/>',
+};
+const mapIcon = id => '<svg viewBox="0 0 24 24" aria-hidden="true">' + (MAP_ICON[id] || MAP_ICON.bridge) + '</svg>';
+const MAP_SCENE_IDS = Object.keys(SCENES);
+// procedural nodes after the last authored one (engine ids 'p<depth>'; a two-way branch every other depth: 'p<depth>a' / 'p<depth>b')
+function mapProcNodes(fromDepth, toDepth, authoredLast) {
+  const out = [];
+  let prev = authoredLast;
+  const lastY = Math.min.apply(null, MAP.map(n => n.y));
+  for (let d = fromDepth; d <= toDepth; d++) {
+    const y = lastY - 0.17 * (d - fromDepth + 1), sc = k => MAP_SCENE_IDS[(d * 7 + k * 3 + (d >> 1)) % MAP_SCENE_IDS.length];
+    const mk = (id, k, x, hard) => ({ id, depth: d, name: SCENES[sc(k)].name, scene: sc(k), next: [], diffMul: hard === 1 ? 1.15 : hard === 0 ? 0.95 : 1, coinMul: hard === 1 ? 1.35 : 1, x, y, proc: true });
+    const cur = d % 2 === 1 ? [mk('p' + d + 'a', 0, 0.28, 1), mk('p' + d + 'b', 1, 0.72, 0)] : [mk('p' + d, 2, 0.5)];
+    for (const p of prev) p.next = cur.map(c => c.id);
+    out.push(...cur); prev = cur;
+  }
+  return out;
+}
+function mapNodeStates() {
+  if (typeof mapNodes === 'function') { try { const r = mapNodes(); if (r && r.length) return r; } catch (e) {} }
+  const sv = SAVE.nodes && typeof SAVE.nodes === 'object' ? SAVE.nodes : null;
+  const main = ['n1', 'n2', 'n3a', 'n4a', 'n5'];
+  const info = id => {                                        // v1 saves (stage numbers) read through the main path
+    if (sv) return sv[id] || null;
+    const i = main.indexOf(id);
+    if (i < 0) return null;
+    const st = SAVE.stages && SAVE.stages[i + 1], nx = SAVE.stages && SAVE.stages[i + 2];
+    return st ? { entry: st.entry, stars: st.stars, cleared: !!(nx && nx.entry) || (st.stars | 0) > 0 } : null;
+  };
+  let nodes = MAP.map(n => Object.assign({}, n));
+  const lastDepth = Math.max.apply(null, MAP.map(n => n.depth));
+  let clearedMax = lastDepth;
+  if (sv) for (const k of Object.keys(sv)) if (sv[k] && sv[k].cleared && /^p\d+/.test(k)) clearedMax = Math.max(clearedMax, parseInt(k.slice(1), 10) || 0);
+  const reach = Math.max(MAPV.procDepth, clearedMax + 3);
+  nodes.push(...mapProcNodes(lastDepth + 1, reach, nodes.filter(n => !n.next.length)));
+  const byId = {}; nodes.forEach(n => { byId[n.id] = n; });
+  const parents = {}; nodes.forEach(n => n.next.forEach(c => (parents[c] = parents[c] || []).push(n.id)));
+  nodes.forEach((n, i) => {
+    const s = info(n.id) || {};
+    n.stars = s.stars | 0; n.cleared = !!s.cleared;
+    n.entry = s.entry ? Math.min(TUNE.maxSquad, s.entry) : TUNE.startSquad;
+    const ps = parents[n.id] || [];
+    n.state = n.cleared ? 'cleared' : (!ps.length || ps.some(p => (info(p) || {}).cleared)) ? 'open' : 'locked';
+  });
+  return nodes;
+}
+const MAPV = { sel: null, procDepth: 8, nodes: [], byId: {}, w: 0, built: false };
+const mapEl = { scroll: $('#mapScroll'), inner: $('#mapInner'), card: $('#nodeCard') };
+const mapStars = n => '<span class="ms">' + '★'.repeat(n) + '<i>' + '★'.repeat(3 - n) + '</i></span>';
+function mapTradeChip(n, siblings) {
+  if (n.diffMul > 1.001) return '<span class="mchip">難度↑ 金幣×' + +n.coinMul.toFixed(2) + '</span>';
+  if (siblings && n.diffMul < 0.999) return '<span class="mchip easy">穩健路線</span>';
+  if (n.coinMul > 1.001) return '<span class="mchip gold">金幣×' + +n.coinMul.toFixed(2) + '</span>';
+  return '';
+}
+function mapLayout(nodes, W, H) {
+  const minY = Math.min.apply(null, nodes.map(n => n.y)), CH = clamp(H * 1.6, 880, 1040), top = 84, padX = 70;
+  const pos = {};
+  for (const n of nodes) pos[n.id] = { x: padX + n.x * (W - padX * 2), y: top + (n.y - minY) * CH };
+  return { pos, height: top + (1 - minY) * CH + 96, top };
+}
+function mapRender(keepScroll) {
+  const W = Math.max(260, mapEl.scroll.clientWidth || 360), H = mapEl.scroll.clientHeight || 400;
+  const nodes = MAPV.nodes = mapNodeStates(); MAPV.byId = {}; nodes.forEach(n => { MAPV.byId[n.id] = n; });
+  const lay = mapLayout(nodes, W, H), pos = lay.pos;
+  MAPV.lay = lay; MAPV.w = W;
+  const parentsOf = {}; nodes.forEach(n => n.next.forEach(c => (parentsOf[c] = parentsOf[c] || []).push(n.id)));
+  const forkKids = new Set(); nodes.forEach(n => { if (n.next.length > 1) n.next.forEach(c => forkKids.add(c)); });
+  // background: land, a river under the bridge, a tinted pool behind every node, contour lines
+  let bg = '<defs><linearGradient id="mlnd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1f2a38"/><stop offset="1" stop-color="#2a3646"/></linearGradient></defs>';
+  bg += '<rect width="' + W + '" height="' + lay.height + '" fill="url(#mlnd)"/>';
+  for (let i = 0; i < 9; i++) { const y = 40 + i * (lay.height / 9); bg += '<path d="M0 ' + y + ' C' + W * 0.3 + ' ' + (y - 22) + ' ' + W * 0.6 + ' ' + (y + 26) + ' ' + W + ' ' + (y - 6) + '" fill="none" stroke="rgba(255,255,255,.05)" stroke-width="1.5"/>'; }
+  const n1 = pos.n1 || { x: W / 2, y: lay.height - 80 };
+  bg += '<path d="M-10 ' + (n1.y + 18) + ' C' + W * 0.25 + ' ' + (n1.y - 14) + ' ' + W * 0.7 + ' ' + (n1.y + 40) + ' ' + (W + 10) + ' ' + (n1.y + 8) + '" fill="none" stroke="#3f6f93" stroke-width="30" stroke-linecap="round" opacity=".55"/>';
+  for (const n of nodes) { const p = pos[n.id]; bg += '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + (n.state === 'locked' ? 46 : 62) + '" fill="' + MAP_SC[n.scene] + '" opacity="' + (n.state === 'locked' ? 0.05 : 0.14) + '"/>'; }
+  // scenery doodles per scene (small, quiet)
+  for (const n of nodes) {
+    const p = pos[n.id], o = n.state === 'locked' ? 0.12 : 0.3;
+    if (n.scene === 'forest') for (let k = 0; k < 6; k++) bg += '<path d="M' + (p.x + (k - 2.5) * 20) + ' ' + (p.y - 38 - (k % 2) * 10) + 'l5 11h-10z" fill="#5eb04a" opacity="' + o + '"/>';
+    if (n.scene === 'city') for (let k = 0; k < 5; k++) bg += '<rect x="' + (p.x + (k - 2) * 16 - 5) + '" y="' + (p.y - 52 + (k % 3) * 6) + '" width="10" height="' + (14 + (k % 2) * 8) + '" fill="#e8c9a8" opacity="' + o + '"/>';
+    if (n.scene === 'harbor') bg += '<path d="M' + (p.x - 50) + ' ' + (p.y - 44) + ' q12 -8 25 0 t25 0 t25 0 t25 0" fill="none" stroke="#6cc0e4" stroke-width="3" opacity="' + o + '"/>';
+    if (n.scene === 'tunnel') bg += '<path d="M' + (p.x - 24) + ' ' + (p.y - 38) + 'v-14a24 24 0 0 1 48 0v14" fill="none" stroke="#9aa8ee" stroke-width="3" opacity="' + o + '"/>';
+  }
+  // roads between nodes: a dark road with a dashed centre, lit up along cleared / open paths
+  let roads = '';
+  for (const n of nodes) for (const c of n.next) {
+    const a = pos[n.id], b = pos[c], k = MAPV.byId[c]; if (!b) continue;
+    const my = (a.y + b.y) / 2, d = 'M' + a.x + ' ' + a.y + ' C' + a.x + ' ' + my + ' ' + b.x + ' ' + my + ' ' + b.x + ' ' + b.y;
+    const lit = n.state === 'cleared' ? (k.state === 'locked' ? 'open' : 'done') : 'off';
+    roads += '<path d="' + d + '" fill="none" stroke="#10151b" stroke-width="15" stroke-linecap="round"/>' +
+      '<path d="' + d + '" fill="none" stroke="' + (lit === 'done' ? '#ffb020' : lit === 'open' ? '#ffd76a' : '#59626e') + '" stroke-width="11" stroke-linecap="round" opacity="' + (lit === 'off' ? 0.55 : 0.95) + '"/>' +
+      '<path d="' + d + '" fill="none" stroke="#10151b" stroke-width="3" stroke-dasharray="7 9" stroke-linecap="round" opacity=".75"/>';
+  }
+  mapEl.inner.style.height = lay.height + 'px';
+  let html = '<svg class="mapbg" viewBox="0 0 ' + W + ' ' + lay.height + '" aria-hidden="true">' + bg + roads + '</svg>';
+  for (const n of nodes) {
+    const p = pos[n.id], sib = forkKids.has(n.id);
+    if (n.next.length > 1) html += '<span class="mfork" style="left:' + (p.x + 62) + 'px;top:' + (p.y + 10) + 'px">岔路・二選一</span>';
+    html += '<button class="mnode ' + n.state + (MAPV.sel === n.id ? ' sel' : '') + '" type="button" data-id="' + n.id + '" style="left:' + p.x + 'px;top:' + p.y + 'px;--sc:' + MAP_SC[n.scene] + '" aria-label="' + n.name + (n.state === 'locked' ? '（未解鎖）' : '') + '">' +
+      '<span class="mdisc">' + mapIcon(n.scene) + '</span><span class="mname">' + n.name + '</span>' +
+      '<span class="msub">' + (n.state === 'locked' ? '未解鎖' : mapStars(n.stars) + '<span>×' + n.entry + '</span>') + '</span>' + (sib || n.coinMul > 1.001 ? mapTradeChip(n, sib) : '') + '</button>';
+  }
+  html += '<div class="mapv-more" style="top:12px">▲ 繼續向前 ▲</div>';
+  const st = keepScroll ? mapEl.scroll.scrollTop : null;
+  mapEl.inner.innerHTML = html;
+  if (st != null) mapEl.scroll.scrollTop = st;
+}
+function mapCard() {
+  const n = MAPV.byId[MAPV.sel]; if (!n) return;
+  const sc = SCENES[n.scene] || SCENES.bridge, sib = MAPV.nodes.some(q => q.next.length > 1 && q.next.includes(n.id));
+  mapEl.card.style.setProperty('--sc', MAP_SC[n.scene]);
+  $('#ncIco').innerHTML = mapIcon(n.scene); $('#ncStage').textContent = 'STAGE ' + n.depth + '　' + sc.name; $('#ncName').textContent = n.name;
+  $('#ncDesc').textContent = n.state === 'locked' ? '先通關前一關才能解鎖。' : sc.desc;
+  let m = '<span class="nc-pill">起始兵力 ×' + n.entry + '</span><span class="nc-pill st">' + '★'.repeat(n.stars) + '<i>' + '★'.repeat(3 - n.stars) + '</i></span>';
+  if (n.diffMul > 1.001) m += '<span class="nc-pill hard">難度↑ 金幣×' + +n.coinMul.toFixed(2) + '</span>';
+  else if (sib && n.diffMul < 0.999) m += '<span class="nc-pill easy">穩健路線</span>';
+  else if (n.coinMul > 1.001) m += '<span class="nc-pill gold">金幣×' + +n.coinMul.toFixed(2) + '</span>';
+  $('#ncMeta').innerHTML = m;
+  $('#btnStart').disabled = n.state === 'locked';
+  $('#btnStart').textContent = n.state === 'cleared' ? '再玩一次' : '出發';
+}
+// choosing a node: the engine's mapSelect handler prepares it; until it exists the same prepare happens here
+function mapPrepareFallback(n) {
+  if (G.node && G.node.id === n.id) return;
+  prepare(n.depth); G.node = n; G.scene = n.scene;
+}
+function mapSelect(id, fromUser) {
+  const n = MAPV.byId[id]; if (!n) return;
+  MAPV.sel = id;
+  for (const b of mapEl.inner.querySelectorAll('.mnode')) b.classList.toggle('sel', b.dataset.id === id);
+  mapCard();
+  if (n.state !== 'locked' && fromUser) { bus.emit('mapSelect', { id }); if (G.phase === 'menu') mapPrepareFallback(n); }
+}
+function mapCenter(id) {
+  const p = MAPV.lay && MAPV.lay.pos[id]; if (!p) return;
+  mapEl.scroll.scrollTop = Math.max(0, p.y - mapEl.scroll.clientHeight * 0.55);
+}
+function mapOpen() {                                           // called whenever the menu is (re)shown
+  MAPV.nodes = mapNodeStates();
+  const pick = (SAVE.cur && MAPV.nodes.find(n => n.id === SAVE.cur && n.state !== 'locked')) ||
+    MAPV.nodes.filter(n => n.state === 'open').sort((a, b) => b.depth - a.depth)[0] || MAPV.nodes[0];
+  const ok = id => id && MAPV.nodes.find(n => n.id === id && n.state !== 'locked');
+  MAPV.sel = ok(SAVE.cur) ? SAVE.cur : ok(MAPV.sel) ? MAPV.sel : pick.id;
+  mapRender(false);
+  mapSelect(MAPV.sel, false);
+  mapCenter(MAPV.sel);
+}
+function mapRefresh() { if ($('#menu').hidden) return; MAPV.nodes = mapNodeStates(); mapRender(true); mapSelect(MAPV.sel, false); }
+mapEl.inner.addEventListener('click', e => { const b = e.target.closest('.mnode'); if (b) mapSelect(b.dataset.id, true); });
+let mapGrowT = 0;
+mapEl.scroll.addEventListener('scroll', () => {          // procedural nodes keep appearing as the map scrolls up
+  if (mapEl.scroll.scrollTop < 120 && MAPV.procDepth < 60 && performance.now() - mapGrowT > 400) {
+    mapGrowT = performance.now(); MAPV.procDepth += 4;
+    const old = mapEl.inner.scrollHeight; mapRender(true); mapEl.scroll.scrollTop += mapEl.inner.scrollHeight - old;
+  }
+}, { passive: true });
+window.addEventListener('resize', () => { if (!$('#menu').hidden) mapRefresh(); });
+$('#btnRules').addEventListener('click', () => { $('#rulesOv').hidden = false; });
+$('#rulesBack').addEventListener('click', () => { $('#rulesOv').hidden = true; });
+function mapGo() {
+  const n = MAPV.byId[MAPV.sel];
+  if (!n || n.state === 'locked') return;
+  if (G.phase === 'menu') mapPrepareFallback(n);
+  startRun();
+}
+
+$('#btnStart').addEventListener('click', mapGo);
 $('#btnRetry').addEventListener('click', () => { prepare(G.level); startRun(); });
 $('#btnNext').addEventListener('click', () => { prepare(G.level + 1); startRun(); });
 $('#btnMenu1').addEventListener('click', goMenu);
@@ -5235,7 +6005,8 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) setPa
 
 // ================================================================ result screen (driven by stageResult) and shop
 const resEl = $('#result'), resCard = resEl.firstElementChild;
-const RS = { on: false, clock: 0, queue: [], anims: [], pending: null, reason: '', won: false, data: null, timer: 0 };
+const RS = { on: false, clock: 0, queue: [], anims: [], pending: null, reason: '', won: false, data: null, timer: 0, unlocked: [], toMap: false };
+bus.on('nodeUnlocked', e => { if (e && e.id && !RS.unlocked.includes(e.id)) RS.unlocked.push(e.id); });
 const $r = id => document.getElementById(id);
 function rsAt(t, fn) { RS.queue.push({ t: reduced ? 0 : t, fn }); }
 function rsCount(el, from, to, dur, fmt) {
@@ -5289,7 +6060,10 @@ function showResult(won) {
   const chest = $r('resChest'); chest.classList.remove('open', 'shake');
   const gain = r.coins + (stars > 0 ? r.bonus : 0), wallet0 = Math.max(0, (SAVE.coins | 0) - gain);
   $r('resWallet').textContent = String(wallet0);
-  $r('resMain').textContent = won ? '下一關' : '再試一次';
+  const unl = won ? RS.unlocked.map(id => (mapNodeStates().find(n => n.id === id) || {}).name).filter(Boolean) : [];
+  RS.toMap = unl.length >= 2;                                       // a branch opened: the next stop is a choice, made on the map
+  $r('resUnlock').hidden = true;
+  $r('resMain').textContent = !won ? '再試一次' : RS.toMap ? '選擇路線' : '下一關';
   $r('resSub').textContent = won ? '' : '以 ×' + r.entry + ' 名隊員重新挑戰　·　獲得 50% 金幣';
   $r('resSub').hidden = won;
   resEl.hidden = false;
@@ -5301,6 +6075,7 @@ function showResult(won) {
   if (won) {
     rsAt(t, () => { carry.innerHTML = '→ 帶到下一關 <b>×' + r.survivors + '</b>'; carry.hidden = false; SFX.good(); });
     t += 0.35;
+    if (unl.length) { rsAt(t, () => { $r('resUnlock').innerHTML = '解鎖：<b>' + unl.join(' / ') + '</b>'; $r('resUnlock').hidden = false; SFX.milestone(1); }); t += 0.4; }
     if (r.newBest) { rsAt(t, () => { $r('resNew').hidden = false; SFX.milestone(2); }); t += 0.35; }
   }
   rsAt(t, () => rsCount($r('resKills'), 0, r.kills, 0.7)); t += 0.2;
@@ -5336,7 +6111,12 @@ bus.on('stageResult', d => { RS.pending = d; });
 bus.on('win', () => { clearTimeout(RS.timer); RS.timer = setTimeout(() => { if (G.phase === 'win') showResult(true); }, 350); });
 bus.on('gameOver', d => { RS.reason = d.reason || ''; clearTimeout(RS.timer); RS.timer = setTimeout(() => { if (G.phase === 'over') showResult(false); }, 800); });
 resEl.addEventListener('click', e => { if (!e.target.closest('button')) skipResult(); });
-$r('resMain').addEventListener('click', () => { hideResult(); prepare(RS.won ? G.level + 1 : G.level); startRun(); });
+$r('resMain').addEventListener('click', () => {
+  hideResult();
+  if (RS.won && RS.toMap) { goMenu(); mapSelect(RS.unlocked[0], true); mapCenter(RS.unlocked[0]); return; }          // branch: pick the road on the map
+  if (RS.won && RS.unlocked.length === 1) { bus.emit('mapSelect', { id: RS.unlocked[0] }); const n = mapNodeStates().find(q => q.id === RS.unlocked[0]); if (n) { MAPV.byId[n.id] = n; mapPrepareFallback(n); startRun(); return; } }
+  prepare(RS.won ? G.level + 1 : G.level); startRun();
+});
 $r('resMenu').addEventListener('click', () => { hideResult(); goMenu(); });
 $r('resShop').addEventListener('click', () => openShop('result'));
 
@@ -5550,12 +6330,13 @@ bus.on('cloudSync', e => hudCloudChip(e.state, e.lastSyncAt));
 // the highest unlocked stage, as a fresh boot would; never touch a run (the engine defers remote saves until a run ends).
 bus.on('cloudSync', e => {
   if (!e.merged) return;
-  if (G.phase === 'menu') { if (G.level < best) prepareNode(startNodeId()); syncMenu(); }
+  if (G.phase === 'menu') { if (G.level < best) prepareNode(startNodeId()); syncMenu(); if (typeof mapRefresh === 'function') mapRefresh(); }
   if (!shopEl.hidden) renderShop();
 });
 
 prepareNode(startNodeId());
 syncMenu();
+MAPV.built = true; mapOpen();
 if (document.fonts && document.fonts.load) {
   Promise.all([document.fonts.load('96px Bungee'), document.fonts.load('900 40px "Noto Sans TC"')])
     .then(() => { for (const e of G.events) if (e.draw) e.draw(); })
@@ -5748,7 +6529,7 @@ function resetSave() {
 }
 // Start stage n from the beginning with its entry squad (same as prepare(n) + startRun()).
 function startStage(n) { prepare(n); startRun(); }
-window.__zb = { hordeSpec, sceneFx, levelObstacles, obstacleGaps, makeObstacle, OBS_KINDS, damageObstacle, MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap, gap: G.gap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
+window.__zb = { mapOpen, mapSelect, mapRefresh, mapNodeStates, MAPV, hordeSpec, sceneFx, levelObstacles, obstacleGaps, makeObstacle, OBS_KINDS, damageObstacle, MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap, gap: G.gap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
   stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0), bw: Array.from(bw.subarray(0, nb)), bl: Array.from(bl.subarray(0, nb)), by: Array.from(by.subarray(0, nb)), bt: Array.from(bt.subarray(0, nb)), bs: Array.from(bs.subarray(0, nb)), bx: Array.from(bx.subarray(0, nb)), bz: Array.from(bz.subarray(0, nb)) }),
   perf: () => ({ pr: PR_STEPS[prIdx], steps: PR_STEPS, avg: Perf.avg, fxScale }) };
 })();
