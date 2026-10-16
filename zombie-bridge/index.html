@@ -942,6 +942,13 @@ function sanitizeSave(o) {
       if (n && st && typeof st === 'object') { const x = rec(st); x.cleared = x.stars > 0 || n < r.best; r.nodes[mainId(n)] = x; }
     }
     for (let n = 1; n < r.best; n++) { const id = mainId(n); (r.nodes[id] || (r.nodes[id] = { entry: TUNE.startSquad, stars: 0, cleared: true })).cleared = true; }
+    // v1 only recorded the main path, but its entry for depth n+1 is the squad that survived depth n: a cleared node's other
+    // children (the branch the player never took) open with that same squad instead of starting from 1 soldier.
+    for (const id of Object.keys(r.nodes)) {
+      const d = nodeDef(id), carry = d && r.nodes[id].cleared ? r.nodes[mainId(d.depth + 1)] : null;
+      if (!carry) continue;
+      for (const nx of d.next || []) { const t = r.nodes[nx] || (r.nodes[nx] = { entry: carry.entry, stars: 0, cleared: false }); t.entry = Math.max(t.entry, carry.entry); }
+    }
     r.cur = mainId(r.best);
   }
   return r;
