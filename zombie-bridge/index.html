@@ -4469,7 +4469,14 @@ function fxProp2(name) {
     case 'tree1': return fxTree(1);
     case 'tree2': return fxTree(2);
     case 'bush': return fxTree(3);
-    case 'puddle': return fxColored(new T.CircleGeometry(1, 9).rotateX(-Math.PI / 2).translate(0, 0.03, 0), 0x6f8ea0);
+    case 'puddle': return fxColored(new T.CircleGeometry(1, 9).rotateX(-Math.PI / 2).translate(0, 0.05, 0), 0x6f8ea0);
+    case 'patch': return fxColored(new T.CircleGeometry(0.7, 7).rotateX(-Math.PI / 2).translate(0, 0.043, 0), 0xffffff);
+    case 'manhole': return fxMerge([fxColored(new T.CircleGeometry(0.5, 10).rotateX(-Math.PI / 2).translate(0, 0.02, 0), 0x2b2e33), fxColored(new T.CircleGeometry(0.34, 10).rotateX(-Math.PI / 2).translate(0, 0.026, 0), 0x41454c)]);
+    case 'zebra': return boxes([[0.5, 0.02, 3.0, 0, 0.022, 0, 0xeeeeea]]);
+    case 'cleat': return boxes([[0.46, 0.07, 0.22, 0, 0.05, 0, 0x30353b], [0.12, 0.16, 0.14, -0.14, 0.14, 0, 0x30353b], [0.12, 0.16, 0.14, 0.14, 0.14, 0, 0x30353b], [0.44, 0.07, 0.12, 0, 0.22, 0, 0x3d434a]]);
+    case 'lipwall': return boxes([[0.3, 0.45, 1.7, 0, 0.225, 0, 0xb7b3aa], [0.34, 0.06, 1.7, 0, 0.48, 0, 0xdad6cd], [0.08, 0.6, 0.08, 0, 0.78, 0.8, 0x3a3e44], [0.08, 0.6, 0.08, 0, 0.78, -0.8, 0x3a3e44], [0.07, 0.07, 1.7, 0, 1.0, 0, 0x6a7078], [0.06, 0.06, 1.7, 0, 0.75, 0, 0x555b63]]);
+    case 'cushion': return boxes([[1.2, 0.7, 0.8, 0, 0.35, 0, 0xf2c230], [1.22, 0.72, 0.16, 0, 0.36, 0.34, 0x1a1a1a], [0.7, 0.5, 0.5, 0, 0.25, 0.62, 0xf2c230]]);
+    case 'treeO': return fxMerge([boxes([[0.42, 4.8, 0.42, 0, 2.4, 0, 0x5a4430]]), fxColored(new T.IcosahedronGeometry(1.65, 0).scale(1, 0.85, 1).translate(0.9, 5.4, 0), 0x4f9440), fxColored(new T.IcosahedronGeometry(1.0, 0).translate(-0.1, 4.6, 0.9), 0x5fa64a), fxColored(new T.IcosahedronGeometry(1.1, 0).translate(1.2, 4.7, -0.8), 0x468a38)]);
     case 'arrowf': return fxColored(new T.CircleGeometry(0.9, 3).rotateX(-Math.PI / 2).rotateY(Math.PI / 2).translate(0, 0.045, 0), 0xffffff);
     case 'obsWreck': return boxes([[1.7, 0.5, 3.5, 0, 0.5, 0, 0x2b2724], [1.45, 0.5, 1.7, 0, 0.98, -0.1, 0x1a1919], [1.5, 0.2, 1.0, 0, 0.82, 1.25, 0x3a2a22], [0.25, 0.45, 0.55, -0.88, 0.25, 1.1, 0x0d0d0d], [0.25, 0.45, 0.55, 0.88, 0.25, 1.1, 0x0d0d0d], [0.25, 0.45, 0.55, -0.88, 0.25, -1.1, 0x0d0d0d], [0.25, 0.45, 0.55, 0.88, 0.25, -1.1, 0x0d0d0d],
       [0.6, 0.06, 0.9, 0.4, 0.78, 1.1, 0x8a3f1e], [1.0, 0.05, 0.7, -0.2, 1.25, -0.1, 0x23303a], [0.5, 0.05, 1.2, -0.55, 0.77, -0.8, 0x6a3418]]);
@@ -4523,11 +4530,91 @@ function fxCullBase() {
   b.sky.instanceMatrix.needsUpdate = true;
   dummy.scale.setScalar(1);
 }
+// ---- round 7b: surfaces that carry a scene's identity ON the road (plank decking, paving, dirt) and water with a shimmer
+const FX_TEX = {}, FX_MATS = {};
+function fxTex(name) {
+  if (FX_TEX[name]) return FX_TEX[name];
+  const c = document.createElement('canvas'), r = mulberry(name.length * 977 + 5);
+  let x;
+  if (name === 'plank') {                                   // dock decking: boards run across the road, seams, butt joints, nails (tile = 8 x 2 units)
+    c.width = 512; c.height = 128; x = c.getContext('2d');
+    const tones = ['#8b7653', '#82704f', '#90795a', '#7a6749', '#86724f'];
+    for (let row = 0; row < 4; row++) {
+      const y = row * 32;
+      x.fillStyle = tones[(r() * 5) | 0]; x.fillRect(0, y, 512, 32);
+      x.fillStyle = 'rgba(255,255,255,.06)'; for (let k = 0; k < 14; k++) x.fillRect(r() * 512, y + 4 + r() * 22, 20 + r() * 60, 1.5);
+      x.fillStyle = 'rgba(28,20,10,.85)'; x.fillRect(0, y, 512, 3.5);
+      const jx = r() * 512; x.fillRect(jx, y, 3.5, 32); x.fillRect((jx + 256) % 512, y, 3.5, 32);
+      x.fillStyle = 'rgba(40,40,40,.6)'; for (const nx of [jx + 10, jx - 8, (jx + 256) % 512 + 10, (jx + 256) % 512 - 8]) { x.fillRect(nx, y + 8, 3, 3); x.fillRect(nx, y + 21, 3, 3); }
+    }
+  } else {                                                  // paving slabs (tile = 2 x 2 units, a slab is 1 x 1)
+    c.width = c.height = 128; x = c.getContext('2d');
+    x.fillStyle = '#b8b4ab'; x.fillRect(0, 0, 128, 128);
+    for (let i = 0; i < 4; i++) { x.fillStyle = 'rgba(' + (r() > 0.5 ? '255,255,255' : '0,0,0') + ',.06)'; x.fillRect((i & 1) * 64, (i >> 1) * 64, 64, 64); }
+    x.fillStyle = 'rgba(70,66,60,.8)'; x.fillRect(0, 0, 128, 3.5); x.fillRect(0, 62, 128, 3.5); x.fillRect(0, 0, 3.5, 128); x.fillRect(62, 0, 3.5, 128);
+  }
+  const t = new T.CanvasTexture(c); t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = 4;
+  return FX_TEX[name] = t;
+}
+// meshes that share a material (decking, paving, water of every segment) become one draw call
+function fxAddMerged(grp, meshes) {
+  const by = new Map();
+  for (const m of meshes) { if (!by.has(m.material)) by.set(m.material, []); by.get(m.material).push(m); }
+  for (const [mat, list] of by) {
+    if (list.length === 1) { grp.add(list[0]); continue; }
+    const names = ['position', 'normal', 'uv', 'color'].filter(n => list[0].geometry.attributes[n]), data = {}, idx = [];
+    for (const n of names) data[n] = [];
+    let base = 0;
+    for (const m of list) {
+      const g = m.geometry, cnt = g.attributes.position.count;
+      for (const n of names) data[n].push(...g.attributes[n].array);
+      for (const i of g.index.array) idx.push(i + base);
+      base += cnt; g.dispose();
+    }
+    const geo = new T.BufferGeometry();
+    for (const n of names) geo.setAttribute(n, new T.Float32BufferAttribute(data[n], list[0].geometry.attributes[n].itemSize));
+    geo.setIndex(idx); geo.computeBoundingSphere();
+    const mm = new T.Mesh(geo, mat); mm.frustumCulled = false; grp.add(mm);
+  }
+}
+function fxTexPlane(c, name, tint, x0, x1, z0, z1, y, uSc, vSc) {
+  const len = z0 - z1, w = x1 - x0, g = new T.PlaneGeometry(w, len, 1, Math.max(1, Math.ceil(len / 4))).rotateX(-Math.PI / 2).translate((x0 + x1) / 2, y, (z0 + z1) / 2);
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / uSc, uv.getY(i) * len / vSc);
+  const key = name + tint;
+  const mat = FX_MATS[key] || (FX_MATS[key] = new T.MeshLambertMaterial({ map: fxTex(name), color: tint, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
+  const m = new T.Mesh(g, mat); m.frustumCulled = false; c.extra.push(m);
+}
+let FX_WATER = null;                                        // lambert + vertex colours + two travelling glint patterns
+function fxWaterMat() {
+  if (FX_WATER) return FX_WATER;
+  const m = new T.MeshLambertMaterial({ vertexColors: true });
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uTime = CLOCK.uTime;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWp;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWp = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWp; uniform float uTime;')
+      .replace('#include <dithering_fragment>', `#include <dithering_fragment>
+{ float s = sin(vWp.x * 2.3 + uTime * 1.5) * sin(vWp.z * 1.4 - uTime * 1.1) + 0.5 * sin(vWp.x * 5.1 - vWp.z * 3.3 + uTime * 2.4);
+  gl_FragColor.rgb += vec3(0.1, 0.17, 0.2) * smoothstep(0.5, 1.15, s); }`);
+  };
+  m.customProgramCacheKey = () => 'water1';
+  return FX_WATER = m;
+}
+function fxWater(c, x0, x1, z0, z1, y, hex) {
+  const len = z0 - z1, g = new T.PlaneGeometry(x1 - x0, len, 1, Math.max(1, Math.ceil(len / 6))).rotateX(-Math.PI / 2).translate((x0 + x1) / 2, y, (z0 + z1) / 2);
+  const cl = new T.Color(hex), n = g.attributes.position.count, col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) col.set([cl.r, cl.g, cl.b], i * 3);
+  g.setAttribute('color', new T.BufferAttribute(col, 3));
+  const m = new T.Mesh(g, fxWaterMat()); m.frustumCulled = false; c.extra.push(m);
+}
 // side: 0 = both sides of the road, -1 / +1 = only that half (a split road side). c = build context of fxBuildRoute.
 function fxDecor(sc, side, z0, z1, c) {
   const len = z0 - z1, mid = (z0 + z1) / 2, sg = Math.max(1, Math.ceil(len / 4)), rr_ = c.rr, rng = c.rng, sides = side ? [side] : [-1, 1];
   const ground = (w, h, x, y, color) => c.gp.push([w, h, len, x, y, mid, color, sg]);
-  const road = (color, y) => { const x0 = side < 0 ? -ROAD : side > 0 ? 0 : -ROAD, x1 = side < 0 ? 0 : ROAD; c.gp.push([x1 - x0, 0.02, len, (x0 + x1) / 2, y == null ? 0.0 : y, mid, color, sg]); };
+  const rx0 = side < 0 ? -ROAD : side > 0 ? 0 : -ROAD, rx1 = side < 0 ? 0 : ROAD;      // the road surface this call owns
+  const road = (color, top) => { const h = top + 0.03; c.gp.push([rx1 - rx0, h, len, (rx0 + rx1) / 2, top - h / 2, mid, color, sg]); };
+  const lanesX = side ? [side * 2.6] : LANES;
   switch (sc) {
     case 'highway': {
       for (const s of sides) {
@@ -4541,7 +4628,7 @@ function fxDecor(sc, side, z0, z1, c) {
       break;
     }
     case 'tunnel': {
-      road(0x383c45, 0.0);
+      road(0x383c45, 0.012);
       for (const s of sides) for (let z = z0 - 3; z > z1 - 2.9; z -= 6.1) c.add('tunwall', s * (ROAD + 0.75), 0, z, s < 0 ? 0 : Math.PI, 0, 1);
       for (let z = z0 - 4.5; z > z1 + 1; z -= 9) {
         if (!side) c.add('tunrib', 0, 0, z, 0, 0, 1);
@@ -4550,62 +4637,77 @@ function fxDecor(sc, side, z0, z1, c) {
       break;
     }
     case 'city': {
+      road(0x4b4e55, 0.012);                                                       // asphalt, with the paint a street has
+      for (let z = z0 - rr_(8, 24); z > z1 + 4; z -= rr_(32, 46)) for (const lx of lanesX) for (let k = 0; k < 2; k++) c.add('arrowf', lx, 0, z - k * 2.6, 0, 0, 1.25, 0xf0efe8);
+      for (let z = z0 - rr_(6, 16); z > z1 + 3; z -= rr_(14, 26)) c.add('manhole', side ? side * rr_(1.0, 3.4) : rr_(-3.4, 3.4), 0, z, rr_(0, 6.28), 0, rr_(0.85, 1.1));
+      for (let z = z0 - rr_(18, 30); z > z1 + 8; z -= rr_(46, 64)) {                // crosswalk: bars along the road, a stop line before it
+        for (let k = 0; k < (side ? 5 : 10); k++) c.add('zebra', side ? side * (0.7 + k * 0.7) : (k - 4.5) * 0.8, 0, z, 0, 0, 1);
+        c.gp.push([side ? ROAD : ROAD * 2, 0.026, 0.4, (rx0 + rx1) / 2, 0.003, z + 3.4, 0xf0efe8, 1]);
+        if (!side || side > 0) c.add('tlight', ROAD + 0.6, 0, z - 2.5, 0, 0, 1);
+        if (!side || side < 0) c.add('tlight', -ROAD - 0.6, 0, z - 2.5, Math.PI, 0, 1);
+      }
       for (const s of sides) {
-        ground(1.5, 0.34, s * (ROAD + 1.05), -0.13, 0x9e9b95);
-        ground(64, 0.5, s * (ROAD + 1.4 + 32), -0.32, 0x3a3e45);
+        ground(2.4, 0.4, s * (ROAD + 0.3 + 1.2), 0.0, 0x9e9b95);                   // raised sidewalk (top 0.2) with a curb edge
+        ground(0.2, 0.44, s * (ROAD + 0.3 + 0.1), 0.0, 0xd6d2ca);
+        fxTexPlane(c, 'pave', 0xffffff, Math.min(s * (ROAD + 0.5), s * (ROAD + 2.7)), Math.max(s * (ROAD + 0.5), s * (ROAD + 2.7)), z0, z1, 0.205, 2, 2);
+        ground(64, 0.5, s * (ROAD + 2.7 + 32), -0.32, 0x3a3e45);
         let z = z0 - 1;
         while (z > z1 + 2) {
           const d = rr_(8, 12);
-          if (rng() < 0.2) { c.add('alley', s * (ROAD + 1.8), 0, z - d / 2, s < 0 ? 0 : Math.PI, 0, 1); z -= 5.6; continue; }
+          if (rng() < 0.2) { c.add('alley', s * (ROAD + 2.7), 0, z - d / 2, s < 0 ? 0 : Math.PI, 0, 1); z -= 5.6; continue; }
           const v = (rng() * 4) | 0, wv = [8, 9, 8, 10][v], dv = [9, 10, 11, 9][v];
-          c.add('bld' + v, s * (ROAD + 1.9 + wv / 2 + rr_(0, 0.8)), 0, z - dv / 2, s < 0 ? 0 : Math.PI, 0, 1, tmpTc.setScalar(0.82 + rng() * 0.3).getHex());
+          c.add('bld' + v, s * (ROAD + 2.75 + wv / 2 + rr_(0, 0.3)), 0, z - dv / 2, s < 0 ? 0 : Math.PI, 0, 1, tmpTc.setScalar(0.85 + rng() * 0.3).getHex());
           z -= dv + rr_(0.2, 0.8);
         }
-        for (let zz = z0 - 6; zz > z1 + 2; zz -= 16) c.add('lamp', s * (ROAD + 0.9), 0, zz, s > 0 ? 0 : Math.PI, 0, 1);
-      }
-      for (let z = z0 - rr_(18, 34); z > z1 + 6; z -= rr_(64, 88)) {
-        if (!side || side > 0) c.add('tlight', ROAD + 0.6, 0, z, 0, 0, 1);
-        if (!side || side < 0) c.add('tlight', -ROAD - 0.6, 0, z, Math.PI, 0, 1);
-        for (let k = 0; k < 6; k++) c.add('stripe', (side ? side * ROAD / 2 + (k - 2.5) * 0.7 : (k - 2.5) * 1.3), 0, z + 3.2, Math.PI / 2, 0, 0.4, 0xdedede);
+        for (let zz = z0 - 6; zz > z1 + 2; zz -= 16) c.add('lamp', s * (ROAD + 0.7), 0, zz, s > 0 ? 0 : Math.PI, 0, 1);
       }
       break;
     }
     case 'harbor': {
+      fxTexPlane(c, 'plank', 0xffffff, rx0, rx1, z0, z1, 0.012, 8, 2);             // dock decking
       for (const s of sides) {
-        ground(3.4, 0.5, s * (ROAD + 1.9), -0.27, 0x8b8f95);
-        ground(70, 0.5, s * (ROAD + 3.6 + 35), -1.15, 0x2c6076);
-        for (let z = z0 - 3; z > z1 + 3; z -= rr_(6.4, 9.6)) {
-          if (rng() < 0.18) continue;
-          c.add(['ctn1', 'ctn2', 'ctn3'][(rng() * 3) | 0], s * (ROAD + 1.6 + rr_(0, 0.3)), 0, z, rr_(-0.04, 0.04), 0, 1, [0xd9503f, 0x3f78c2, 0xe39a2b, 0x3f9a62, 0xe8e8e8, 0xc9b02b, 0x7a5aa8][(rng() * 7) | 0]);
+        c.gp.push([0.22, 0.02, len, s * (ROAD - 0.32), 0.02, mid, 0xf2c230, sg]);       // painted quay edge
+        fxWater(c, Math.min(s * (ROAD + 0.3), s * 95), Math.max(s * (ROAD + 0.3), s * 95), z0, z1, -0.8, 0x2d7f9a);     // water right beside the deck
+        c.gp.push([0.2, 0.02, len, s * (ROAD + 0.42), -0.78, mid, 0xd8eef4, sg]);       // foam line
+        ground(4.8, 0.5, s * (ROAD + 1.4 + 2.4), -0.25, 0x8e9298);                      // the far quay: containers and cranes stand on it
+        c.gp.push([0.22, 0.02, len, s * (ROAD + 1.55), 0.012, mid, 0xf2c230, sg]);
+        for (let z = z0 - 3; z > z1 + 3; z -= rr_(6.2, 9)) {
+          if (rng() < 0.15) continue;
+          c.add(['ctn1', 'ctn2', 'ctn3'][(rng() * 3) | 0], s * (ROAD + 3.3 + rr_(0, 0.4)), 0, z, rr_(-0.04, 0.04), 0, 1, [0xd9503f, 0x3f78c2, 0xe39a2b, 0x3f9a62, 0xe8e8e8, 0xc9b02b, 0x7a5aa8][(rng() * 7) | 0]);
         }
-        for (let z = z0 - 2; z > z1 + 1; z -= 4.8) c.add('bollard', s * (ROAD + 3.3), 0, z, 0, 0, 1);
-        for (let z = z0 - rr_(10, 40); z > z1 + 8; z -= rr_(70, 100)) c.add('crane', s * (ROAD + 6.2), 0, z, s < 0 ? 0 : Math.PI, 0, 1);
+        for (let z = z0 - 2; z > z1 + 1; z -= 4.8) c.add('bollard', s * (ROAD + 1.7), 0, z, 0, 0, 1);
+        for (let z = z0 - 5; z > z1 + 2; z -= 7.5) c.add('cleat', s * (ROAD - 0.62), 0, z, rr_(-0.2, 0.2), 0, 1);
+        for (let z = z0 - rr_(10, 30); z > z1 + 8; z -= rr_(52, 74)) c.add('crane', s * (ROAD + 5.4), 0, z, s < 0 ? 0 : Math.PI, 0, 1);
         for (let z = z0 - 5; z > z1 + 2; z -= 20) c.add('lamp', s * (ROAD + 0.9), 0, z, s > 0 ? 0 : Math.PI, 0, 1);
       }
       break;
     }
     case 'forest': {
-      road(0x6a5640, 0.0);
-      c.gp.push([0.16, 0.02, len, side > 0 ? ROAD * 0.5 : side < 0 ? -ROAD * 0.5 : -1.3, 0.018, mid, 0x846e54, sg]);
-      if (!side) c.gp.push([0.16, 0.02, len, 1.3, 0.018, mid, 0x846e54, sg]);
+      road(0x7a6240, 0.03);                                                          // packed dirt over the dashes, with two tyre ruts on the lane lines
+      for (const lx of (side ? [side * 1.3] : [-1.3, 1.3])) c.gp.push([0.55, 0.02, len, lx, 0.04, mid, 0x4c3b27, sg]);
+      for (let z = z0 - 1; z > z1; z -= rr_(1.8, 3.2)) c.add('patch', rr_(rx0 + 0.3, rx1 - 0.3), 0, z, rr_(0, 6.28), 0, rr_(0.5, 1.5), [0x8f7550, 0x6a5538, 0x9a8460, 0x5b4a31][(rng() * 4) | 0]);
       for (const s of sides) {
-        ground(60, 0.5, s * (ROAD + 0.4 + 30), -0.26, 0x4a6b3a);
-        for (let z = z0 - 0.5; z > z1; z -= rr_(1.3, 2.6)) {
-          const x = s * (ROAD + 1.5 + rr_(0, 5.5)), k = rng(), t = k < 0.55 ? 'tree1' : k < 0.82 ? 'tree2' : 'bush';
-          c.add(t, x, 0, z, rr_(0, 6.28), 0, rr_(0.9, 1.55), tmpTc.setScalar(0.8 + rng() * 0.35).getHex());
+        ground(1.8, 0.5, s * (ROAD + 0.3 + 0.9), -0.25, 0x6fa44c);                  // grass verge
+        ground(60, 0.5, s * (ROAD + 2.1 + 30), -0.26, 0x4a6b3a);
+        for (let z = z0 - rr_(0.5, 3); z > z1; z -= rr_(4.2, 6.8)) c.add('treeO', s * (ROAD + rr_(1.2, 1.9)), 0, z, s < 0 ? 0 : Math.PI, 0, rr_(0.95, 1.25), tmpTc.setScalar(0.85 + rng() * 0.25).getHex());    // canopies lean over the road edge
+        for (let z = z0 - 0.5; z > z1; z -= rr_(1.8, 3)) {
+          const x = s * (ROAD + 2.6 + rr_(0, 5)), k = rng(), t = k < 0.55 ? 'tree1' : k < 0.82 ? 'tree2' : 'bush';
+          c.add(t, x, 0, z, rr_(0, 6.28), 0, rr_(0.9, 1.5), tmpTc.setScalar(0.8 + rng() * 0.35).getHex());
         }
-        for (let z = z0 - 1; z > z1; z -= rr_(3, 5)) c.add(rng() < 0.7 ? 'tree1' : 'tree2', s * (ROAD + rr_(7, 24)), 0, z, rr_(0, 6.28), 0, rr_(1.2, 2.2), tmpTc.setScalar(0.7 + rng() * 0.3).getHex());
+        for (let z = z0 - 1; z > z1; z -= rr_(3, 5)) c.add(rng() < 0.7 ? 'tree1' : 'tree2', s * (ROAD + rr_(8, 24)), 0, z, rr_(0, 6.28), 0, rr_(1.2, 2.2), tmpTc.setScalar(0.7 + rng() * 0.3).getHex());
         for (let z = z0 - 9; z > z1 + 2; z -= rr_(40, 70)) c.add('logd', s * (ROAD + rr_(1.2, 2.5)), 0, z, rr_(-0.4, 0.4) + Math.PI / 2 * (rng() < 0.4), 0, 1);
       }
-      for (let z = z0 - 4; z > z1 + 2; z -= rr_(12, 20)) c.add('puddle', (side ? side * ROAD * 0.5 : 0) + rr_(-2.2, 2.2), 0, z, rr_(0, 6.28), 0, rr_(0.7, 1.6));
+      for (let z = z0 - 4; z > z1 + 2; z -= rr_(12, 20)) c.add('puddle', rr_(rx0 + 0.9, rx1 - 0.9), 0, z, rr_(0, 6.28), 0, rr_(0.7, 1.5));
       break;
     }
     default: break;            // bridge: the base scenery is the look
   }
 }
-// ---- split segments: one road becomes two. Gameplay keeps the same coordinates (each side is a half of the deck), so the picture only
-// opens a narrow gap down the middle (void, water or a wall, with a low barrier on each lip) and gives every half its own scene.
+// ---- split segments: one road becomes two. Gameplay keeps the same coordinates (each side is a half of the deck), so the separation is drawn
+// inside that width: a hatched gore wedge and a crash cushion at the entry, then a chasm (or a water channel) that is darker toward its
+// centre, with a kerb and a guard rail on each lip and props of each side's own scene hugging it.
 const FX_SIGNS = [];
+const FX_SPLIT = { list: [], t: 0 };
 const fxFontOk = () => !!(document.fonts && document.fonts.check && document.fonts.check('900 40px "Noto Sans TC"'));
 function fxSplitSign(seg, grp) {
   const ln = SCENES[fxSegScene(seg, -1)] || SCENES.bridge, rn = SCENES[fxSegScene(seg, 1)] || SCENES.bridge;
@@ -4633,33 +4735,71 @@ function fxSplitSign(seg, grp) {
 }
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { for (const d of FX_SIGNS) d(); }).catch(() => {});
 function fxSplitBuild(seg, ctx, grp) {
-  const z0 = seg.z0, z1 = seg.z1, len = z0 - z1, add = ctx.add;
+  const z0 = seg.z0, z1 = seg.z1, add = ctx.add, GORE = Math.min(8, (z0 - z1) * 0.12), zs = z0 - GORE, len = zs - z1;
   fxDecor(fxSegScene(seg, -1), -1, z0, z1, ctx);
   fxDecor(fxSegScene(seg, 1), 1, z0, z1, ctx);
-  // the gap: a lens down the middle that opens over the first quarter and closes over the last
-  const GMAX = 0.5, N = Math.max(8, Math.ceil(len / 2)), g = t => GMAX * Math.min(1, Math.min(t, 1 - t) / 0.22) ** 0.8;
-  const water = fxSegScene(seg, -1) === 'harbor' || fxSegScene(seg, 1) === 'harbor', col = new T.Color(water ? 0x2c6076 : 0x0c1015);
-  const pos = [], nor = [], cl = [];
-  for (let i = 0; i < N; i++) {
-    const za = z0 - len * i / N, zb = z0 - len * (i + 1) / N, ga = g(i / N) + 0.03, gb = g((i + 1) / N) + 0.03;
-    const q = [[-ga, za], [ga, za], [-gb, zb], [gb, zb]];
-    for (const k of [0, 2, 1, 1, 2, 3]) { pos.push(q[k][0], 0.04, q[k][1]); nor.push(0, 1, 0); cl.push(col.r, col.g, col.b); }
+  const GMAX = 0.5, LIP = 0.62, g = t => GMAX * Math.min(1, Math.min(t, 1 - t) / 0.2) ** 0.8;      // the chasm opens after the gore and closes again at z1
+  const water = fxSegScene(seg, -1) === 'harbor' || fxSegScene(seg, 1) === 'harbor';
+  FX_SPLIT.list.push({ zs, z1, g, water });
+  // chasm: three vertices across a row (edge, centre, edge); the centre is darker (a cut with depth), water gets a blue core and a shimmer
+  const N = Math.max(8, Math.ceil(len / 2)), pos = [], nor = [], cl = [], idx = [];
+  const ce = new T.Color(water ? 0x3a97b0 : 0x232c3b), cc = new T.Color(water ? 0x0b3a57 : 0x000000);
+  for (let i = 0; i <= N; i++) {
+    const t = i / N, z = zs - len * t, gg = g(t) + 0.03;
+    for (const [x, c] of [[-gg, ce], [0, cc], [gg, ce]]) { pos.push(x, 0.045, z); nor.push(0, 1, 0); cl.push(c.r, c.g, c.b); }
+    if (i) { const a = (i - 1) * 3, b = i * 3; idx.push(a, a + 1, b, a + 1, b + 1, b, a + 1, a + 2, b + 1, a + 2, b + 2, b + 1); }
   }
   const geo = new T.BufferGeometry();
   geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); geo.setAttribute('normal', new T.Float32BufferAttribute(nor, 3)); geo.setAttribute('color', new T.Float32BufferAttribute(cl, 3));
-  geo.computeBoundingSphere();
-  const gm = new T.Mesh(geo, M.vc); gm.frustumCulled = false; grp.add(gm);
-  // a low barrier on each lip, and chevrons painted on each half at the entry
-  for (let i = 1; i < N - 1; i++) {
-    const z = z0 - len * (i + 0.5) / N, gg = g((i + 0.5) / N);
-    if (gg < 0.05) continue;
-    for (const s of [-1, 1]) add('jersey', s * (gg + 0.3), 0, z, 0, 0, 1);
+  geo.setIndex(idx); geo.computeBoundingSphere();
+  const gm = new T.Mesh(geo, water ? fxWaterMat() : M.vc); gm.frustumCulled = false; gm.renderOrder = 1; grp.add(gm);
+  // gore: a hatched wedge that points at the squad, and a crash cushion at its base
+  { const gp = [], gn = [], gc = [], K = 8, ya = new T.Color(0xf0efe8), yb = new T.Color(0xe6b020);
+    for (let k = 0; k < K; k++) {
+      const za = z0 - GORE * k / K, zb = z0 - GORE * (k + 1) / K, ha = LIP * k / K, hb = LIP * (k + 1) / K, c = k & 1 ? ya : yb;
+      for (const q of [[-ha, za], [ha, za], [-hb, zb], [hb, zb]]) { gp.push(q[0], 0.05, q[1]); gc.push(c.r, c.g, c.b); gn.push(0, 1, 0); }
+    }
+    const gi = []; for (let k = 0; k < K; k++) gi.push(k * 4, k * 4 + 1, k * 4 + 2, k * 4 + 1, k * 4 + 3, k * 4 + 2);
+    const gg2 = new T.BufferGeometry(); gg2.setAttribute('position', new T.Float32BufferAttribute(gp, 3)); gg2.setAttribute('normal', new T.Float32BufferAttribute(gn, 3)); gg2.setAttribute('color', new T.Float32BufferAttribute(gc, 3)); gg2.setIndex(gi); gg2.computeBoundingSphere();
+    const gore = new T.Mesh(gg2, M.vc); gore.frustumCulled = false; gore.renderOrder = 1; grp.add(gore);
+    add('cushion', 0, 0, zs - 0.35, 0, 0, 1); }
+  // kerb + guard rail on both lips; each side's own scene hugs the gap
+  for (let i = 1; i < N; i++) {
+    const t = (i + 0.5) / N, z = zs - len * t;
+    const gg = g(t);
+    if (gg < 0.07) continue;
+    for (const s of [-1, 1]) add('lipwall', s * (gg + 0.2), 0, z, 0, 0, 1);
   }
   for (const s of [-1, 1]) {
-    const c = new T.Color(MAP_SC[fxSegScene(seg, s)] || '#ffffff').getHex();
-    for (let k = 0; k < 3; k++) add('arrowf', s * 2.2, 0, z0 - 6 - k * 2.2, 0, 0, 1, c);
+    const sc = fxSegScene(seg, s), col = new T.Color(MAP_SC[sc] || '#ffffff').getHex();
+    for (let k = 0; k < 3; k++) add('arrowf', s * 2.2, 0, z0 - 3.5 - k * 2.6, -s * 0.3, 0, 1.5, col);       // chevrons lean out toward their own road
+    for (let z = zs - 4; z > z1 + 5; z -= 6.5) {
+      const gg = g((zs - z) / len), x = s * (gg + 0.62);
+      if (gg < 0.2) continue;
+      switch (sc) {
+        case 'city': add('lamp', x, 0, z, s > 0 ? 0 : Math.PI, 0, 0.8); break;
+        case 'forest': add('bush', x, 0, z, rr_ctx(z), 0, 0.7); break;
+        case 'harbor': add('bollard', x, 0, z, 0, 0, 1); break;
+        case 'tunnel': add('cone', x, 0, z, 0, 0, 1); break;
+        default: add('jersey', x, 0, z, 0, 0, 0.8);
+      }
+    }
   }
   fxSplitSign(seg, grp);
+}
+const rr_ctx = z => (Math.sin(z * 12.9898) * 43758.5453 % 1) * 6.28;
+// the void sheds a little dust and rubble now and then (a water gap shimmers instead)
+function fxSplitFx(dt) {
+  if (reduced || G.paused || G.phase === 'menu' || !FX_SPLIT.list.length) return;
+  for (const sp of FX_SPLIT.list) {
+    if (G.z > sp.zs + 10 || G.z < sp.z1 - 4) continue;
+    FX_SPLIT.t -= dt;
+    if (FX_SPLIT.t > 0) return;
+    FX_SPLIT.t = 0.07;
+    const z = clamp(G.z - rr(2, 20), sp.z1 + 2, sp.zs - 1), gg = sp.g((sp.zs - z) / (sp.zs - sp.z1));
+    if (gg > 0.15 && !sp.water) burst(rr(-gg, gg) * 0.8, 0.12, z, 1, [0.5, 0.5, 0.56], 0.35, 1.1);
+    return;
+  }
 }
 const ROUTE = { route: null, lg: null, theme: null, group: null, lamps: [] };
 const hashF = n => { const x = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return x - Math.floor(x); };
@@ -4675,7 +4815,8 @@ function fxBuildRoute() {
   const add = (t, x, y, z, ry, rz, sc, col) => (inst[t] || (inst[t] = [])).push([x, y, z, ry, rz, sc, col == null ? 0xffffff : col]);
   const flats = [];       // { x0, x1, z0, z1, opacity } dark / scorch rectangles on the road
   const scorch = [];
-  const gp = [], ctx = { add, rng, rr: rr_, gp, lamps: ROUTE.lamps };       // gp: merged ground boxes (shoulders, quays, forest floor ...)
+  FX_SPLIT.list.length = 0;
+  const gp = [], ctx = { add, rng, rr: rr_, gp, lamps: ROUTE.lamps, extra: [] };       // gp: merged ground boxes (shoulders, quays, forest floor ...)
   ROUTE.scene = fxStageScene();
   for (const seg of G.route || []) {
     const z0 = seg.z0, z1 = seg.z1, len = z0 - z1, mid = (z0 + z1) / 2;
@@ -4728,6 +4869,7 @@ function fxBuildRoute() {
   };
   for (const t in inst) mkInst(t, inst[t]);
   if (gp.length) { const gm = new T.Mesh(boxes(gp), M.vc); gm.frustumCulled = false; grp.add(gm); }
+  fxAddMerged(grp, ctx.extra);
   fxCullBase();
   // flat decals: dark road outside a narrow section, scorch marks, arena plaza
   if (flats.length) {
@@ -5100,7 +5242,7 @@ function fxUpdate(dt) {
   fxEnsureRoute();
   fxUpdateBend(dt);
   fxUpdateLanes(G.time);
-  fxDrawObstacles(G.time); fxUpdateObsWarn(G.time);
+  fxDrawObstacles(G.time); fxUpdateObsWarn(G.time); fxSplitFx(dt);
   fxIntro();
 }
 
