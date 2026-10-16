@@ -4448,7 +4448,9 @@ function updateBuffHud(t) {
   BUFFV.frenzy = BUFFV.split = false;
   for (const id in buffState) {
     const st = buffState[id], info = buffInfo(id);
-    const left = typeof G.buffs[id] === 'number' ? G.buffs[id] : st.secs - (G.time - st.t0);
+    // logic owns G.buffs: a chip whose buff is gone there (stage restart / node switch cleared it) goes too
+    if (typeof G.buffs[id] !== 'number') { dropBuff(id); continue; }
+    const left = G.buffs[id];
     const off = Math.round(RING_LEN * (1 - clamp(left / st.secs, 0, 1)) * 10) / 10;
     if (off !== st.off) { st.off = off; st.fg.setAttribute('stroke-dashoffset', String(off)); }
     const sec = Math.max(0, Math.ceil(left));
