@@ -415,6 +415,10 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 .unlock { font: 900 15px var(--body); letter-spacing: .06em; color: #10151b; background: linear-gradient(#ffd76a, #f2a416); border-radius: 12px; padding: 7px 14px; box-shadow: 0 3px 0 var(--hazard-deep), 0 0 18px rgba(255,176,32,.45); animation: unlockpop .6s cubic-bezier(.2,1.5,.4,1); max-width: 100%; box-sizing: border-box; }
 .unlock b { font-weight: 900; }
 @keyframes unlockpop { 0% { transform: scale(.6); opacity: 0; } 100% { transform: none; opacity: 1; } }
+.lumrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; max-width: 300px; box-sizing: border-box; padding: 8px 8px 8px 16px; border-radius: 14px; background: var(--panel); font: 900 15px var(--body); letter-spacing: .1em; }
+.lumseg { display: inline-flex; border-radius: 10px; overflow: hidden; box-shadow: inset 0 0 0 2px rgba(255,255,255,.25); }
+.lumseg button { border: 0; background: transparent; color: var(--paper); font: 900 14px var(--body); letter-spacing: .08em; padding: 8px 14px; cursor: pointer; }
+.lumseg button.on { background: var(--hazard); color: var(--ink); }
 @media (prefers-reduced-motion: reduce) { .mnode.open .mdisc { animation: none; } .unlock { animation: none; } }
 
 </style>
@@ -492,6 +496,7 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
       <li style="--c: var(--blood)"><span><strong>擊倒巨屍</strong>才算過關，活下來的隊員<strong>帶到下一關</strong>。</span></li>
       <li style="--c: var(--hazard)"><span><strong>世界地圖</strong>上遇到岔路可以二選一：難度高的那條金幣也比較多。</span></li>
     </ul>
+    <div class="lumrow"><span>亮度</span><div class="lumseg" role="group" aria-label="亮度"><button type="button" data-lum="0" aria-pressed="true">標準</button><button type="button" data-lum="1" aria-pressed="false">明亮</button></div></div>
     <button class="btn ghost wide" id="rulesBack" type="button">知道了</button>
   </div>
 </section>
@@ -567,6 +572,7 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
   <div class="card">
     <span class="eyebrow">PAUSED</span>
     <h2>已暫停</h2>
+    <div class="lumrow"><span>亮度</span><div class="lumseg" role="group" aria-label="亮度"><button type="button" data-lum="0" aria-pressed="true">標準</button><button type="button" data-lum="1" aria-pressed="false">明亮</button></div></div>
     <div class="btnstack">
       <button class="btn wide" id="btnResume" type="button">繼續</button>
       <button class="btn ghost wide" id="btnRestart" type="button">重新開始</button>
@@ -1072,6 +1078,7 @@ const bus = {
 const stage = $('#stage');
 const renderer = new T.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 stage.appendChild(renderer.domElement);
+renderer.toneMapping = T.LinearToneMapping; renderer.toneMappingExposure = 1;
 const scene = new T.Scene();
 const FOG = 0x8fa3b3;
 scene.background = new T.Color(FOG);
@@ -1338,12 +1345,14 @@ const CLOCK = { uTime: { value: 0 } };
 // Character shader (zombies, soldiers, boss): per-instance walk / lurch / hunch / head tilt / recoil, zombie palette slots with glowing
 // eyes, and a cheap rim (fresnel) term tinted by the theme's fog colour. All through onBeforeCompile on a Lambert material.
 const RIM = { color: { value: new T.Color(0x9fb4c8) } };
+const FX_RIMS = [], FX_CHAR_MATS = [];
 function fxChar(mat, o) {
+  FX_CHAR_MATS.push(mat);
   const pal = o.pal ? o.pal.map(h => { const c = new T.Color(h); return new T.Vector3(c.r, c.g, c.b); }) : null;
   const zombie = !!pal;
   mat.onBeforeCompile = sh => {
     sh.uniforms.uTime = CLOCK.uTime; sh.uniforms.uHip = { value: o.hip }; sh.uniforms.uFreq = { value: o.freq };
-    sh.uniforms.uRimC = RIM.color; sh.uniforms.uRim = { value: o.rim };
+    sh.uniforms.uRimC = RIM.color; const ru = { value: o.rim }; FX_RIMS.push({ u: ru, b: o.rim }); sh.uniforms.uRim = ru;
     sh.uniforms.uEyeC = { value: new T.Color(o.eye || 0xffd24a) };
     sh.uniforms.uWalk = { value: new T.Vector4(0, 1, 1, 0) }; sh.uniforms.uStyle = { value: new T.Vector4(o.hunch || 0, 0, 0, 0.5) };
     if (pal) sh.uniforms.uPal = { value: pal };
@@ -3461,7 +3470,7 @@ function drawSoldiers() {
     const since = per - so.cd;                                   // time since this soldier last fired
     const kn = since >= 0 && since < 0.09 ? 1 - since / 0.09 : 0, kick = kn * kmax;
     sWalk.array[i * 4] = i * 0.5 - 0.785; sWalk.array[i * 4 + 1] = stepping; sWalk.array[i * 4 + 2] = 1; sWalk.array[i * 4 + 3] = kn;   // kn: upper-body recoil
-    if (!so.fxc) { const h = Math.random(), h2 = Math.random(), h3 = Math.random(); so.fxc = [0.9 + 0.2 * h * (0.9 + 0.2 * h2), 0.92 + 0.16 * h, 0.9 + 0.2 * h * (0.9 + 0.2 * h3)]; }   // small per-soldier colour variance
+    if (!so.fxc) { const h = Math.random(), h2 = Math.random(), h3 = Math.random(); so.fxc = [1.2 + 0.2 * h * (0.9 + 0.2 * h2), 1.22 + 0.16 * h, 1.2 + 0.2 * h * (0.9 + 0.2 * h3)]; }   // small per-soldier colour variance (round 8: a step brighter so the squad reads on dark ground)
     sMesh.instanceColor.array[i * 3] = so.fxc[0]; sMesh.instanceColor.array[i * 3 + 1] = so.fxc[1]; sMesh.instanceColor.array[i * 3 + 2] = so.fxc[2];
     dummy.position.x += Math.sin(ry) * kick; dummy.position.z += Math.cos(ry) * kick;
     dummy.updateMatrix();
@@ -4666,11 +4675,11 @@ function updateGateReveal(e, dt) {
 // ================================================================ round 4: themes, route props, lanes, curved world, stage intro
 // ---- themes (G.theme -> sky, fog, lights, extras)
 const THEMES = {
-  dawn:   { sky: 0xe3b79c, fogNear: 28, fogFar: 84, hemiSky: 0xffe6d2, hemiGnd: 0x6a5c58, hemiI: 1.0, sun: 0xffd4a8, sunI: 0.85, sunPos: [-7, 8, 6], tracer: 1 },
+  dawn:   { sky: 0xe3b79c, fogNear: 28, fogFar: 84, hemiSky: 0xffe6d2, hemiGnd: 0x7a6c68, hemiI: 1.05, sun: 0xffd4a8, sunI: 0.85, sunPos: [-7, 8, 6], tracer: 1 },
   haze:   { sky: 0x8fa3b3, fogNear: 24, fogFar: 78, hemiSky: 0xe2e9f1, hemiGnd: 0x4a4038, hemiI: 0.95, sun: 0xfff2dc, sunI: 0.75, sunPos: [6, 12, 5], tracer: 1 },
-  sunset: { sky: 0xd78552, fogNear: 22, fogFar: 72, hemiSky: 0xffcfa6, hemiGnd: 0x5a3a36, hemiI: 0.9, sun: 0xff9a55, sunI: 1.0, sunPos: [9, 5, 3], tracer: 1.05 },
-  night:  { sky: 0x070d20, fogNear: 14, fogFar: 58, hemiSky: 0x5668a8, hemiGnd: 0x161a2c, hemiI: 0.6, sun: 0x7f93e0, sunI: 0.4, sunPos: [-5, 10, 4], tracer: 1.5, lamps: true },
-  storm:  { sky: 0x36424c, fogNear: 12, fogFar: 50, hemiSky: 0x8fa0ae, hemiGnd: 0x2a3036, hemiI: 0.65, sun: 0xaabdd2, sunI: 0.35, sunPos: [3, 12, 6], tracer: 1.15, rain: true },
+  sunset: { sky: 0xd78552, fogNear: 22, fogFar: 72, hemiSky: 0xffcfa6, hemiGnd: 0x6a4a46, hemiI: 1.0, sun: 0xff9a55, sunI: 1.0, sunPos: [9, 5, 3], tracer: 1.05 },
+  night:  { sky: 0x131b3c, fogNear: 17, fogFar: 64, hemiSky: 0x8394d0, hemiGnd: 0x3a4262, hemiI: 0.88, sun: 0x93a6ea, sunI: 0.62, sunPos: [-5, 10, 4], tracer: 1.5, lamps: true, rimK: 1.5, em: 0x0f1428, lift: 0.07 },
+  storm:  { sky: 0x4d5d6b, fogNear: 16, fogFar: 58, hemiSky: 0xaebdca, hemiGnd: 0x434e56, hemiI: 0.9, sun: 0xb8c8dc, sunI: 0.55, sunPos: [3, 12, 6], tracer: 1.15, rain: true, rimK: 1.3, em: 0x0c1115, lift: 0.05 },
 };
 const TH = { id: null, cur: THEMES.haze, flash: 0, ltIn: 6, again: 0, fApplied: -1 };
 const LIGHTNING = new T.Color(0xdbe6ff), tmpTc = new T.Color();
@@ -4704,6 +4713,23 @@ const rainMesh = new T.LineSegments(rainGeo, new T.ShaderMaterial({
 }));
 rainMesh.frustumCulled = false; rainMesh.visible = false;
 scene.add(rainMesh);
+// brightness setting 亮度: 0 標準, 1 明亮 (one more step of light, a lifted sky and a little exposure); remembered in localStorage
+const LUM = { v: 0, key: 'zombie-bridge-lum' };
+try { LUM.v = localStorage.getItem(LUM.key) === '1' ? 1 : 0; } catch (e) {}
+const WHITE_C = new T.Color(0xffffff);
+function fxSetLum(v, persist) {
+  LUM.v = v ? 1 : 0; TH.fApplied = -1;
+  if (persist) { try { localStorage.setItem(LUM.key, String(LUM.v)); } catch (e) {} }
+  for (const b of document.querySelectorAll('[data-lum]')) { const on = +b.dataset.lum === LUM.v; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+}
+function fxApplyLight() {                       // everything that depends on theme + brightness setting except the lightning flash
+  const th = TH.cur, l = LUM.v, k = 1 + 0.15 * l;
+  renderer.toneMappingExposure = 1 + (th.lift || 0) + 0.07 * l;
+  sun.intensity = th.sunI * k;
+  const em = new T.Color(th.em || 0x15191f).multiplyScalar(1 + 0.5 * l);
+  for (const m of FX_CHAR_MATS) m.emissive.copy(em);
+  for (const r of FX_RIMS) r.u.value = r.b * (th.rimK || 1) * (1 + 0.2 * l);
+}
 function fxUpdateTheme(dt) {
   const id = THEMES[G.theme] ? G.theme : 'haze';
   fxUpdateSceneFx(dt);
@@ -4722,9 +4748,10 @@ function fxUpdateTheme(dt) {
   if (f !== TH.fApplied) {
     TH.fApplied = f;
     scene.fog.near = th.fogNear * SCN.fogK; scene.fog.far = th.fogFar * SCN.fogK;
-    tmpTc.setHex(th.sky).lerp(SCN.sky, SCN.mix).lerp(LIGHTNING, f * 0.55);
+    tmpTc.setHex(th.sky).lerp(SCN.sky, SCN.mix).lerp(WHITE_C, 0.07 * LUM.v).lerp(LIGHTNING, f * 0.55);
     scene.background.copy(tmpTc); scene.fog.color.copy(tmpTc);
-    hemi.intensity = th.hemiI + f * 1.1;
+    hemi.intensity = (th.hemiI + 0.06 * LUM.v) * (1 + 0.12 * LUM.v) + f * 1.1;
+    fxApplyLight();
   }
 }
 
@@ -4819,7 +4846,7 @@ function fxProp2(name) {
     case 'gantry': return boxes([[0.32, 6.1, 0.32, -4.6, 3.05, 0, 0x555b63], [0.32, 6.1, 0.32, 4.6, 3.05, 0, 0x555b63], [9.5, 0.5, 0.4, 0, 5.95, 0, 0x4a5058],
       [2.9, 1.4, 0.12, -2.0, 4.9, 0.26, 0x1f6f4c], [2.9, 1.4, 0.12, 2.0, 4.9, 0.26, 0x1f6f4c], [2.2, 0.16, 0.13, -2.0, 5.1, 0.34, 0xf1f1f1], [1.6, 0.14, 0.13, -2.0, 4.7, 0.34, 0xf1f1f1], [2.2, 0.16, 0.13, 2.0, 5.1, 0.34, 0xf1f1f1], [1.6, 0.14, 0.13, 2.0, 4.7, 0.34, 0xf1f1f1]]);
     case 'wreckflip': return boxes([[1.5, 0.45, 3.4, 0, 1.1, 0, 0x30343a], [1.7, 0.5, 3.5, 0, 0.55, 0, 0x8a4f3c], [1.4, 0.4, 1.6, 0, 0.2, -0.1, 0x3d4349], [0.28, 0.5, 0.55, -0.9, 1.5, 1.1, 0x181818], [0.28, 0.5, 0.55, 0.9, 1.5, 1.1, 0x181818], [0.28, 0.5, 0.55, -0.9, 1.5, -1.1, 0x181818], [0.28, 0.5, 0.55, 0.9, 1.5, -1.1, 0x181818]]);
-    case 'tunwall': return boxes([[0.8, 6.8, 6.1, 0, 3.4, 0, 0x5c677b], [0.16, 1.2, 6.1, 0.4, 1.0, 0, 0x6a7385], [0.14, 0.18, 6.1, 0.42, 5.4, 0, 0xfff0c0], [0.12, 0.12, 6.1, 0.42, 2.0, 0, 0xe3a820],
+    case 'tunwall': return boxes([[0.8, 6.8, 6.1, 0, 3.4, 0, 0x7a869c], [0.16, 1.2, 6.1, 0.4, 1.0, 0, 0x6a7385], [0.14, 0.18, 6.1, 0.42, 5.4, 0, 0xfff0c0], [0.12, 0.12, 6.1, 0.42, 2.0, 0, 0xe3a820],
       [0.14, 6.6, 0.22, 0.42, 3.3, 3.0, 0x2c313b], [0.1, 1.7, 0.9, 0.42, 0.95, 1.6, 0x2f9e5a], [0.1, 0.2, 0.9, 0.42, 1.9, 1.6, 0xffffff]]);
     case 'tunrib': return boxes([[0.5, 0.5, 0.5, -4.7, 6.6, 0, 0x2a2e36], [0.5, 0.5, 0.5, 4.7, 6.6, 0, 0x2a2e36], [2.4, 0.18, 0.3, -3.4, 6.85, 0, 0x343944], [2.4, 0.18, 0.3, 3.4, 6.85, 0, 0x343944]]);      // arch ribs only near the walls: the middle stays open to the camera
     case 'tunlamp': return boxes([[0.34, 0.12, 1.5, 0, 6.3, 0, 0xffe9b0], [0.06, 0.5, 0.06, 0, 6.65, 0, 0x2a2e36]]);
@@ -4867,10 +4894,10 @@ const fxSegScene = (seg, side) => (seg && seg.type === 'split' && (side < 0 ? se
 const SCENE_FX = {
   bridge:  { fogK: 1, sky: 0x8fa3b3, mix: 0 },
   highway: { fogK: 1, sky: 0xd78552, mix: 0 },
-  tunnel:  { fogK: 0.8, sky: 0x0a0f1e, mix: 0.92 },
+  tunnel:  { fogK: 0.9, sky: 0x151d36, mix: 0.85 },
   city:    { fogK: 0.9, sky: 0xe3b79c, mix: 0 },
   harbor:  { fogK: 1.25, sky: 0x7d98a8, mix: 0.4 },
-  forest:  { fogK: 0.72, sky: 0x9fb89a, mix: 0.7 },
+  forest:  { fogK: 0.9, sky: 0xa8c4a2, mix: 0.7 },
 };
 const SCN = { fogK: 1, mix: 0, sky: new T.Color(0x8fa3b3), ver: 0 };
 const fxSceneAtZ = z => { const r = G.route; if (!r || !r.length) return fxStageScene(); let seg = r[0]; for (let i = 0; i < r.length; i++) if (z <= r[i].z0) seg = r[i]; return fxSegScene(seg, G.x < 0 ? -1 : 1); };
@@ -4997,7 +5024,7 @@ function fxDecor(sc, side, z0, z1, c) {
       break;
     }
     case 'tunnel': {
-      road(0x383c45, 0.012);
+      road(0x4a505c, 0.012);
       for (const s of sides) for (let z = z0 - 3; z > z1 - 2.9; z -= 6.1) c.add('tunwall', s * (ROAD + 0.75), 0, z, s < 0 ? 0 : Math.PI, 0, 1);
       for (let z = z0 - 4.5; z > z1 + 1; z -= 9) {
         if (!side) c.add('tunrib', 0, 0, z, 0, 0, 1);
@@ -6036,6 +6063,8 @@ mapEl.scroll.addEventListener('scroll', () => {          // procedural nodes kee
 }, { passive: true });
 window.addEventListener('resize', () => { if (!$('#menu').hidden) mapRefresh(); });
 $('#btnRules').addEventListener('click', () => { $('#rulesOv').hidden = false; });
+for (const b of document.querySelectorAll('[data-lum]')) b.addEventListener('click', () => fxSetLum(+b.dataset.lum, true));
+fxSetLum(LUM.v, false);
 $('#rulesBack').addEventListener('click', () => { $('#rulesOv').hidden = true; });
 function mapGo() {
   const n = MAPV.byId[MAPV.sel];
@@ -6584,7 +6613,7 @@ function resetSave() {
 }
 // Start stage n from the beginning with its entry squad (same as prepare(n) + startRun()).
 function startStage(n) { prepare(n); startRun(); }
-window.__zb = { mapOpen, mapSelect, mapRefresh, mapNodeStates, MAPV, hordeSpec, sceneFx, levelObstacles, obstacleGaps, makeObstacle, OBS_KINDS, damageObstacle, MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap, gap: G.gap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
+window.__zb = { fxSetLum, LUM, mapOpen, mapSelect, mapRefresh, mapNodeStates, MAPV, hordeSpec, sceneFx, levelObstacles, obstacleGaps, makeObstacle, OBS_KINDS, damageObstacle, MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap, gap: G.gap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
   stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0), bw: Array.from(bw.subarray(0, nb)), bl: Array.from(bl.subarray(0, nb)), by: Array.from(by.subarray(0, nb)), bt: Array.from(bt.subarray(0, nb)), bs: Array.from(bs.subarray(0, nb)), bx: Array.from(bx.subarray(0, nb)), bz: Array.from(bz.subarray(0, nb)) }),
   perf: () => ({ pr: PR_STEPS[prIdx], steps: PR_STEPS, avg: Perf.avg, fxScale }) };
 })();
