@@ -236,6 +236,12 @@
 - 寫入：每次存檔後延遲 1.5 秒寫入雲端；頁面切到背景或關閉時立即寫入。內容沒有變化時不寫入。
 - 狀態圖示：選單、強化與結算畫面的右上角有雲端狀態小圖示，顯示「已同步雲端」「同步中…」「稍後同步」「僅存本機」或「雲端暫停」。點一下可以看說明。
 
+## 線上版與 Google 登入
+
+- 線上網址（部署後）：<https://anewlearner1.github.io/robot/zombie-bridge/>。由 `.github/workflows/singing-score.yml` 從預設分支部署，與 singing-score 共用同一個 GitHub Pages 網站。
+- 登入 Google 後，進度會存到 Firebase 的雲端資料庫，換裝置也能接著玩。不登入則只存在這台裝置。
+- 設定方式（建立 Firebase 專案、貼上 `FIREBASE_CONFIG`、授權網域、安全規則）見 [FIREBASE.md](FIREBASE.md)。安全規則在 [firestore.rules](firestore.rules)。
+
 ## 本機執行
 
 直接用瀏覽器打開 `index.html`，或在這個資料夾起一個靜態伺服器：
