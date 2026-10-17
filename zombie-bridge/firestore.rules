@@ -16,11 +16,13 @@ service cloud.firestore {
       // Read your own save (the game reads it on start-up to merge it with the local copy).
       allow read: if request.auth != null && request.auth.uid == uid;
 
-      // Create or change your own save. The size limit keeps a save far below Firestore's 1 MiB document limit
-      // (a normal save is a few KB; the limit only stops runaway writes).
+      // Create or change your own save. Firestore rules cannot measure a document's byte size, so the guard bounds its
+      // shape instead: a save has about ten top-level fields and one entry per map node, far below Firestore's 1 MiB
+      // document limit. (A normal save is a few KB; the guard only stops runaway or malformed writes.)
       allow create, update: if request.auth != null
         && request.auth.uid == uid
-        && request.resource.size() < 256 * 1024;
+        && request.resource.data.size() < 40
+        && (!('nodes' in request.resource.data) || request.resource.data.nodes.size() < 2000);
 
       // Delete your own save (only useful for a manual reset; the game itself resets with an epoch counter).
       allow delete: if request.auth != null && request.auth.uid == uid;
