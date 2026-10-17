@@ -1236,6 +1236,93 @@ const SGEO = fxChBuild((() => {
   P.push(fxS(-0.3, 1.12, -0.02, 0.1, 1.27, -0.5, 0.1, 0x2a2a2a, 3), fxS(0.3, 1.12, -0.02, 0.16, 1.28, -0.28, 0.1, 0x2a2a2a, 3)); // forearms to the gun
   return P;
 })(), false);
+
+// ---- round 8: figure tiers. A figure stands for w soldiers: 1 (rifleman), 100 (百人隊: gold trim, a banner) or 1000 (千人隊: the commander,
+// whose OUTFIT follows the current rank class G.rank.cls 0..4). Built from the same part-list builder, one merged geometry per look.
+const FX_TIER_SCALE = [1, 1.5, 2.1];
+const fxTierOf = w => w >= 1000 ? 2 : w >= 100 ? 1 : 0;
+const FX_CLS = [
+  { name: '士兵', acc: 0x7aa05a }, { name: '士官', acc: 0xd9453f }, { name: '尉官', acc: 0x4f86e8 }, { name: '校官', acc: 0xe3a42a }, { name: '將官', acc: 0xffd75e },
+];
+const GOLD = 0xe8b82a, GOLD2 = 0xc9951a;
+function fxSoldierParts(o) {
+  const P = [], mir = (w, h, d, x, y, z, c, tl, tr) => { P.push(fxB(w, h, d, -x, y, z, c, tl)); P.push(fxB(w, h, d, x, y, z, c, tr)); };
+  mir(0.2, 0.62, 0.24, 0.12, 0.47, 0, o.pants, 1, -1);                 // legs
+  mir(0.22, 0.16, 0.34, 0.12, 0.08, -0.02, 0x15181c, 1, -1);           // boots
+  if (!o.coat) mir(0.23, 0.12, 0.27, 0.12, 0.52, 0, o.knee || o.pants, 1, -1);
+  if (o.coat) P.push(fxB(0.62, 0.86, 0.38, 0, 0.9, 0, o.coat, 3), fxB(0.64, 0.08, 0.4, 0, 0.5, 0, o.coatHem || o.coat, 3));      // long coat down to the knees
+  else { P.push(fxB(0.52, 0.36, 0.3, 0, 0.98, 0, o.jacket, 3)); P.push(fxB(0.54, 0.4, 0.34, 0, 1.2, 0, o.vest, 3)); }
+  P.push(fxB(0.54, 0.07, 0.32, 0, 0.78, 0, o.belt || 0x8a7a50, 3));
+  if (!o.coat) mir(0.1, 0.14, 0.1, 0.31, 0.92, 0.02, o.pouch || 0x3c4a2a, 3, 3);
+  if (o.pack) { P.push(fxB(0.4, 0.5, 0.22, 0, 1.14, 0.27, o.pack, 3)); P.push(fxB(0.36, 0.1, 0.2, 0, 1.44, 0.27, o.pack2 || o.pack, 3)); }
+  mir(0.2, 0.12, 0.3, 0.33, 1.4, 0, o.pad, 3, 3);                       // shoulder pads
+  P.push(fxB(0.26, 0.26, 0.26, 0, 1.56, 0, 0xd7a982, 4));              // head
+  P.push(fxS(-0.3, 1.38, 0, -0.3, 1.12, -0.02, 0.13, o.sleeve || o.jacket || o.coat, 3), fxS(0.3, 1.38, 0, 0.3, 1.12, -0.02, 0.13, o.sleeve || o.jacket || o.coat, 3));
+  P.push(fxS(-0.3, 1.12, -0.02, 0.1, 1.27, -0.5, 0.1, 0x2a2a2a, 3), fxS(0.3, 1.12, -0.02, 0.16, 1.28, -0.28, 0.1, 0x2a2a2a, 3));
+  switch (o.hat) {
+    case 'helmet': P.push(fxB(0.34, 0.18, 0.34, 0, 1.72, 0, o.hatC || 0x1d2733, 4), fxB(0.36, 0.05, 0.36, 0, 1.62, 0, o.hatC2 || 0x2a3646, 4), fxB(0.26, 0.06, 0.04, 0, 1.6, -0.15, 0x54dcff, 4)); break;
+    case 'net': P.push(fxB(0.36, 0.2, 0.36, 0, 1.72, 0, o.hatC, 4), fxB(0.38, 0.06, 0.38, 0, 1.64, 0, o.hatC2, 4), fxB(0.3, 0.04, 0.3, 0, 1.84, 0, 0x6a7a44, 4), fxB(0.26, 0.05, 0.04, 0, 1.6, -0.15, 0x54dcff, 4)); break;
+    case 'beret': P.push(fxB(0.4, 0.1, 0.4, 0.03, 1.73, 0.02, o.hatC, 4), fxB(0.3, 0.05, 0.3, 0.1, 1.8, 0.04, o.hatC, 4), fxB(0.36, 0.05, 0.34, 0, 1.66, 0, 0x14161d, 4), fxB(0.07, 0.07, 0.03, -0.12, 1.72, -0.2, GOLD, 4)); break;
+    case 'peak': P.push(fxB(0.36, 0.14, 0.36, 0, 1.73, 0, o.hatC, 4), fxB(0.38, 0.05, 0.38, 0, 1.66, 0, o.hatBand || 0xf0f0ea, 4), fxB(0.38, 0.05, 0.38, 0, 1.81, 0, o.hatTop || o.hatC, 4), fxB(0.34, 0.03, 0.2, 0, 1.64, -0.26, 0x101114, 4), fxB(0.08, 0.08, 0.03, 0, 1.73, -0.19, GOLD, 4)); break;
+    case 'ornate': P.push(fxB(0.38, 0.2, 0.38, 0, 1.76, 0, o.hatC, 4), fxB(0.4, 0.07, 0.4, 0, 1.66, 0, GOLD, 4), fxB(0.42, 0.06, 0.42, 0, 1.87, 0, GOLD, 4), fxB(0.3, 0.1, 0.3, 0, 1.94, 0, o.hatC, 4), fxB(0.36, 0.03, 0.22, 0, 1.64, -0.27, GOLD2, 4), fxB(0.12, 0.12, 0.03, 0, 1.78, -0.2, GOLD, 4), fxB(0.05, 0.14, 0.05, 0, 2.06, 0, 0xe2363b, 4)); break;
+    default: break;
+  }
+  return P;
+}
+const FX_LOOK = {
+  hundred: { jacket: 0x2f5fd0, vest: 0x22314d, pants: 0x1f2f63, knee: 0x3a4a78, pad: GOLD, pack: 0x4a5a3a, pack2: 0x59693f, hat: 'helmet', hatC: 0x1d2733, hatC2: GOLD, belt: GOLD2 },
+  0: { jacket: 0x58733d, vest: 0x394b2b, pants: 0x3b4a2e, knee: 0x2d3a22, pad: 0x435430, pack: 0x4a5236, pack2: 0x5b6540, hat: 'net', hatC: 0x3a4a2a, hatC2: 0x2a3820, belt: 0x6a5a38 },
+  1: { jacket: 0x1d2433, vest: 0x161c2a, pants: 0x131824, pad: 0x2c3448, hat: 'beret', hatC: 0x8a1f2c, belt: 0x0e1118, pouch: 0x2c3448 },
+  2: { jacket: 0x22336a, vest: 0x22336a, pants: 0x151d3d, pad: 0x22336a, hat: 'peak', hatC: 0x22336a, hatBand: 0xf0f0ea, hatTop: 0xf0f0ea, belt: 0xf0f0ea, pouch: 0x22336a },
+  3: { coat: 0x6b5d45, coatHem: 0x574a36, pants: 0x3a2f22, pad: 0x6b5d45, hat: 'peak', hatC: 0x5a4d38, hatBand: GOLD, hatTop: 0x5a4d38, belt: GOLD2, sleeve: 0x6b5d45 },
+  4: { jacket: 0xefeadc, vest: 0xe2dccb, pants: 0xe8e4d6, pad: GOLD, hat: 'ornate', hatC: 0xf2eee2, belt: GOLD, pouch: GOLD, sleeve: 0xefeadc },
+};
+function fxTierParts(k) {
+  const L = FX_LOOK[k], P = fxSoldierParts(L), mir = (w, h, d, x, y, z, c, tl, tr) => { P.push(fxB(w, h, d, -x, y, z, c, tl)); P.push(fxB(w, h, d, x, y, z, c, tr)); };
+  if (k === 'hundred') {
+    P.push(fxB(0.06, 1.5, 0.06, 0, 2.0, 0.42, 0x6a4a26, 3));                       // banner pole (the flag is its own instanced plane)
+    P.push(fxB(0.1, 0.5, 0.03, 0, 1.2, 0.19, GOLD, 3));                            // gold braid down the back
+    mir(0.06, 0.2, 0.06, 0.18, 1.1, 0.06, GOLD2, 3, 3);                            // gold cuffs
+  } else {
+    P.push(fxB(0.06, 1.7, 0.06, 0.14, 2.25, 0.42, 0x6a4a26, 3));                   // commander's pennant pole
+    if (k === 0) { P.push(fxB(0.3, 0.06, 0.04, 0, 1.12, 0.2, 0x2c3a22, 3)); }
+    if (k === 1) { P.push(fxS(-0.2, 1.4, 0.2, 0, 1.18, 0.21, 0.06, GOLD, 3), fxS(0.2, 1.4, 0.2, 0, 1.18, 0.21, 0.06, GOLD, 3)); P.push(fxS(-0.2, 1.22, 0.2, 0, 1.0, 0.21, 0.06, GOLD, 3), fxS(0.2, 1.22, 0.2, 0, 1.0, 0.21, 0.06, GOLD, 3)); }
+    if (k === 2) {
+      P.push(fxS(-0.24, 1.4, 0.19, 0.24, 0.9, 0.19, 0.07, 0xf0f0ea, 3), fxS(0.24, 1.4, 0.19, -0.24, 0.9, 0.19, 0.07, 0xf0f0ea, 3));   // white cross belts
+      mir(0.22, 0.05, 0.34, 0.33, 1.47, 0, GOLD, 3, 3);                                                                              // shoulder boards
+    }
+    if (k === 3) {
+      mir(0.26, 0.06, 0.36, 0.33, 1.47, 0, GOLD, 3, 3);
+      mir(0.05, 0.4, 0.04, 0.2, 1.22, 0.21, GOLD, 3, 3); mir(0.05, 0.3, 0.04, 0.28, 1.1, 0.21, GOLD2, 3, 3);                       // aiguillette braid
+      for (let i = 0; i < 4; i++) P.push(fxB(0.07, 0.07, 0.03, 0, 1.3 - i * 0.18, 0.2, GOLD, 3));                                     // buttons
+      P.push(fxB(0.5, 0.1, 0.4, 0, 1.4, 0.02, GOLD2, 3));                                                                           // gold collar
+    }
+    if (k === 4) {
+      P.push(fxB(0.72, 1.1, 0.06, 0, 1.0, 0.27, 0xb8222c, 3), fxB(0.78, 0.16, 0.22, 0, 1.46, 0.2, 0xd8434c, 3), fxB(0.74, 0.07, 0.07, 0, 0.45, 0.28, GOLD, 3));   // cape, collar, hem
+      mir(0.18, 0.05, 0.34, 0.33, 1.48, 0, GOLD, 3, 3);
+      mir(0.04, 0.26, 0.04, 0.4, 1.28, 0, GOLD, 3, 3);                                                                              // fringe
+      for (let i = 0; i < 3; i++) { P.push(fxB(0.06, 0.06, 0.07, -0.39, 1.3 - i * 0.1, -0.02, [0xe2363b, 0x2f7bff, 0xffd75e][i], 3), fxB(0.06, 0.06, 0.07, 0.39, 1.3 - i * 0.1, -0.02, [0xffd75e, 0xe2363b, 0x2f7bff][i], 3)); }   // medals on the sleeves
+      P.push(fxB(0.1, 0.1, 0.04, 0, 1.4, 0.3, GOLD, 3));                                                                            // cape clasp
+    }
+  }
+  return P;
+}
+const FX_GEO100 = fxChBuild(fxTierParts('hundred'), false);
+const FX_GEO1K = [0, 1, 2, 3, 4].map(k => fxChBuild(fxTierParts(k), false));
+// banners: the 「百」 flag of a hundred figure and the 「千」 pennant of a thousand figure (instanced planes with a canvas texture)
+function fxFlagTex(ch, bg, fg, edge) {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+  const draw = () => {
+    const x = c.getContext('2d');
+    x.fillStyle = edge; x.fillRect(0, 0, 128, 128); x.fillStyle = bg; x.fillRect(8, 8, 112, 112);
+    x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '900 92px "Noto Sans TC", sans-serif'; x.lineWidth = 8; x.strokeStyle = 'rgba(0,0,0,.35)'; x.strokeText(ch, 64, 70); x.fillStyle = fg; x.fillText(ch, 64, 70);
+  };
+  draw();
+  const t = new T.CanvasTexture(c); t.anisotropy = 2;
+  return { tex: t, draw: () => { draw(); t.needsUpdate = true; } };
+}
+const FX_FLAGS = [fxFlagTex('百', '#b3202a', '#ffd75e', '#e8b82a'), fxFlagTex('千', '#ffffff', '#1a1a1a', '#e8b82a')];
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { for (const f of FX_FLAGS) f.draw(); }).catch(() => {});
 // Mech faces -z.
 const MGEO = boxes([
   [0.5, 1.3, 0.6, -0.45, 0.65, 0, 0x55606e],
@@ -3434,18 +3521,31 @@ function drawZombies(t) {
   shZMesh.instanceMatrix.needsUpdate = true; shZMesh.instanceColor.needsUpdate = true;
 }
 
-// Soldiers: logic keeps a transform carrier (Object3D) per soldier; this renders them all in one instanced draw call.
+// Soldiers: logic keeps a transform carrier (Object3D) per figure; each figure stands for so.w soldiers (1 / 100 / 1000, round 8).
+// One instanced mesh per look: singles, 百人隊, and 千人隊 in five outfits (only the class of the current rank is ever visible).
 const SOLDIER_CAP = MAXVIS + 24;
-const sWalk = new T.InstancedBufferAttribute(new Float32Array(SOLDIER_CAP * 4), 4).setUsage(T.DynamicDrawUsage);
-const sGeoI = SGEO.clone();
-sGeoI.setAttribute('aWalk', sWalk);
-sGeoI.setAttribute('aStyle', new T.InstancedBufferAttribute(new Float32Array(SOLDIER_CAP * 4), 4));
-const sMesh = new T.InstancedMesh(sGeoI, fxChar(new T.MeshLambertMaterial({ vertexColors: true }), { hip: 0.75, freq: 5.5, rim: 0.25 }), SOLDIER_CAP);
-sMesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
-sMesh.setColorAt(0, tmpC.setRGB(1, 1, 1)); sMesh.instanceColor.setUsage(T.DynamicDrawUsage);
-sMesh.frustumCulled = false;
-sMesh.count = 0;
-scene.add(sMesh);
+function fxFigMesh(geo, mat) {
+  const g = geo.clone(), walk = new T.InstancedBufferAttribute(new Float32Array(SOLDIER_CAP * 4), 4).setUsage(T.DynamicDrawUsage);
+  g.setAttribute('aWalk', walk);
+  g.setAttribute('aStyle', new T.InstancedBufferAttribute(new Float32Array(SOLDIER_CAP * 4), 4));
+  const m = new T.InstancedMesh(g, mat || fxChar(new T.MeshLambertMaterial({ vertexColors: true }), { hip: 0.75, freq: 5.5, rim: 0.25 }), SOLDIER_CAP);
+  m.instanceMatrix.setUsage(T.DynamicDrawUsage);
+  m.setColorAt(0, tmpC.setRGB(1, 1, 1)); m.instanceColor.setUsage(T.DynamicDrawUsage);
+  m.frustumCulled = false; m.count = 0; m.visible = false;
+  scene.add(m);
+  return { mesh: m, walk, n: 0 };
+}
+const sFig = fxFigMesh(SGEO), hFig = fxFigMesh(FX_GEO100), kFig = FX_GEO1K.map(g => fxFigMesh(g));
+const sMesh = sFig.mesh, sWalk = sFig.walk;
+const FX_FLAGGEO = new T.PlaneGeometry(1, 1).translate(0.5, 0, 0);
+const fxFlagMesh = ti => {
+  const m = new T.InstancedMesh(FX_FLAGGEO, new T.MeshBasicMaterial({ map: FX_FLAGS[ti].tex, side: T.DoubleSide }), SOLDIER_CAP);
+  m.instanceMatrix.setUsage(T.DynamicDrawUsage); m.setColorAt(0, tmpC.setRGB(1, 1, 1)); m.instanceColor.setUsage(T.DynamicDrawUsage);
+  m.instanceColor.array.fill(1); m.frustumCulled = false; m.count = 0; m.visible = false; scene.add(m); return m;
+};
+const flagH = fxFlagMesh(0), flagK = fxFlagMesh(1);
+const pipMesh = new T.InstancedMesh(boxes([[0.07, 0.05, 0.05, 0, 0, 0, 0xffd75e]]), M.vc, 256);
+pipMesh.instanceMatrix.setUsage(T.DynamicDrawUsage); pipMesh.frustumCulled = false; pipMesh.count = 0; pipMesh.visible = false; scene.add(pipMesh);
 // Held guns: one instanced mesh per weapon type (the squad all carries the same gun, so exactly one is visible = one draw call).
 // Level-ups raise the gun's emissive glow; firing kicks it back a little.
 const gunMat = new T.MeshLambertMaterial({ vertexColors: true });
@@ -3458,32 +3558,104 @@ const gunMeshes = HELD_GEO.map(g => {
 });
 const KICK = { bullet: 0.05, pellet: 0.12, rail: 0.16, flame: 0.02, rocket: 0.2 };
 const GLOW = [0, 0.16, 0.34];
+const FX_RANK0 = { k: 0, idx: -1, name: '', cls: 0, sub: 0, next: 1000 };
+const fxRank = () => G.rank || FX_RANK0;
+const FX_UNIT = { mergeUntil: 0, splitUntil: 0, ghosts: [], glow: [], tierN: [0, 0, 0] };
+const fxM1 = new T.Matrix4(), fxM2 = new T.Matrix4(), fxM3 = new T.Matrix4(), fxV1 = new T.Vector3(), fxE1 = new T.Euler(), fxQ1 = new T.Quaternion(), fxS1 = new T.Vector3();
+const FX_CLSRGB = [[0.55, 0.85, 0.4], [1, 0.38, 0.32], [0.4, 0.62, 1], [1, 0.68, 0.2], [1, 0.85, 0.35]];
+const easeOutBack = t => { const c = 1.7; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+function fxSpawnGhosts(so, tier, reverse) {
+  const n = reverse ? 2 : tier === 2 ? 10 : 7, ox = so.mesh.position.x, oz = so.mesh.position.z;
+  if (reverse) { for (let k = 0; k < n && FX_UNIT.ghosts.length < 70; k++) FX_UNIT.ghosts.push({ ax: G.x, az: G.z + 0.8, bx: ox, bz: oz, t: -Math.random() * 0.08, rev: true, tier: 0 }); return; }
+  for (let k = 0; k < n && FX_UNIT.ghosts.length < 70; k++) {
+    const a = k / n * 6.283 + Math.random() * 0.6, r = (tier === 2 ? 3.2 : 2.3) * (0.7 + Math.random() * 0.5);
+    FX_UNIT.ghosts.push({ ax: ox + Math.cos(a) * r, az: oz + Math.sin(a) * r * 0.8, bx: ox, bz: oz, t: -Math.random() * 0.12, rev: !!reverse, tier });
+  }
+}
 function drawSoldiers() {
-  const n = Math.min(G.soldiers.length, SOLDIER_CAP), stepping = G.phase === 'run' ? 1 : 0;
+  const n = Math.min(G.soldiers.length, SOLDIER_CAP), stepping = G.phase === 'run' ? 1 : 0, now = nowMs();
   const w = G.weapon, W = WEAPONS[w], gm = gunMeshes[w], kmax = KICK[W.fx] || 0.05, per = 1 / W.rate;
+  const rk = fxRank(), kf = kFig[clamp(rk.cls | 0, 0, 4)];
+  sFig.n = hFig.n = 0; for (const f of kFig) f.n = 0;
+  let nFlagH = 0, nFlagK = 0, nPip = 0; FX_UNIT.glow.length = 0; FX_UNIT.tierN[0] = FX_UNIT.tierN[1] = FX_UNIT.tierN[2] = 0;
+  const fa = flagH.instanceMatrix.array, fk = flagK.instanceMatrix.array, pa = pipMesh.instanceMatrix.array;
+  const sub = clamp(rk.sub | 0, 0, 4), kc = clamp(rk.cls | 0, 0, 4);
   for (let i = 0; i < n; i++) {
-    const so = G.soldiers[i], m = so.mesh, ry = m.rotation.y;
-    dummy.position.copy(m.position);
-    dummy.rotation.set(0, ry, 0);
-    dummy.updateMatrix();
-    sMesh.setMatrixAt(i, dummy.matrix);
-    const since = per - so.cd;                                   // time since this soldier last fired
+    const so = G.soldiers[i], m = so.mesh, ry = m.rotation.y, tier = fxTierOf(so.w || 1);
+    FX_UNIT.tierN[tier]++;
+    const F = tier === 0 ? sFig : tier === 1 ? hFig : kf, j = F.n++;
+    let sc = FX_TIER_SCALE[tier], pop = 1;
+    if (!so.fxB) {                                                        // first sight of this figure
+      so.fxB = now;
+      if (G.phase === 'run' && !reduced) {
+        if (tier > 0 && FX_UNIT.mergeUntil > now) { so.fxAnim = now; fxSpawnGhosts(so, tier, false); }
+        else if (tier === 0 && FX_UNIT.splitUntil > now) { so.fxAnim = now; if (FX_UNIT.ghosts.length < 40) fxSpawnGhosts(so, 0, true); }
+      }
+    }
+    if (so.fxAnim) {                                                      // merge: held back for the ghosts to arrive, then a pop; split: a quick pop out
+      const age = (now - so.fxAnim) / 1000, d0 = tier > 0 ? 0.34 : 0.05;
+      if (age > d0 + 0.45) so.fxAnim = 0;
+      else if (age < d0) pop = tier > 0 ? 0.001 : 0.2;
+      else { pop = Math.max(0.01, easeOutBack(clamp((age - d0) / 0.4, 0, 1))); if (!so.fxFl && tier > 0) { so.fxFl = 1; flashAt(m.position.x, 1.6 * sc, m.position.z, 0.22, 1.3, 1.1, 0.5); shock(m.position.x, m.position.z, 0xffd75e, 2.4 + tier, 0.4); } }
+    }
+    sc *= pop;
+    dummy.position.copy(m.position); dummy.rotation.set(0, ry, 0); dummy.scale.setScalar(sc); dummy.updateMatrix();
+    F.mesh.setMatrixAt(j, dummy.matrix);
+    fxM1.copy(dummy.matrix);
+    const since = per - so.cd;                                           // time since this soldier last fired
     const kn = since >= 0 && since < 0.09 ? 1 - since / 0.09 : 0, kick = kn * kmax;
-    sWalk.array[i * 4] = i * 0.5 - 0.785; sWalk.array[i * 4 + 1] = stepping; sWalk.array[i * 4 + 2] = 1; sWalk.array[i * 4 + 3] = kn;   // kn: upper-body recoil
+    F.walk.array[j * 4] = i * 0.5 - 0.785; F.walk.array[j * 4 + 1] = stepping; F.walk.array[j * 4 + 2] = 1 - 0.14 * tier; F.walk.array[j * 4 + 3] = kn;   // kn: upper-body recoil
     if (!so.fxc) { const h = Math.random(), h2 = Math.random(), h3 = Math.random(); so.fxc = [1.2 + 0.2 * h * (0.9 + 0.2 * h2), 1.22 + 0.16 * h, 1.2 + 0.2 * h * (0.9 + 0.2 * h3)]; }   // small per-soldier colour variance (round 8: a step brighter so the squad reads on dark ground)
-    sMesh.instanceColor.array[i * 3] = so.fxc[0]; sMesh.instanceColor.array[i * 3 + 1] = so.fxc[1]; sMesh.instanceColor.array[i * 3 + 2] = so.fxc[2];
-    dummy.position.x += Math.sin(ry) * kick; dummy.position.z += Math.cos(ry) * kick;
+    const ic = F.mesh.instanceColor.array;
+    if (tier === 0) { ic[j * 3] = so.fxc[0]; ic[j * 3 + 1] = so.fxc[1]; ic[j * 3 + 2] = so.fxc[2]; } else { ic[j * 3] = ic[j * 3 + 1] = ic[j * 3 + 2] = 1.12; }
+    dummy.position.x += Math.sin(ry) * kick * sc; dummy.position.z += Math.cos(ry) * kick * sc;
     dummy.updateMatrix();
     gm.setMatrixAt(i, dummy.matrix);
+    if (tier === 1 && pop > 0.05) {                                      // 「百」 flag on its pole, waving
+      const wv = reduced ? 0 : Math.sin(G.time * 5 + i) * 0.25;
+      fxM2.makeRotationY(wv).setPosition(0, 2.62, 0.42); fxM3.multiplyMatrices(fxM1, fxM2); fxM2.makeScale(0.6, 0.46, 1); fxM3.multiply(fxM2);
+      fxM3.toArray(fa, nFlagH * 16); nFlagH++;
+      FX_UNIT.glow.push(m.position.x, 1.5 * sc, m.position.z, 1, 0.8, 0.3, 0.2, 2.2);
+    } else if (tier === 2 && pop > 0.05) {                               // 千 pennant in the class colour + shoulder pips for `sub`
+      const wv = reduced ? 0 : Math.sin(G.time * 4 + i) * 0.22;
+      fxM2.makeRotationY(wv).setPosition(0.14, 2.78, 0.42); fxM3.multiplyMatrices(fxM1, fxM2); fxM2.makeScale(0.62, 0.46, 1); fxM3.multiply(fxM2);
+      fxM3.toArray(fk, nFlagK * 16);
+      flagK.setColorAt(nFlagK, tmpC.setRGB(FX_CLSRGB[kc][0] * 0.9 + 0.1, FX_CLSRGB[kc][1] * 0.9 + 0.1, FX_CLSRGB[kc][2] * 0.9 + 0.1)); nFlagK++;
+      for (let s = -1; s <= 1 && nPip + sub * 2 <= 250; s += 2) for (let q = 0; q < sub; q++) {
+        fxM2.makeTranslation(s * 0.33, 1.53 + (rk.cls === 3 || rk.cls === 2 || rk.cls === 4 ? 0.04 : 0), -0.1 + q * 0.085); fxM3.multiplyMatrices(fxM1, fxM2); fxM3.toArray(pa, nPip * 16); nPip++;
+      }
+      const c = FX_CLSRGB[kc];
+      FX_UNIT.glow.push(m.position.x, 1.8 * sc, m.position.z, c[0], c[1], c[2], rk.cls === 4 ? 0.5 : 0.28, rk.cls === 4 ? 5.2 : 3.6);
+    }
+    shadowW[i] = sc;
   }
-  sMesh.count = n;
-  sMesh.instanceMatrix.needsUpdate = true; sMesh.instanceColor.needsUpdate = true;
-  sWalk.needsUpdate = true;
+  for (const F of [sFig, hFig, ...kFig]) {
+    const m = F.mesh, cnt = F.n;
+    m.count = cnt; m.visible = cnt > 0;
+    m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true; F.walk.needsUpdate = true;
+  }
+  flagH.count = nFlagH; flagH.visible = nFlagH > 0; flagH.instanceMatrix.needsUpdate = true;
+  flagK.count = nFlagK; flagK.visible = nFlagK > 0; flagK.instanceMatrix.needsUpdate = true; if (flagK.instanceColor) flagK.instanceColor.needsUpdate = true;
+  pipMesh.count = nPip; pipMesh.visible = nPip > 0; pipMesh.instanceMatrix.needsUpdate = true;
   for (let k = 0; k < gunMeshes.length; k++) gunMeshes[k].visible = k === w && n > 0;
   gm.count = n;
   gm.instanceMatrix.needsUpdate = true;
   gunMat.emissive.setHex(W.color).multiplyScalar(GLOW[clamp(G.weaponLv, 1, 3) - 1]);
   gunMat.emissive.r += BUFFV.r * 1.6; gunMat.emissive.g += BUFFV.g * 1.6; gunMat.emissive.b += BUFFV.b * 1.6;
+}
+const shadowW = new Float32Array(SOLDIER_CAP + 8).fill(1);
+// glows of the big figures and the ghosts of a merge / split, pushed into the fire system by worldSprites
+function fxUnitSprites() {
+  const g = FX_UNIT.glow;
+  for (let i = 0; i < g.length && !fireSys.full(); i += 8) fireSys.push(g[i], g[i + 1], g[i + 2], g[i + 3], g[i + 4], g[i + 5], g[i + 6], g[i + 7]);
+  const list = FX_UNIT.ghosts;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const q = list[i]; q.t += renderDt / 0.34;
+    if (q.t >= 1) { list.splice(i, 1); continue; }
+    if (q.t < 0 || fireSys.full()) continue;
+    const e = q.rev ? 1 - (1 - q.t) * (1 - q.t) : q.t * q.t, x = q.ax + (q.bx - q.ax) * e, z = q.az + (q.bz - q.az) * e;
+    fireSys.push(x, 0.9 + Math.sin(q.t * 3.14) * 0.5, z, q.rev ? 1 : 0.55, q.rev ? 0.55 : 0.8, q.rev ? 0.4 : 1, 0.55 * (1 - 0.3 * q.t), q.tier ? 0.7 : 0.45);
+  }
 }
 
 // Blob shadows: one instanced draw call for every soldier, zombie, mech and the boss.
@@ -3513,7 +3685,7 @@ function drawShadows() {
     if (zb.z < zmin) continue;
     shadowAt(zb.x, zb.z, zb.s * 0.85 * (zb.dying > 0 ? zb.dying / 0.35 : 1));
   }
-  for (let i = 0; i < G.soldiers.length; i++) shadowAt(G.soldiers[i].x, G.soldiers[i].z, 0.78);
+  for (let i = 0; i < G.soldiers.length; i++) shadowAt(G.soldiers[i].x, G.soldiers[i].z, 0.78 * (shadowW[i] || 1));
   if (G.mech) shadowAt(G.mech.x, G.mech.z, 2.1);
   for (let i = 0; i < lobN; i++) shadowAt(lobX[i], lobZ[i], 0.5 + Math.max(0, 2.4 - lobY[i]) * 0.1);   // where the rocket is over the deck
   const b = G.boss;
@@ -4576,7 +4748,7 @@ function updateWorld(t) {
 }
 // sprites for glowing things, pushed into the fire system just before it is flushed
 function worldSprites() {
-  fxLampSprites(); fxObsSprites(G.time);
+  fxLampSprites(); fxObsSprites(G.time); fxUnitSprites();
   const pu = reduced ? 0.6 : 0.5 + 0.5 * Math.sin(G.time * 7);
   for (const e of worldList) {
     if (!e.grp || !e.grp.visible || G.z - e.z < -3 || G.z - e.z > 60) continue;
@@ -5550,6 +5722,13 @@ bus.on('zombieDied', d => {
   flashAt(d.x, d.big ? 1.9 : 1, d.z, 0.12, 0.7, 1, 0.4);
   if (d.big) { shock(d.x, d.z, 0x9dff5a, 2.4, 0.45); FX.shake = Math.max(FX.shake, 0.2); }
 });
+bus.on('unitMerge', d => {
+  FX_UNIT.mergeUntil = nowMs() + 600;
+  const t = d && d.tier | 0, name = t >= 2 ? '千人隊' : '百人隊';
+  bannerPush(name + ' ×' + ((d && d.count) || 1), t >= 2 ? '#ffd75e' : '#ffc94d', '', 1);
+  SFX.levelUp && SFX.levelUp();
+});
+bus.on('unitSplit', d => { FX_UNIT.splitUntil = nowMs() + 600; flashAt(G.x, 1.6, G.z + 0.8, 0.18, 1, 0.5, 0.35); });
 bus.on('soldierDied', d => {
   vignette(0.9, 520);
   vibrate(30);
