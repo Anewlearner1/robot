@@ -633,8 +633,8 @@ const rint = (a, b) => Math.floor(rnd(a, b + 1));
 // ---------------------------------------------------------------- constants
 const ROAD = 4;          // half width of the deck
 const BULLET_SPEED = 42;
-// Round 5 (owner): squad cap raised; every soldier is drawn (MAXVIS = cap). Logic owns TUNE.maxSquad and keeps it <= MAXVIS.
-const MAXZ = 900, MAXB = 1200, MAXP = 1400, MAXVIS = 100, SP = 0.62;
+// Round 5 (owner): squad cap raised. Round 8: there is no cap any more (TUNE.maxSquad 1e7 is a sanity ceiling); MAXVIS bounds the drawn figures.
+const MAXZ = 900, MAXB = 1200, MAXP = 1400, MAXVIS = 216, SP = 0.62;   // round 8: MAXVIS is the most FIGURES ever drawn (see UNITS), not soldiers
 const STEP = 1 / 60, MAX_STEPS = 4;   // fixed simulation step and the catch-up cap per rendered frame
 
 // Every balance number lives here (read at use time, so tests can override them through __zb.TUNE before prepare()).
@@ -663,7 +663,7 @@ const TUNE = {
   battNeed: 6, battNeedPerStage: 6,
   shieldSecs: 4,
   crateRecruits: 8,               // soldiers that come with every gun crate (so a guns-only route still grows the squad)
-  maxSquad: 100, mulChance: 0.3,   // squad size cap; chance that a good gate (after the first few) is a x2 gate
+  maxSquad: 1e7, mulChance: 0.3,   // squad size cap; chance that a good gate (after the first few) is a x2 gate
   // --- mech
   splashR2: 3.4, splashDmg: 0.4,  // shells: blast radius squared and damage fraction
   mechDmg: 1.4, mechDmgPerStage: 0.6, mechCd: 0.62,
@@ -681,13 +681,16 @@ const TUNE = {
   starCoins: 40,                  // win bonus = stars x this x (1 + coinStage*(stage-1))
   loseCoinShare: 0.5,             // a lost run still banks this share of its coins
   critBase: 0.08, critPerLuck: 0.03, critMul: 2,
-  squadMilestones: [10, 25, 50], squadMilestoneCoins: 1,   // coins = milestone x this
+  squadMilestones: [10, 25, 50, 100, 200, 400], squadMilestoneCoins: 1,   // coins = milestone x this
   frenzyMul: 1.4, frenzySecs: 4, splitExtra: 2, splitDmg: 0.3, splitSecs: 5,   // power-ups: fire rate x1.4 / two extra pellets (each at 0.3 of the normal damage)
   dropBrute: 0.3, dropShield: 0.08, dropOther: 0.004, dropChain: 4, dropMagnet: 9,   // drop chances; a drop within dropMagnet units drifts to the squad
   // --- round 3: hazards and new zombies
   barrelChance: 0.7, barrelHp: 5, barrelR: 3.2, barrelDmg: 4, barrelCap: 20, barrelBoss: 0.5,   // a barrel blast hurts at most barrelCap zombies (so it never wipes a dense horde)
   exBase: 0.03, exStage: 0.012, exMax: 0.08, exploderR: 1.8, exploderDmg: 2, exploderCap: 6,   // exploder zombies: share of a horde, blast radius, blast damage (flat: it stops chaining once zombies have more hp than this)
   shBase: 0.03, shStage: 0.015, shMax: 0.12, shieldSlope: 0.5, shieldHp: 1.3, shieldBreak: 4,   // shield zombies: share, how off-axis a bullet must be to get past (|dx| of its direction), hp factor
+  // --- round 8: growth limits for unlimited squads
+  mulCapBase: 120, mulCapPerDepth: 40, mulTail: 0.3,   // a x2 gate doubles up to C = base + perDepth x depth soldiers; above C only mulTail of the rest is added (no exponential blow-up)
+  gateWMax: 6, gateShotBase: 24, gateShotPerDepth: 4,  // a heavy bullet counts as at most gateWMax hits on a gate / battery; a gate can be shot up by at most base + perDepth x depth
   // --- round 7: obstacles (lane-footprint blocks on the deck; see the round 7 obstacle contract)
   splitMargin: 0.6, splitDense: 1.3, splitObsW: 0.8,   // split: half-width of the median wall (a fork uses 0.45); dense side hordes; footprint width of a side obstacle (leaves a gap >= obsMinGap in a side)
   obsOn: 1,                       // 0 = no obstacles at all (A/B switch for tests and balance runs)
@@ -757,13 +760,34 @@ const UPGRADES = [
 //   ~100; document it). Losses take one soldier at a time: a zombie reaching a 100-figure costs 1 soldier, and the
 //   formation recomposes. Events: unitMerge { tier, count } when figures of a tier are formed (presentation animates the
 //   merge), unitSplit { tier } when a higher-tier figure breaks back down.
-const UNIT_TIERS = [1, 100];
-// RANKS: lifetime soldiers recruited (SAVE.recruited, every soldier gained from gates, crates, drops, carry-over excluded)
-//   decides the rank: rank index = floor(recruited / 1000), capped at the last entry (元帥; beyond it the badge shows ★n).
-//   Each rank adds a permanent damage bonus (logic owns the per-rank value; suggested +2 %). G.rank = { idx, name, next }
-//   (next = soldiers still needed). Event rankUp { idx, name, bonus } when a promotion happens (presentation shows the
-//   ceremony; logic emits it right away, or queues it to the result screen if mid-run, its call; document it).
+const UNIT_TIERS = [1, 100, 1000];
+//   (round 8 logic, owner revision) TIERS 1, 100, 1000. Composition: floor(n / 1000) thousand-figures, floor((n % 1000) / 100) hundred-figures and
+//   n % 100 singles, so 2,345 = 2 + 3 + 45. Bound: at most UNIT_TOPCAP = 100 thousand-figures are drawn; beyond 100,000 soldiers their number stays 100 and
+//   each one stands for more than 1000 (f.w says how many; 1e6 soldiers = 100 figures of 10,000). So at most 100 + 9 + 99 = 208 figures are ever drawn
+//   (MAXVIS 216). Each figure: { mesh, x, z, cd, tier (index into UNIT_TIERS), w }, sum(w) = G.squad.
+//   Damage: a figure's shot deals w x the per-soldier damage; a w > 1 bullet hits the zombies around its impact one soldier-hit each (damage is
+//   shared out over up to 24 neighbours, so a hundred- or thousand-figure still clears a crowd), gates / the battery count it as at most TUNE.gateWMax hits.
+//   Losses: any contact costs ONE soldier (the loss is taken from the singles first; when no single is left a hundred / thousand figure splits:
+//   bus unitSplit { tier: the broken tier, count: figures it became }); an obstacle costs a whole figure (w soldiers). When figures of a lower tier
+//   add up to a higher one they merge: bus unitMerge { tier, count: figures formed }.
+// RANKS (owner revision): decided by the CURRENT squad size, live, reset every stage (it starts at the entry squad, silently).
+//   k = floor(G.squad / 1000). k = 0: no rank. k >= 1: idx = min(k - 1, 16), name = RANKS[idx] (1000 = 二等兵 ... 17000 = 元帥); beyond 17000 the badge is
+//   元帥 with ★(k - 17) (name carries the star text). The rank DROPS when the squad falls below a threshold. cls = the outfit class of the rank, used by the
+//   front end for the thousand-figures: 0 士兵 (idx 0-2), 1 士官 (3-6), 2 尉官 (7-9), 3 校官 (10-12), 4 將官 (13-16); sub = idx - first idx of the class
+//   (insignia stars). G.rank = { k, idx, name, cls, sub, stars, bonus, next } (k 0: idx -1, name '', cls -1; next = soldiers still needed for rank k + 1).
+//   rankOf(squad) is the pure helper (also __zb.rankOf). Events, fired IMMEDIATELY mid-run (no queue) when k changes while G.phase is run / boss:
+//   rankUp { idx, name, cls, sub, k, bonus } on a promotion, rankDown { idx, name, cls, sub, k } on a demotion (a jump of several levels is one event).
+//   Damage bonus (logic): +2 % damage per rank level up to 元帥 (k = 17, +34 %), then +0.5 % per star, at most +60 %; applied live (rankBonus(k)) and gone on demotion.
 const RANKS = ['二等兵', '一等兵', '上等兵', '下士', '中士', '上士', '士官長', '少尉', '中尉', '上尉', '少校', '中校', '上校', '少將', '中將', '上將', '元帥'];
+const RANK_CLS_FIRST = [0, 3, 7, 10, 13];                       // first RANKS index of each outfit class
+const rankClsOf = idx => { let c = 0; for (let i = 0; i < RANK_CLS_FIRST.length; i++) if (idx >= RANK_CLS_FIRST[i]) c = i; return c; };
+const rankBonus = k => Math.min(0.6, 0.02 * Math.min(k, 17) + 0.005 * Math.max(0, k - 17));
+function rankOf(squad) {
+  const k = Math.max(0, Math.floor((squad || 0) / 1000)), next = (k + 1) * 1000 - Math.max(0, Math.floor(squad || 0));
+  if (k < 1) return { k: 0, idx: -1, name: '', cls: -1, sub: 0, stars: 0, bonus: 0, next };
+  const idx = Math.min(k - 1, RANKS.length - 1), cls = rankClsOf(idx), stars = Math.max(0, k - RANKS.length);
+  return { k, idx, name: RANKS[idx] + (stars ? ' ★' + stars : ''), cls, sub: idx - RANK_CLS_FIRST[cls], stars, bonus: rankBonus(k), next };
+}
 // GOOGLE LOGIN (outside claude.ai only): the cloud layer gets a second provider. In the claude.ai viewer (window.claude)
 //   the provider stays 'claude' (db capability). On the standalone site (GitHub Pages) it is 'firebase' when
 //   FIREBASE_CONFIG is filled in: Firebase Auth with the Google provider, the save in Firestore at saves/{uid} (one doc,
@@ -1011,7 +1035,7 @@ let best = Math.max(SAVE.best, unlockedDepth());
 SAVE.best = best;
 
 const G = {
-  level: best, node: null, scene: 'bridge', spawnAhead: 58, gap: null, phase: 'menu', x: 0, tx: 0, z: 0, L: 200, squad: 1, weapon: 0, weaponLv: 1, kills: 0, time: 0,
+  level: best, node: null, rank: { k: 0, idx: -1, name: '', cls: -1, sub: 0, stars: 0, bonus: 0, next: 1000 }, scene: 'bridge', spawnAhead: 58, gap: null, phase: 'menu', x: 0, tx: 0, z: 0, L: 200, squad: 1, weapon: 0, weaponLv: 1, kills: 0, time: 0,
   events: [], soldiers: [], shield: 0, mech: null, boss: null, shake: 0, dmgMul: 1, safe: false,
   // round 3 (logic writes, presentation reads): combo chain, coins earned this run, timed buffs { id: secondsLeft },
   // the squad this stage started with, and the last stage result (set right before `win` / `gameOver`).
@@ -1463,6 +1487,7 @@ const by = new Float32Array(MAXB).fill(1.25), bt = new Float32Array(MAXB);   // 
 const bs = new Float32Array(MAXB), bph = new Float32Array(MAXB), bvy = new Float32Array(MAXB), btx = new Float32Array(MAXB), btz = new Float32Array(MAXB);   // round 5: speed, phase, vertical speed, lob aim point
 const bw = new Uint8Array(MAXB);   // WEAPONS index that fired the bullet (meaningful when bk === 0; bk 1 = mech shell)
 // pierce bookkeeping: extra zombies a bullet may still pass through, and the zombies it has already hit (so it never hits one twice)
+const bwt = new Float32Array(MAXB);   // round 8: how many soldiers' worth a bullet is (bd is the TOTAL damage = per-soldier x bwt)
 const bpr = new Uint8Array(MAXB), bhn = new Uint8Array(MAXB), bhid = new Int32Array(MAXB * 8);
 let nb = 0;
 // bl[] is the bullet's remaining lifetime in seconds (presentation may fade flames / trails with it); its starting value is WEAPONS[w].range.
@@ -2057,8 +2082,9 @@ function updateObstacles(dt) {
       const sd = G.soldiers[i];
       if (Math.abs(sd.x - o.x) < hx && Math.abs(sd.z - o.z) < hz) {
         const was = G.soldiers.length;
-        killSoldier(i, 'obstacle', o.kind);
-        if (G.soldiers.length < was) lost++;
+        const wbefore = G.squad;
+        killSoldier(i, 'obstacle', o.kind, sd.w);
+        lost += wbefore - G.squad;
         if (G.phase === 'over') break;
       }
     }
@@ -2254,18 +2280,70 @@ function spawnHorde(spec, z0) {
   }
 }
 
+// Round 8: the drawn formation is a list of FIGURES (see UNITS in the round 8 contract). unitPlan(n) -> how many figures of each tier, and the weight of a top figure.
+const UNIT_TOPCAP = 100;
+function unitPlan(n) {
+  n = Math.max(0, Math.floor(n));
+  const top = Math.floor(n / 1000), nTop = Math.min(top, UNIT_TOPCAP), rest = n - top * 1000;
+  return { c: [rest % 100, Math.floor(rest / 100), nTop], tw: nTop ? top * 1000 / nTop : 0 };
+}
+let unitHint = null;          // the figure a loss happened on: if it has to split, it is the one that does
+// Recomposes G.soldiers for G.squad: removes surplus figures (the hinted one first), merges lower tiers into a higher one (at their centre of mass, bus unitMerge),
+// splits a higher tier into lower ones (at its position, bus unitSplit), adds fresh singles behind the squad for recruits. Figures keep their mesh / cooldown.
 function syncSoldiers() {
-  const want = Math.min(G.squad, MAXVIS);
-  while (G.soldiers.length < want) {
-    const m = new T.Object3D();   // transform carrier only; drawSoldiers() renders every soldier in one instanced draw call
-    const s = { mesh: m, x: G.x + rr(-0.3, 0.3), z: G.z + 1.2, cd: Math.random() * 0.3 };
-    m.position.set(s.x, 0, s.z);
-    scene.add(m);
-    G.soldiers.push(s);
-    if (G.phase !== 'menu') burst(s.x, 1, s.z, 8, [0.3, 0.75, 1], 3, 0.5);
+  const plan = unitPlan(G.squad), cur = [[], [], []];
+  for (const f of G.soldiers) cur[f.tier | 0].push(f);
+  const removed = [[], [], []];
+  for (let t = 0; t < 3; t++) {
+    while (cur[t].length > plan.c[t]) {
+      const hi = unitHint && cur[t].indexOf(unitHint);
+      const f = hi >= 0 && unitHint ? cur[t].splice(hi, 1)[0] : cur[t].pop();
+      G.soldiers.splice(G.soldiers.indexOf(f), 1);
+      scene.remove(f.mesh);
+      removed[t].push(f);
+    }
   }
-  while (G.soldiers.length > want) scene.remove(G.soldiers.pop().mesh);
-  G.dmgMul = G.squad > MAXVIS ? G.squad / MAXVIS : 1;   // round 5: the cap equals MAXVIS (100), so this is always 1; kept for squads loaded above the cap
+  unitHint = null;
+  const make = (t, x, z, quiet) => {
+    const m = new T.Object3D();   // transform carrier only; drawSoldiers() renders every figure in one instanced draw call
+    const f = { mesh: m, x, z, cd: Math.random() * 0.3, tier: t, w: 1 };
+    m.position.set(x, 0, z);
+    scene.add(m);
+    G.soldiers.push(f);
+    cur[t].push(f);
+    if (!quiet && G.phase !== 'menu') burst(x, 1, z, t ? 14 : 8, [0.3, 0.75, 1], 3, 0.5);
+    return f;
+  };
+  for (let t = 2; t >= 1; t--) {                                  // merges: lower figures that vanished add up to new higher ones
+    const need = plan.c[t] - cur[t].length;
+    if (need <= 0) continue;
+    let sx = 0, sz = 0, n = 0;
+    for (let l = 0; l < t; l++) for (const f of removed[l]) { sx += f.x; sz += f.z; n++; }
+    for (let k = 0; k < need; k++) n ? make(t, sx / n + rr(-0.2, 0.2), sz / n, false) : make(t, G.x + rr(-0.3, 0.3), G.z + 1.2, false);
+    if (n) bus.emit('unitMerge', { tier: UNIT_TIERS[t], count: need });
+  }
+  for (let t = 0; t < 2; t++) {                                   // lower figures needed: split from a vanished higher one, else new recruits
+    const need = plan.c[t] - cur[t].length;
+    if (need <= 0) continue;
+    let src = null;
+    for (let h = t + 1; h < 3 && !src; h++) if (removed[h].length) src = removed[h][0];
+    for (let k = 0; k < need; k++) src ? make(t, src.x + rr(-0.5, 0.5), src.z + rr(-0.4, 0.4), true) : make(t, G.x + rr(-0.3, 0.3), G.z + 1.2, false);
+    if (src) bus.emit('unitSplit', { tier: UNIT_TIERS[src.tier], count: need });
+  }
+  let sorted = true;
+  for (let i = 1; i < G.soldiers.length; i++) if ((G.soldiers[i - 1].tier | 0) < (G.soldiers[i].tier | 0)) { sorted = false; break; }
+  if (!sorted) G.soldiers.sort((p, q) => (q.tier | 0) - (p.tier | 0));      // big figures lead the formation
+  for (const f of G.soldiers) f.w = f.tier === 2 ? plan.tw : UNIT_TIERS[f.tier | 0];
+  G.dmgMul = 1;
+  updateRank();
+}
+// Live rank (see RANKS): recomputed whenever the squad changes; promotions / demotions fire at once while a run is on (silently otherwise).
+function updateRank() {
+  const was = G.rank, now = rankOf(G.squad);
+  G.rank = now;
+  if (now.k === was.k || (G.phase !== 'run' && G.phase !== 'boss')) return;
+  if (now.k > was.k) bus.emit('rankUp', { idx: now.idx, name: now.name, cls: now.cls, sub: now.sub, k: now.k, bonus: now.bonus });
+  else bus.emit('rankDown', { idx: now.idx, name: now.name, cls: now.cls, sub: now.sub, k: now.k });
 }
 // colCap: how many columns fit the road where the squad is (narrow segments and fork sides squeeze the formation, see updateRoute).
 let colCap = 99;
@@ -2279,17 +2357,18 @@ function formationHalf() { return (perRow(G.soldiers.length) - 1) / 2 * SP; }
 // src: horde kind of the zombie (or 'boss') that caused the death. Safe to call while iterating Z or G.soldiers as long as the
 // caller stops iterating G.soldiers afterwards (the array is spliced / refilled by syncSoldiers).
 // src: 'boss' | 'obstacle' | the horde kind; kind (obstacle only): the obstacle kind, reported as gameOver.kind.
-function killSoldier(i, src, kind) {
+function killSoldier(i, src, kind, count) {
   if (G.safe || G.phase === 'over' || G.phase === 'win') return;
   const s = G.soldiers[i];
   if (!s) return;
+  const lose = Math.max(1, Math.min(G.squad, count | 0 || 1));    // round 8: contact costs ONE soldier (the figure keeps standing while singles remain); an obstacle costs `count` = the figure
   burst(s.x, 1, s.z, 14, [0.9, 0.2, 0.2], 3.5, 0.6);
-  scene.remove(s.mesh);
-  G.soldiers.splice(i, 1);
   bus.emit('soldierDied', { x: s.x, z: s.z });
-  G.squad = Math.max(0, G.squad - 1);
+  G.squad = Math.max(0, G.squad - lose);
   G.shake = Math.max(G.shake, 0.25);
   SFX.thud();
+  if (lose > 1 || (s.tier | 0) === 0) { scene.remove(s.mesh); G.soldiers.splice(i, 1); }       // a whole figure goes (a single, or an obstacle took it)
+  else unitHint = s;
   syncSoldiers();
   if (G.squad <= 0) {
     if (src === 'obstacle') gameOver('小隊全撞上了路障。下次走在障礙之間的空隙。', 'obstacle', kind || '');
@@ -2488,9 +2567,10 @@ function fillBuckets() {
 }
 
 // ph: phase (spray) / drift sign (stream); tx, tz: where a lob should land (default: 14 units straight ahead).
-function spawnBullet(x, z, dx, dz, dmg, kind, w, ph, tx, tz) {
+function spawnBullet(x, z, dx, dz, dmg, kind, w, ph, tx, tz, wt) {
   if (nb >= MAXB) return;
   w = w || 0;
+  bwt[nb] = wt || 1;
   const W = kind ? null : WEAPONS[w];
   bw[nb] = w;
   bpr[nb] = kind ? 0 : W.pierce; bhn[nb] = 0;
@@ -2513,7 +2593,7 @@ function removeBullet(i) {
   fxBulletEnd(i);   // [frontend] one line: end-of-flight FX hook (beam impact, rocket landing)
   const j = --nb;
   if (i === j) return;
-  bw[i] = bw[j];
+  bw[i] = bw[j]; bwt[i] = bwt[j];
   bpr[i] = bpr[j]; bhn[i] = bhn[j];
   for (let q = 0, n = bhn[j]; q < n; q++) bhid[i * 8 + q] = bhid[j * 8 + q];
   bx[i] = bx[j]; bz[i] = bz[j]; bdx[i] = bdx[j]; bdz[i] = bdz[j]; bl[i] = bl[j]; bd[i] = bd[j]; bk[i] = bk[j];
@@ -2521,6 +2601,30 @@ function removeBullet(i) {
   bMesh.setColorAt(i, bk[i] ? tmpC.setRGB(1, 0.5, 0.15) : tmpC.setRGB(1, 0.88, 0.45));
 }
 
+// A bullet standing for w soldiers (round 8) hits `zb` and the zombies around the impact: w single-soldier hits of d each, shared out over the
+// nearest (up to 24, `first` included). A normal bullet is the plain hit.
+const multiTmp = [];
+function strikeZombie(zb, i, x, z, dmg) {
+  const w = bwt[i];
+  if (!(w > 1) || bk[i]) { hitZombie(zb, dmg * critRoll(x, z, dmg)); return; }
+  const d = dmg / w * critRoll(x, z, dmg), R = 0.8 + 0.1 * Math.sqrt(w), r2 = R * R;
+  multiTmp.length = 0; multiTmp.push(zb);
+  const k0 = bIdx(zb.z), reach = Math.ceil(R) + 1;
+  for (let k = k0 - reach; k <= k0 + reach && multiTmp.length < 24; k++) {
+    if (k < 0 || k >= BN) continue;
+    const arr = buckets[k];
+    for (let a = 0; a < arr.length && multiTmp.length < 24; a++) {
+      const q = Z[arr[a]];
+      if (q === zb || q.dying > 0) continue;
+      if ((q.x - zb.x) ** 2 + (q.z - zb.z) ** 2 < r2) multiTmp.push(q);
+    }
+  }
+  const n = multiTmp.length, each = Math.floor(w / n);
+  let extra = w - each * n;
+  for (let a = 0; a < n; a++) { const h = each + (extra > 0 ? 1 : 0); if (extra > 0) extra--; hitZombie(multiTmp[a], d * h); }
+}
+// gate / battery damage of a bullet: its per-soldier damage times at most TUNE.gateWMax soldiers
+const gateDmg = (i, dmg) => bwt[i] > 1 ? dmg / bwt[i] * Math.min(bwt[i], TUNE.gateWMax) : dmg;
 function hitZombie(zb, dmg) {
   if (zb.dying > 0) return;
   zb.hp -= dmg;
@@ -2732,10 +2836,12 @@ function gateHit(e, dmg) {
   bus.emit('gateHit', { e });
   if (e.kind === 'mystery') { e.hits += dmg; if (e.hits >= TUNE.mysteryHits) { e.hits = 0; revealGate(e); } return; }   // shoot a ? gate enough and it shows what it is
   if (e.kind !== 'add') return;                                 // x, rate and level gates cannot be shot up
+  if (e.base === undefined) e.base = e.val;
+  if (e.val - e.base >= TUNE.gateShotBase + TUNE.gateShotPerDepth * G.level) return;      // round 8: a gate can only be shot up so far (unlimited squads)
   e.hits += dmg;
   let changed = false;
   const per = (e.per + TUNE.gatePerSquad * Math.min(G.squad, TUNE.gateSquadRef)) * e.pf;
-  while (e.hits >= per) { e.hits -= per; e.val++; changed = true; }
+  while (e.hits >= per && e.val - e.base < TUNE.gateShotBase + TUNE.gateShotPerDepth * G.level) { e.hits -= per; e.val++; changed = true; }
   if (changed) {
     e.draw(); e.bump = 1;
     SFX.gate(e.val);
@@ -2941,7 +3047,9 @@ function squadSide() {
   return r > l ? 1 : l > r ? -1 : 0;
 }
 // What a gate is worth to the squad (used to break the tie when the squad is exactly on the centre line).
-function gateDelta(e) { return e.kind === 'mul' ? G.squad * (e.val - 1) : e.kind === 'rate' ? G.squad * e.val / 200 : e.kind === 'level' || e.kind === 'mystery' ? 3 : e.val; }
+// A x2 gate (round 8): doubles up to C = mulCapBase + mulCapPerDepth x depth soldiers; above C only mulTail of the rest is added.
+const mulGain = sq => { const C = TUNE.mulCapBase + TUNE.mulCapPerDepth * G.level; return Math.min(sq, C) + TUNE.mulTail * Math.max(0, sq - C); };
+function gateDelta(e) { return e.kind === 'mul' ? mulGain(G.squad) * (e.val - 1) : e.kind === 'rate' ? G.squad * e.val / 200 : e.kind === 'level' || e.kind === 'mystery' ? 3 : e.val; }
 // A '?' gate turns into the gate it was hiding (seeded at level build): e.kind / e.val become the real ones, e.revealed is true, e.hidden keeps the original.
 function revealGate(e) {
   if (e.kind !== 'mystery') return;
@@ -2960,7 +3068,7 @@ function pickGate(e, mate) {
 function passGate(e) {
   if (e.kind === 'mystery') revealGate(e);
   const before = G.squad;
-  if (e.kind === 'mul') G.squad = Math.round(G.squad * e.val);
+  if (e.kind === 'mul') G.squad += Math.round(mulGain(G.squad) * (e.val - 1));
   else if (e.kind === 'rate') { G.rateBonus += e.val / 100; pop('射速 +' + e.val + '%', G.x, 2.6, G.z + 0.5, 'gold'); }
   else if (e.kind === 'level') {
     if (G.weaponLv < WEAPONS[G.weapon].maxLv) { G.weaponLv++; pop(WEAPONS[G.weapon].name + ' Lv' + G.weaponLv + '！', G.x, 2.6, G.z + 0.5, 'gold'); }
@@ -2989,7 +3097,7 @@ function updateSquad(dt) {
   const n = G.soldiers.length, per = perRow(n);
   const W = WEAPONS[G.weapon];
   findTargets();
-  const shotDmg = W.dmg * Math.pow(W.lvMul, G.weaponLv - 1) * G.dmgMul * (1 + upPer('dmg') * upLv('dmg'));
+  const shotDmg = W.dmg * Math.pow(W.lvMul, G.weaponLv - 1) * G.dmgMul * (1 + upPer('dmg') * upLv('dmg')) * (1 + G.rank.bonus);   // rank bonus: live, see RANKS
   const rateMul = (1 + upPer('rate') * upLv('rate') + G.rateBonus) * (G.buffs.frenzy ? TUNE.frenzyMul : 1);
   const extra = G.buffs.split ? TUNE.splitExtra : 0, pellets = W.pellets + extra, spreadW = extra ? Math.max(W.spread, 0.1) : W.spread;   // split: the outermost `extra` pellets of the fan are bonus ones at splitDmg of the normal damage
   const pMid = (pellets - 1) / 2, pMain = (pellets - extra - 1) / 2;
@@ -3024,7 +3132,7 @@ function updateSquad(dt) {
         const a = (Math.random() - 0.5) * spreadW * 2 + (pellets > 1 ? (p - (pellets - 1) / 2) * spreadW * 0.7 : 0);
         const ca = Math.cos(a), sa = Math.sin(a);
         const rx = dx * ca - dz * sa, rz = dx * sa + dz * ca;
-        spawnBullet(s.x + rx * 0.5 + 0.14, s.z + rz * 0.5, rx, rz, extra && Math.abs(p - pMid) > pMain + 0.01 ? shotDmg * TUNE.splitDmg : shotDmg, 0, G.weapon, i * 1.7, aimX, aimZ);
+        spawnBullet(s.x + rx * 0.5 + 0.14, s.z + rz * 0.5, rx, rz, (extra && Math.abs(p - pMid) > pMain + 0.01 ? shotDmg * TUNE.splitDmg : shotDmg) * s.w, 0, G.weapon, i * 1.7, aimX, aimZ, s.w);
       }
       SFX.shot();
       bus.emit('shot', { x: s.x, z: s.z, w: G.weapon, lv: G.weaponLv });
@@ -3232,7 +3340,7 @@ function updateBullets(dt) {
               if (seen) continue;
               if (bhn[i] < 8) bhid[i * 8 + bhn[i]++] = zb.uid;
             }
-            hitZombie(zb, dmg * critRoll(x, z, dmg));
+            strikeZombie(zb, i, x, z, dmg);
             if (kind) splash(x, z, dmg);
             else {
               if (WB.splash) splash(x, z, dmg, WB.splash);
@@ -3252,9 +3360,9 @@ function updateBullets(dt) {
       for (let q = 0; q < na; q++) {                             // gates and batteries count when the path crosses their plane (a lob too, at any height)
         const e = activeE[q];
         if (e.type === 'gate') {
-          if (!e.used && oz > e.z && z <= e.z && Math.abs(x - e.x) < 1.85) { bxHit = x; gateHit(e, dmg); hit = true; break; }
+          if (!e.used && oz > e.z && z <= e.z && Math.abs(x - e.x) < 1.85) { bxHit = x; gateHit(e, gateDmg(i, dmg)); hit = true; break; }
         } else if (!e.done && oz > e.bz && z <= e.bz && Math.abs(x - e.x) < 0.95) {
-          bxHit = x; heroHit(e, dmg); hit = true; break;
+          bxHit = x; heroHit(e, gateDmg(i, dmg)); hit = true; break;
         }
       }
     }
@@ -5697,6 +5805,7 @@ function resetWorld() {
   Object.assign(G, { x: 0, tx: 0, z: 0, squad: entry, weapon: 0, weaponLv: 1, kills: 0, shield: 0, shake: 0, time: 0, safe: false, dmgMul: 1,
     combo: 0, comboT: 0, comboBest: 0, coins: 0, result: null, rateBonus: 0, entrySquad: entry,
     msIdx: TUNE.squadMilestones.filter(m => m <= entry).length });          // only milestones above the entry squad count as "reached this run"
+  G.rank = rankOf(G.squad);
   for (const k in G.buffs) delete G.buffs[k];
   G.drops.length = 0;
   coinAcc = 0; coinT = -9; lastCritT = -9; chainDepth = 0; lastBlockT = -9;
@@ -5755,7 +5864,7 @@ function settleStage(won) {
   let stars = 0, bonus = 0, coins;
   if (won) {
     // 3 stars: 1.5 x the entry squad (at least +10), but never more than 95% of the cap - with squads of 90+ the bar is "nearly full"
-    const thr3 = Math.min(Math.ceil(TUNE.maxSquad * 0.95), Math.max(Math.ceil(entry * 1.5), entry + 10));
+    const thr3 = Math.max(Math.ceil(entry * 1.5), entry + 10);          // round 8: no cap, so 1.5 x the entry (at least +10)
     stars = 1 + (survivors >= entry ? 1 : 0) + (survivors >= thr3 ? 1 : 0);
     bonus = stars * Math.round(TUNE.starCoins * (1 + TUNE.coinStage * (n - 1)) * node.coinMul);
     coins = G.coins + bonus;
@@ -6584,7 +6693,7 @@ function resetSave() {
 }
 // Start stage n from the beginning with its entry squad (same as prepare(n) + startRun()).
 function startStage(n) { prepare(n); startRun(); }
-window.__zb = { mapOpen, mapSelect, mapRefresh, mapNodeStates, MAPV, hordeSpec, sceneFx, levelObstacles, obstacleGaps, makeObstacle, OBS_KINDS, damageObstacle, MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap, gap: G.gap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
+window.__zb = { mapOpen, mapSelect, mapRefresh, mapNodeStates, MAPV, rankOf, rankBonus, RANKS, UNIT_TIERS, mulGain, gateHit, unitPlan, killSoldier, hordeSpec, sceneFx, levelObstacles, obstacleGaps, makeObstacle, OBS_KINDS, damageObstacle, MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap, gap: G.gap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
   stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0), bw: Array.from(bw.subarray(0, nb)), bl: Array.from(bl.subarray(0, nb)), by: Array.from(by.subarray(0, nb)), bt: Array.from(bt.subarray(0, nb)), bs: Array.from(bs.subarray(0, nb)), bx: Array.from(bx.subarray(0, nb)), bz: Array.from(bz.subarray(0, nb)) }),
   perf: () => ({ pr: PR_STEPS[prIdx], steps: PR_STEPS, avg: Perf.avg, fxScale }) };
 })();
