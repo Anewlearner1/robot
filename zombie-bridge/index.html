@@ -689,7 +689,7 @@ const TUNE = {
   exBase: 0.03, exStage: 0.012, exMax: 0.08, exploderR: 1.8, exploderDmg: 2, exploderCap: 6,   // exploder zombies: share of a horde, blast radius, blast damage (flat: it stops chaining once zombies have more hp than this)
   shBase: 0.03, shStage: 0.015, shMax: 0.12, shieldSlope: 0.5, shieldHp: 1.3, shieldBreak: 4,   // shield zombies: share, how off-axis a bullet must be to get past (|dx| of its direction), hp factor
   // --- round 8: growth limits for unlimited squads
-  deepHp: 0.52, deepGrow: 1.06,   // round 8: zombie hp factor of the procedural depths (6+), x deepGrow per further depth, on top of stageHp's last entry
+  deepHp: 0.52, deepGrow: 1.04,   // round 8: zombie hp factor of the procedural depths (6+), x deepGrow per further depth, on top of stageHp's last entry
   mulCapBase: 40, mulCapPerDepth: 10, mulTail: 0.15,   // a x2 gate doubles up to C = base + perDepth x depth soldiers; above C only mulTail of the rest is added (no exponential blow-up)
   gateWMax: 6, gateShotBase: 24, gateShotPerDepth: 4,  // a heavy bullet counts as at most gateWMax hits on a gate / battery; a gate can be shot up by at most base + perDepth x depth
   // --- round 7: obstacles (lane-footprint blocks on the deck; see the round 7 obstacle contract)
@@ -871,7 +871,7 @@ const MAP = [
 //   mapSelect{id} is handled synchronously (the node is prepared, G.node set, before bus.emit returns).
 // ---- round 7 logic: the node graph (authored MAP + procedural continuation)
 // Logic additions to MAP: n5.next = ['p6'] (the campaign continues). Procedural nodes ('p<depth>' single at even depths, 'p<depth>a' / 'p<depth>b'
-// at odd depths: a = harder (diffMul 1.06, coinMul 1.3), b = easier (0.97); from depth 6 the zombie hp also carries TUNE.deepHp x deepGrow^(depth-6)) are generated on demand, seeded by depth, with x / y laid out like the
+// at odd depths: a = harder (diffMul 1.02, coinMul 1.3), b = easier (0.98); from depth 6 the zombie hp also carries TUNE.deepHp x deepGrow^(depth-6)) are generated on demand, seeded by depth, with x / y laid out like the
 // authored ones (y = 0.92 - 0.17 * (depth - 1): negative from depth 7 on, the map scrolls). Every node object has:
 //   { id, depth, name, scene, next[], diffMul, coinMul, x, y, seed }.
 const NODE_CACHE = {};
@@ -889,7 +889,7 @@ function genDepth(d) {
     const avoid = new Set(parents.map(q => q.scene));
     const pickScene = taken => { const c = pool.filter(sc => !avoid.has(sc) && !taken.includes(sc)); return c[Math.floor(rng() * c.length)] || pool[0]; };
     const mk = (id, scene, a, x) => {
-      const nd = { id, depth: e, name: SCENES[scene].name + '·' + e, scene, next: [], diffMul: a === 'a' ? 1.06 : a === 'b' ? 0.97 : 1, coinMul: a === 'a' ? 1.3 : a === 'b' ? 1 : 1.2, x, y: Math.round((0.92 - 0.17 * (e - 1)) * 1000) / 1000, seed: e + (a === 'a' ? 1000 : a === 'b' ? 2000 : 0) };
+      const nd = { id, depth: e, name: SCENES[scene].name + '·' + e, scene, next: [], diffMul: a === 'a' ? 1.02 : a === 'b' ? 0.98 : 1, coinMul: a === 'a' ? 1.3 : a === 'b' ? 1 : 1.2, x, y: Math.round((0.92 - 0.17 * (e - 1)) * 1000) / 1000, seed: e + (a === 'a' ? 1000 : a === 'b' ? 2000 : 0) };
       NODE_CACHE[id] = nd; return nd;
     };
     let made;
@@ -3461,7 +3461,8 @@ scene.add(bossMesh);
 function startBoss() {
   G.phase = 'boss';
   const W = WEAPONS[G.weapon];
-  const dps = G.squad * W.rate * W.pellets * W.dmg * Math.pow(W.lvMul, G.weaponLv - 1) * W.bossEff + (G.mech ? 2 * (TUNE.mechDmg + G.level * TUNE.mechDmgPerStage) / TUNE.mechCd : 0);
+  // round 8: the estimate carries every permanent / run-long damage multiplier the squad has (damage and fire-rate upgrades, rate gates, the live rank), so the fight lasts about bossDpsSecs whatever the build
+  const dps = G.squad * W.rate * W.pellets * W.dmg * Math.pow(W.lvMul, G.weaponLv - 1) * W.bossEff * (1 + upPer('dmg') * upLv('dmg')) * (1 + upPer('rate') * upLv('rate') + G.rateBonus) * (1 + G.rank.bonus) + (G.mech ? 2 * (TUNE.mechDmg + G.level * TUNE.mechDmgPerStage) / TUNE.mechCd : 0);
   const hp = Math.round(TUNE.bossHp * G.level + dps * TUNE.bossDpsSecs);
   G.boss = { x: 0, z: G.z - TUNE.bossDist, hp, max: hp, sp: TUNE.bossSpeed + G.level * TUNE.bossSpeedPerStage, flash: 0, alive: true, deadT: 0, spawnT: 2.5, hitT: 0 };
   bossMesh.visible = true;
