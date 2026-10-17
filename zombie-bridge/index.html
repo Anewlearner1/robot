@@ -796,6 +796,19 @@ function rankOf(squad) {
 //   cloudSignIn() / cloudSignOut() (Google popup, falling back to redirect) and emits authState { provider, signedIn,
 //   name, photo } on every change; cloudSync keeps its meaning. Signed out on the standalone site = local save only.
 const FIREBASE_CONFIG = null;   // the owner pastes the Firebase web config object here (public identifiers, not secrets)
+//   (round 8 logic) PROVIDER DESIGN. The cloud layer is one state machine (merge policy mergeSaves, debounce 1.5 s, epoch resets, one onSnapshot, remote saves
+//   deferred while a run is on, error states) over a document reference with get() / set() / onSnapshot() - both providers just supply that reference:
+//   - 'claude'   window.claude is present (the artifact viewer): the db capability, data/users/<id>/save, exactly as in round 6.
+//   - 'firebase' no window.claude and a config (FIREBASE_CONFIG, or the test hook window.__FIREBASE_CONFIG_OVERRIDE): the compat SDK (app, auth, firestore 10.12.2 from
+//                gstatic) is loaded lazily by script tags (a window.firebase that is already there - preloaded or a test stub - is used as is), Google sign-in via
+//                cloudSignIn() (popup; redirect when the popup is blocked / unsupported or in an iOS standalone web app), cloudSignOut(), onAuthStateChanged starts or stops
+//                the sync; the doc is saves/{uid} holding the plain SAVE object (fits firestore.rules: doc id = uid, < 40 top-level fields, nodes < 2000).
+//   - none       state stays 'off', G.cloud.provider null. The Firebase SDK is NEVER loaded when window.claude exists.
+//   G.cloud = { state, lastSyncAt, user, provider, account }: account = { name, photo } or null; signed out on the standalone site = state 'local' (local save only;
+//   a reset made while signed out does not travel). bus authState { provider, signedIn, name, photo, error? } on every auth change (the claude provider reports
+//   signedIn once the viewer identity is known). Firestore error codes map like the claude ones: permission-denied -> 'error' for the visit (no retry loop),
+//   unauthenticated -> 'local', unavailable / deadline-exceeded / aborted ... -> one retry then 'pending', resource-exhausted -> 30 s back-off, 'pending'.
+//   __zb.cloudSignIn() / cloudSignOut() (promises; bus 'cloudSignIn' / 'cloudSignOut' do the same), __zb.cloud.provider().
 
 // ---------------------------------------------------------------- round 7 contract: world map, scenes, split routes
 // Owner (round 7): (1) a world map with branching routes, (2) new scenes beyond the bridge, (3) real in-stage splits.
@@ -1040,7 +1053,7 @@ const G = {
   // round 3 (logic writes, presentation reads): combo chain, coins earned this run, timed buffs { id: secondsLeft },
   // the squad this stage started with, and the last stage result (set right before `win` / `gameOver`).
   combo: 0, comboT: 0, comboBest: 0, coins: 0, buffs: {}, entrySquad: 1, result: null,
-  cloud: { state: 'off', lastSyncAt: 0, user: false },   // round 6: cloud save status for the UI (see the cloud layer)
+  cloud: { state: 'off', lastSyncAt: 0, user: false, provider: null, account: null },   // round 6: cloud save status for the UI (see the cloud layer)
   route: [], routeName: '', theme: 'haze',   // round 4: see the lanes-and-routes contract above
   seg: null,                                  // round 4 (logic): the route segment the squad is in now (null before the first step)
   // added by logic in round 3: permanent fire-rate bonus from '射速+' gates (this stage), power-up orbs on the ground (the same
@@ -6537,7 +6550,7 @@ const inRun = () => G.phase === 'run' || G.phase === 'boss';
 // CLOUD: internal state. G.cloud = { state, lastSyncAt, user } is what the UI reads; every state change emits bus 'cloudSync' { state, lastSyncAt }
 // (a merge that changed SAVE also emits it, with merged: true, so the UI re-reads SAVE). States: 'off' (no viewer / db / identity), 'local'
 // (db present but this viewer cannot write), 'syncing', 'synced', 'pending' (a write failed transiently, retried on the next save), 'error'.
-const CLOUD = { enabled: false, ref: null, unsub: null, readOk: false, writing: false, again: false, timer: 0, retried: false, dead: false,
+const CLOUD = { agen: 0, fb: null, authUnsub: null, authBusy: Promise.resolve(), enabled: false, ref: null, unsub: null, readOk: false, writing: false, again: false, timer: 0, retried: false, dead: false,
   base: '', queued: null, qTimer: 0, resetPending: false, backoffUntil: 0, gen: 0, ready: Promise.resolve() };
 function cloudState(state, merged) {
   const changed = G.cloud.state !== state;
@@ -6562,13 +6575,17 @@ function cloudMeet(remote) {
 function cloudBackoff(ms) { CLOUD.backoffUntil = Date.now() + ms; }
 function cloudFail(e, phase) {
   const code = e && e.code;
+  if (code === 'permission-denied' || code === 'failed-precondition' || code === 'invalid-argument' || code === 'data-loss') {     // Firestore: refused by the rules (or unusable): 'error' for this visit, no retry loop
+    CLOUD.dead = true; cloudStop(); cloudState('error'); return;
+  }
+  if (code === 'unauthenticated') { CLOUD.dead = true; cloudStop(); cloudState('local'); return; }
   if (code === 'invalid_argument') {                        // a view-only viewer: writes reject, reads look like a missing doc -> local only, no retry loop
     CLOUD.dead = true; cloudStop(); cloudState('local'); return;
   }
   if (code === 'revoked' || code === 'not_granted' || code === 'capability_disabled' || code === 'capability_removed' || code === 'transform_error' || code === 'quota_exceeded') {
     CLOUD.dead = true; cloudStop(); cloudState('error'); return;
   }
-  if (code === 'resource_exhausted') { cloudBackoff(30000); cloudState('pending'); return; }
+  if (code === 'resource_exhausted' || code === 'resource-exhausted') { cloudBackoff(30000); cloudState('pending'); return; }
   // unavailable (and any unknown code): one retry after a short random delay, then 'pending' until the next save
   if (!CLOUD.retried) { CLOUD.retried = true; clearTimeout(CLOUD.timer); CLOUD.timer = setTimeout(cloudRun, 300 + Math.random() * 700); return; }
   CLOUD.retried = false; cloudState('pending');
@@ -6639,27 +6656,128 @@ function cloudApplyQueued() {
   if (needWrite) cloudSchedule();
   return true;
 }
-// Boot (or a test injecting a fake): find db + user, then the first sync. Never blocks the menu or gameplay.
-function cloudInit(c) {
-  CLOUD.gen++; cloudStop();
-  Object.assign(CLOUD, { enabled: false, ref: null, readOk: false, writing: false, again: false, retried: false, dead: false, base: '', queued: null, resetPending: false, backoffUntil: 0 });
-  G.cloud.user = false; cloudState('off');
-  if (!c || typeof c.use !== 'function') return CLOUD.ready = Promise.resolve();
-  CLOUD.enabled = true;
-  const gen = CLOUD.gen;
-  return CLOUD.ready = (async () => {
-    let db = null, user = null;
-    try { db = await c.use('db'); } catch (e) {}
-    try { user = await c.use('user'); } catch (e) {}
-    if (gen !== CLOUD.gen || !db || !user) return;
-    let id = null;
-    try { id = await user.id(); } catch (e) {}
-    if (gen !== CLOUD.gen || !id) return;
-    try { CLOUD.ref = db.doc('data/users/' + id + '/save'); } catch (e) { return; }
-    G.cloud.user = true;
-    await cloudRun();
-  })();
+const cloudAuthEvent = (signedIn, extra) => {
+  const acct = G.cloud.account;
+  bus.emit('authState', Object.assign({ provider: G.cloud.provider, signedIn: !!signedIn, name: acct ? acct.name : '', photo: acct ? acct.photo : '' }, extra || {}));
+};
+const cloudFirebaseConfig = () => window.claude ? null : (window.__FIREBASE_CONFIG_OVERRIDE || FIREBASE_CONFIG);
+function cloudProviderFor(c) {
+  if (c && typeof c.use === 'function') return 'claude';
+  return cloudFirebaseConfig() ? 'firebase' : null;
 }
+// Boot (or a test injecting a fake): pick the provider, then the first sync. Never blocks the menu or gameplay.
+function cloudInit(c) {
+  CLOUD.gen++; CLOUD.agen++; cloudStop();
+  if (CLOUD.authUnsub) { try { CLOUD.authUnsub(); } catch (e) {} CLOUD.authUnsub = null; }
+  Object.assign(CLOUD, { enabled: false, ref: null, readOk: false, writing: false, again: false, retried: false, dead: false, base: '', queued: null, resetPending: false, backoffUntil: 0, fb: null, authBusy: Promise.resolve() });
+  G.cloud.user = false; G.cloud.account = null; G.cloud.provider = null; cloudState('off');
+  const prov = cloudProviderFor(c);
+  if (!prov) return CLOUD.ready = Promise.resolve();
+  G.cloud.provider = prov;
+  return CLOUD.ready = prov === 'claude' ? cloudClaudeStart(c, CLOUD.gen) : cloudFirebaseStart(CLOUD.gen, CLOUD.agen);
+}
+// Provider 'claude': find db + user, the doc data/users/<id>/save.
+async function cloudClaudeStart(c, gen) {
+  CLOUD.enabled = true;
+  let db = null, user = null;
+  try { db = await c.use('db'); } catch (e) {}
+  try { user = await c.use('user'); } catch (e) {}
+  if (gen !== CLOUD.gen || !db || !user) return;
+  let id = null;
+  try { id = await user.id(); } catch (e) {}
+  if (gen !== CLOUD.gen || !id) return;
+  try { CLOUD.ref = db.doc('data/users/' + id + '/save'); } catch (e) { return; }
+  G.cloud.user = true;
+  cloudAuthEvent(true);
+  await cloudRun();
+}
+// Provider 'firebase'.
+function cloudLoadScript(src) {
+  return new Promise((res, rej) => { const el = document.createElement('script'); el.src = src; el.async = false; el.onload = () => res(); el.onerror = () => rej(new Error('load ' + src)); document.head.appendChild(el); });
+}
+async function cloudLoadFirebase() {
+  if (window.firebase && window.firebase.auth && window.firebase.firestore) return window.firebase;
+  const base = 'https://www.gstatic.com/firebasejs/10.12.2/';
+  await cloudLoadScript(base + 'firebase-app-compat.js');
+  await cloudLoadScript(base + 'firebase-auth-compat.js');
+  await cloudLoadScript(base + 'firebase-firestore-compat.js');
+  return window.firebase;
+}
+async function cloudFirebaseStart(gen, agen) {
+  let fb = null;
+  try { fb = await cloudLoadFirebase(); } catch (e) { fb = null; }
+  if (gen !== CLOUD.gen) return;
+  if (!fb) { cloudState('local'); cloudAuthEvent(false, { error: 'sdk' }); return; }       // offline / blocked: the local save keeps working; sign-in tries again
+  let auth, db;
+  try {
+    if (!fb.apps || !fb.apps.length) fb.initializeApp(cloudFirebaseConfig());
+    auth = fb.auth(); db = fb.firestore();
+  } catch (e) { cloudState('local'); cloudAuthEvent(false, { error: 'init' }); return; }
+  CLOUD.fb = { fb, auth, db };
+  try { if (auth.getRedirectResult) { const p = auth.getRedirectResult(); if (p && p.catch) p.catch(() => {}); } } catch (e) {}      // a redirect sign-in lands here; onAuthStateChanged reports the user
+  await new Promise(res => {
+    let first = true;
+    CLOUD.authUnsub = auth.onAuthStateChanged(user => {
+      if (agen !== CLOUD.agen) return;
+      const busy = cloudOnUser(user);
+      CLOUD.authBusy = busy;
+      if (first) { first = false; busy.then(res, res); }
+    }, () => { if (first) { first = false; res(); } });
+  });
+}
+// The signed-in user changed (or was found at boot): stop the old sync, start the new one.
+async function cloudOnUser(user) {
+  CLOUD.gen++; cloudStop();
+  Object.assign(CLOUD, { ref: null, readOk: false, writing: false, again: false, retried: false, dead: false, base: '', queued: null, resetPending: false, backoffUntil: 0, enabled: false });
+  const gen = CLOUD.gen;
+  if (!user) {
+    G.cloud.user = false; G.cloud.account = null;
+    cloudState('local'); cloudAuthEvent(false);
+    return;
+  }
+  G.cloud.user = true;
+  G.cloud.account = { name: user.displayName || user.email || '', photo: user.photoURL || '' };
+  try { CLOUD.ref = CLOUD.fb.db.collection('saves').doc(user.uid); } catch (e) { cloudState('error'); return; }
+  CLOUD.enabled = true;
+  cloudAuthEvent(true);
+  if (gen !== CLOUD.gen) return;
+  await cloudRun();
+}
+// Google sign-in (provider 'firebase' only): popup, redirect when the popup is blocked / unsupported or in an iOS standalone web app. Resolves true when signed in.
+async function cloudSignIn() {
+  if (G.cloud.provider !== 'firebase') return false;
+  await CLOUD.ready;
+  if (!CLOUD.fb) { CLOUD.ready = cloudFirebaseStart(CLOUD.gen, CLOUD.agen); await CLOUD.ready; }        // the SDK did not load earlier: try again now
+  if (!CLOUD.fb) return false;
+  const { fb, auth } = CLOUD.fb, prov = new fb.auth.GoogleAuthProvider();
+  const iosStandalone = (navigator.standalone === true) || (/iPhone|iPad|iPod/.test(navigator.userAgent) && window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  try {
+    if (iosStandalone) { await auth.signInWithRedirect(prov); return true; }
+    await auth.signInWithPopup(prov);
+  } catch (e) {
+    const code = e && e.code;
+    if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
+      try { await auth.signInWithRedirect(prov); return true; } catch (e2) { cloudAuthEvent(false, { error: (e2 && e2.code) || 'redirect' }); return false; }
+    }
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return false;
+    cloudAuthEvent(false, { error: code || 'signin' });
+    return false;
+  }
+  await new Promise(r => setTimeout(r, 0));
+  await CLOUD.authBusy;
+  return !!auth.currentUser;
+}
+async function cloudSignOut() {
+  if (G.cloud.provider !== 'firebase') return false;
+  await CLOUD.ready;
+  if (!CLOUD.fb) return false;
+  try { await CLOUD.fb.auth.signOut(); } catch (e) { return false; }
+  await new Promise(r => setTimeout(r, 0));
+  await CLOUD.authBusy;
+  return true;
+}
+bus.on('cloudSignIn', () => { cloudSignIn(); });
+bus.on('cloudSignOut', () => { cloudSignOut(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && CLOUD.ref && !CLOUD.dead) { clearTimeout(CLOUD.timer); cloudRun(); } });
 window.addEventListener('pagehide', () => { if (CLOUD.ref && !CLOUD.dead) { clearTimeout(CLOUD.timer); cloudRun(); } });
 // Test handle: flush() runs the pending sync now (and applies a queued remote save if the player is not in a run), state() reads G.cloud,
@@ -6677,7 +6795,7 @@ const cloudApi = {
     }
     cloudApplyQueued();
   },
-  state: () => G.cloud.state, _inject: c => cloudInit(c), merge: mergeSaves, internal: CLOUD,
+  state: () => G.cloud.state, _inject: c => cloudInit(c), merge: mergeSaves, internal: CLOUD, provider: () => G.cloud.provider, signIn: cloudSignIn, signOut: cloudSignOut,
 };
 cloudInit(window.claude);
 
@@ -6693,7 +6811,7 @@ function resetSave() {
 }
 // Start stage n from the beginning with its entry squad (same as prepare(n) + startRun()).
 function startStage(n) { prepare(n); startRun(); }
-window.__zb = { mapOpen, mapSelect, mapRefresh, mapNodeStates, MAPV, rankOf, rankBonus, RANKS, UNIT_TIERS, mulGain, gateHit, unitPlan, killSoldier, hordeSpec, sceneFx, levelObstacles, obstacleGaps, makeObstacle, OBS_KINDS, damageObstacle, MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap, gap: G.gap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
+window.__zb = { cloudSignIn, cloudSignOut, mapOpen, mapSelect, mapRefresh, mapNodeStates, MAPV, rankOf, rankBonus, RANKS, UNIT_TIERS, mulGain, gateHit, unitPlan, killSoldier, hordeSpec, sceneFx, levelObstacles, obstacleGaps, makeObstacle, OBS_KINDS, damageObstacle, MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap, gap: G.gap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
   stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0), bw: Array.from(bw.subarray(0, nb)), bl: Array.from(bl.subarray(0, nb)), by: Array.from(by.subarray(0, nb)), bt: Array.from(bt.subarray(0, nb)), bs: Array.from(bs.subarray(0, nb)), bx: Array.from(bx.subarray(0, nb)), bz: Array.from(bz.subarray(0, nb)) }),
   perf: () => ({ pr: PR_STEPS[prIdx], steps: PR_STEPS, avg: Perf.avg, fxScale }) };
 })();

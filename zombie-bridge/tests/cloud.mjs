@@ -259,6 +259,202 @@ for (const [label, cfg] of [['db is null', { noDb: true }], ['user is null', { n
   await page.close();
 }
 
+// ================================================================ round 8: the firebase provider (fake firebase compat SDK)
+// A fake window.firebase (app / auth / firestore) is installed before boot together with the test hook window.__FIREBASE_CONFIG_OVERRIDE.
+// fcfg: { user (signed in at boot: {uid, displayName, photoURL}), signInUser (who the popup signs in), cloudDocs: { uid: doc }, popupError, failSet, failGet, parts }
+// parts: 'all' (install the whole stub) or 'lazy' (nothing installed: the page must load the three SDK scripts, which the test serves).
+function fakeFirebase(fcfg, part) {
+  const F = window.__fb = window.__fb || { cfg: fcfg, docs: {}, sets: [], gets: [], subs: {}, listeners: [], calls: [], user: fcfg.user || null, initCfg: null, loaded: [] };
+  for (const [uid, d] of Object.entries(fcfg.cloudDocs || {})) if (!(('saves/' + uid) in F.docs)) F.docs['saves/' + uid] = JSON.parse(JSON.stringify(d));
+  const snap = (path, pending) => ({ exists: F.docs[path] !== undefined, data: () => F.docs[path] === undefined ? undefined : JSON.parse(JSON.stringify(F.docs[path])), metadata: { hasPendingWrites: !!pending } });
+  const notify = (path, pending) => { for (const f of (F.subs[path] || [])) setTimeout(() => f(snap(path, pending)), 0); };
+  F.remoteWrite = (uid, body) => { F.docs['saves/' + uid] = JSON.parse(JSON.stringify(body)); notify('saves/' + uid, false); };      // another device wrote
+  const docRef = path => ({
+    path,
+    get: async () => { F.gets.push(path); if (F.cfg.failGet) throw { code: F.cfg.failGet }; return snap(path, false); },
+    set: async data => {
+      F.sets.push({ path, body: JSON.parse(JSON.stringify(data)) });
+      if (F.cfg.failSet) throw { code: F.cfg.failSet };
+      await new Promise(r => setTimeout(r, 15));
+      F.docs[path] = JSON.parse(JSON.stringify(data)); notify(path, true); setTimeout(() => notify(path, false), 10);
+    },
+    onSnapshot: (next, err) => { (F.subs[path] = F.subs[path] || []).push(next); setTimeout(() => next(snap(path, false)), 0); return () => { F.subs[path] = F.subs[path].filter(f => f !== next); }; },
+  });
+  const firestore = { collection: name => ({ doc: id => docRef(name + '/' + id) }) };
+  const fire = () => { for (const l of F.listeners) setTimeout(() => l(F.user), 0); };
+  const auth = {
+    get currentUser() { return F.user; },
+    onAuthStateChanged: cb => { F.listeners.push(cb); setTimeout(() => cb(F.user), 5); return () => { F.listeners = F.listeners.filter(l => l !== cb); }; },
+    signInWithPopup: async () => { F.calls.push('popup'); if (F.cfg.popupError) throw { code: F.cfg.popupError }; F.user = F.cfg.signInUser; fire(); return { user: F.user }; },
+    signInWithRedirect: async () => { F.calls.push('redirect'); F.user = F.cfg.signInUser; fire(); },
+    getRedirectResult: async () => null,
+    signOut: async () => { F.calls.push('signOut'); F.user = null; fire(); },
+  };
+  const w = window;
+  if (part === 'all' || part === 'app') { w.firebase = w.firebase || { apps: [] }; w.firebase.initializeApp = function (c) { F.initCfg = c; this.apps.push(c); }; F.loaded.push('app'); }
+  if (part === 'all' || part === 'auth') { w.firebase.auth = Object.assign(() => auth, { GoogleAuthProvider: function () { this.id = 'google.com'; } }); F.loaded.push('auth'); }
+  if (part === 'all' || part === 'store') { w.firebase.firestore = () => firestore; F.loaded.push('store'); }
+  w.__FIREBASE_CONFIG_OVERRIDE = { apiKey: 'test', projectId: 'zb-test' };
+}
+const U1 = { uid: 'uid1', displayName: 'Ada', photoURL: 'https://example.com/a.png' };
+async function openFb(fcfg, local, opt = {}) {
+  const page = await browser.newPage({ viewport: { width: 200, height: 200 } });
+  page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+  page.on('pageerror', e => errors.push('pageerror: ' + e.message));
+  await page.addInitScript(() => { window.requestAnimationFrame = () => 0; });
+  if (fcfg !== null && !opt.lazy) await page.addInitScript(`(${fakeFirebase.toString()})(${JSON.stringify(fcfg)}, 'all')`);
+  if (opt.lazy) {                                                       // the page loads the SDK by script tags: serve fake files, remember the order
+    await page.addInitScript(`window.__FIREBASE_CONFIG_OVERRIDE = { apiKey: 'test', projectId: 'zb-test' };`);
+    const part = { app: 'app', auth: 'auth', firestore: 'store' };
+    for (const f of ['app', 'auth', 'firestore']) await page.route(`https://www.gstatic.com/firebasejs/10.12.2/firebase-${f}-compat.js`, r => r.fulfill({ contentType: 'application/javascript', body: `(${fakeFirebase.toString()})(${JSON.stringify(fcfg)}, '${part[f]}')` }));
+  }
+  if (local) await page.addInitScript(`try { localStorage.setItem('zombie-bridge-save', ${JSON.stringify(JSON.stringify(local))}); } catch (e) {}`);
+  await page.route('**/three.min.js', r => r.fulfill({ body: fs.readFileSync(three), contentType: 'application/javascript' }));
+  await page.route('https://fonts.**', r => r.abort());
+  await page.goto('file://' + html);
+  await page.waitForFunction(() => window.__zb);
+  await page.evaluate(() => {
+    window.__events = []; window.__auth = [];
+    window.__zb.bus.on('cloudSync', d => window.__events.push(Object.assign({ t: Date.now() }, d)));
+    window.__zb.bus.on('authState', d => window.__auth.push(d));
+  });
+  return page;
+}
+const LOCAL1 = S({ best: 3, coins: 40, rev: 2, updatedAt: 1000, stages: { 2: { entry: 30, stars: 2 }, 3: { entry: 41, stars: 1 } } });
+// ---- F1. provider selection
+{
+  const page = await openFb({}, null);
+  const r = await page.evaluate(async () => { await window.__zb.cloud.flush(); return { prov: window.__zb.G.cloud.provider, st: window.__zb.cloud.state(), scripts: document.querySelectorAll('script[src*=gstatic]').length }; });
+  check("provider: no window.claude and a config -> 'firebase' (stub SDK used as is, no script tag added)", r.prov === 'firebase' && r.scripts === 0, JSON.stringify(r));
+  await page.close();
+}
+{
+  const page = await open({}, null);
+  await page.evaluate(() => { window.__FIREBASE_CONFIG_OVERRIDE = { apiKey: 'x' }; window.firebase = { auth: () => { throw new Error('must not be used'); }, firestore: () => { throw new Error('nope'); } }; });
+  const r = await page.evaluate(async () => { await window.__zb.cloud._inject(window.claude); return { prov: window.__zb.G.cloud.provider, scripts: document.querySelectorAll('script[src*=gstatic]').length }; });
+  check("provider: window.claude present -> 'claude' even with a firebase config; the Firebase SDK is never loaded inside claude.ai", r.prov === 'claude' && r.scripts === 0, JSON.stringify(r));
+  await page.close();
+}
+{
+  const page = await open(null, null);
+  const r = await page.evaluate(() => ({ prov: window.__zb.G.cloud.provider, st: window.__zb.cloud.state(), acct: window.__zb.G.cloud.account }));
+  check("provider: neither window.claude nor a config -> provider null, state 'off'", r.prov === null && r.st === 'off' && r.acct === null, JSON.stringify(r));
+  await page.close();
+}
+// ---- F2. signed out at boot
+{
+  const page = await openFb({ signInUser: U1 }, LOCAL1);
+  const r = await page.evaluate(async () => { await window.__zb.cloud.flush(); const z = window.__zb; window.__auth.length = 0; await z.cloud._inject(null); z.SAVE.coins += 5; z.saveGame(); await z.cloud.flush(); return { st: z.cloud.state(), g: JSON.parse(JSON.stringify(z.G.cloud)), sets: window.__fb.sets.length, auth: window.__auth.slice() }; });
+  check("firebase signed out: state 'local', provider firebase, account null, authState { signedIn: false }, local saves work and nothing is written", r.st === 'local' && r.g.provider === 'firebase' && r.g.account === null && r.g.user === false && r.sets === 0 && r.auth.length >= 1 && r.auth[r.auth.length - 1].signedIn === false && r.auth[0].provider === 'firebase', JSON.stringify(r));
+  await page.close();
+}
+// ---- F3. sign in: popup, doc saves/<uid>, local progress goes up
+{
+  const page = await openFb({ signInUser: U1 }, LOCAL1);
+  await settle(page);
+  const r = await page.evaluate(async () => { const z = window.__zb; const ok = await z.cloudSignIn(); await z.cloud.flush(); return { ok, st: z.cloud.state(), g: JSON.parse(JSON.stringify(z.G.cloud)), calls: window.__fb.calls.slice(), sets: window.__fb.sets.map(s => s.path), doc: window.__fb.docs['saves/uid1'], auth: window.__auth.slice(), init: window.__fb.initCfg }; });
+  check("sign-in: cloudSignIn() uses the Google popup and resolves true; state 'synced', G.cloud.account { name, photo }, authState { provider: 'firebase', signedIn: true, name, photo }", r.ok === true && r.calls.join() === 'popup' && r.st === 'synced' && r.g.account.name === 'Ada' && r.g.account.photo === U1.photoURL && r.g.user === true && r.auth[r.auth.length - 1].signedIn === true && r.auth[r.auth.length - 1].name === 'Ada' && r.auth[r.auth.length - 1].photo === U1.photoURL, JSON.stringify(r));
+  check('sign-in: the local progress is written up to saves/<uid> as the plain SAVE (the whole document, same shape as the claude doc, fits firestore.rules)', r.sets.length === 1 && r.sets[0] === 'saves/uid1' && r.doc && r.doc.best >= 3 && r.doc.coins === 40 && r.doc.nodes[ID[3]].entry === 41 && r.doc.v === 2 && Object.keys(r.doc).length < 40 && r.init && r.init.projectId === 'zb-test', JSON.stringify(r.doc));
+  await page.close();
+}
+// ---- F4. sign in with an existing cloud doc: merged like the claude provider; booted already signed in
+{
+  const cloud = S({ best: 4, coins: 900, rev: 7, updatedAt: 5000, upgrades: { rate: 2 }, stages: { 2: { entry: 20, stars: 3 }, 4: { entry: 60, stars: 1 } } });
+  const page = await openFb({ signInUser: U1, cloudDocs: { uid1: cloud } }, LOCAL1);
+  await settle(page);
+  const r = await page.evaluate(async () => { const z = window.__zb; await z.cloudSignIn(); await z.cloud.flush(); return { s: JSON.parse(JSON.stringify(z.SAVE)), doc: window.__fb.docs['saves/uid1'], merged: window.__events.filter(e => e.merged).length, st: z.cloud.state() }; });
+  check('sign-in with a cloud doc: merged (best max, stars max, entry max, upgrades max, nodes union), coins from the newer copy (the cloud), merged cloudSync event', r.s.best === 4 && r.s.nodes[ID[2]].stars === 3 && r.s.nodes[ID[2]].entry === 30 && r.s.nodes[ID[3]].entry === 41 && r.s.nodes[ID[4]].entry === 60 && r.s.upgrades.rate === 2 && r.s.coins === 900 && r.merged >= 1 && r.st === 'synced', JSON.stringify(r.s));
+  check('sign-in with a cloud doc: the merge went back to the cloud (it lacked n3a entry 41), rev moved past both', r.doc.nodes[ID[3]].entry === 41 && r.doc.rev > 7, JSON.stringify([r.doc.rev]));
+  await page.close();
+}
+{
+  const page = await openFb({ user: U1, signInUser: U1, cloudDocs: { uid1: S({ best: 2, coins: 7, rev: 3, updatedAt: 3000 }) } }, null);
+  const r = await page.evaluate(async () => { const z = window.__zb; await z.cloud.flush(); window.__auth.length = 0; await z.cloud._inject(null); await z.cloud.flush(); return { st: z.cloud.state(), g: JSON.parse(JSON.stringify(z.G.cloud)), best: z.SAVE.best, coins: z.SAVE.coins, auth: window.__auth.slice() }; });
+  check("booted already signed in: the cloud save is loaded (best 2, coins 7), state 'synced', account set, authState signedIn true", r.st === 'synced' && r.g.account && r.g.account.name === 'Ada' && r.best === 2 && r.coins === 7 && r.auth.some(a => a.signedIn), JSON.stringify(r));
+  await page.close();
+}
+// ---- F5. a snapshot from another device
+{
+  const page = await openFb({ user: U1, signInUser: U1, cloudDocs: { uid1: S({ best: 2, coins: 7, rev: 3, updatedAt: 3000 }) } }, null);
+  await settle(page);
+  await page.evaluate(() => window.__fb.remoteWrite('uid1', Object.assign({ v: 2, coins: 55, best: 3, upgrades: {}, nodes: { n1: { entry: 1, stars: 3, cleared: true }, n2: { entry: 44, stars: 2, cleared: true } }, cur: 'n3a', rev: 9, updatedAt: 9000, epoch: 0 })));
+  await page.waitForTimeout(150);
+  const r = await page.evaluate(async () => { const z = window.__zb; await z.cloud.flush(); return { coins: z.SAVE.coins, best: z.SAVE.best, n2: z.SAVE.nodes.n2 && z.SAVE.nodes.n2.entry, merged: window.__events.filter(e => e.merged).length }; });
+  check('snapshot from another device: applied (merged) while not in a run - coins 55, best 3, n2 entry 44', r.coins === 55 && r.best === 3 && r.n2 === 44 && r.merged >= 1, JSON.stringify(r));
+  await page.close();
+}
+// ---- F6. sign out -> local
+{
+  const page = await openFb({ user: U1, signInUser: U1, cloudDocs: { uid1: S({ best: 2, coins: 7, rev: 3, updatedAt: 3000 }) } }, null);
+  await settle(page);
+  const r = await page.evaluate(async () => {
+    const z = window.__zb; const sets0 = window.__fb.sets.length;
+    const ok = await z.cloudSignOut();
+    const st = z.cloud.state(), acct = z.G.cloud.account, last = window.__auth[window.__auth.length - 1];
+    z.SAVE.coins += 99; z.saveGame(); await z.cloud.flush();
+    const ep0 = z.SAVE.epoch; z.resetSave(); await z.cloud.flush();
+    return { ok, st, acct, last, sets: window.__fb.sets.length - sets0, user: z.G.cloud.user, epochBumped: z.SAVE.epoch !== ep0, doc: window.__fb.docs['saves/uid1'].coins, calls: window.__fb.calls.slice() };
+  });
+  check("sign-out: state 'local', account null, authState { signedIn: false }, later saves and even a reset are local only (nothing written, epoch untouched, the cloud doc keeps its coins)", r.ok && r.st === 'local' && r.acct === null && r.last.signedIn === false && r.sets === 0 && r.user === false && !r.epochBumped && r.doc === 7 && r.calls.includes('signOut'), JSON.stringify(r));
+  await page.close();
+}
+// ---- F7. popup blocked -> redirect; popup closed by the user -> quiet
+{
+  const page = await openFb({ signInUser: U1, popupError: 'auth/popup-blocked' }, LOCAL1);
+  await settle(page);
+  const r = await page.evaluate(async () => { const z = window.__zb; const ok = await z.cloudSignIn(); await new Promise(r => setTimeout(r, 150)); await z.cloud.flush(); return { ok, calls: window.__fb.calls.slice(), st: z.cloud.state() }; });
+  check("sign-in: a blocked popup falls back to signInWithRedirect (popup, then redirect) and the user ends up signed in", r.ok === true && r.calls.join() === 'popup,redirect' && r.st === 'synced', JSON.stringify(r));
+  await page.close();
+}
+{
+  const page = await openFb({ signInUser: U1, popupError: 'auth/popup-closed-by-user' }, LOCAL1);
+  await settle(page);
+  const r = await page.evaluate(async () => { const z = window.__zb; const ok = await z.cloudSignIn(); return { ok, calls: window.__fb.calls.slice(), st: z.cloud.state(), errs: window.__auth.filter(a => a.error).length }; });
+  check("sign-in: closing the popup is not an error - false, still 'local', no redirect, no error event", r.ok === false && r.calls.join() === 'popup' && r.st === 'local' && r.errs === 0, JSON.stringify(r));
+  await page.close();
+}
+// ---- F8. errors map to the same states
+{
+  const page = await openFb({ user: U1, signInUser: U1, failSet: 'permission-denied', cloudDocs: {} }, LOCAL1);
+  await page.waitForTimeout(100);
+  const r = await page.evaluate(async () => { const z = window.__zb; await z.cloud.flush(); const st = z.cloud.state(); await new Promise(r => setTimeout(r, 2500)); z.SAVE.coins += 1; z.saveGame(); await z.cloud.flush(); return { st, sets: window.__fb.sets.length, st2: z.cloud.state() }; });
+  check("firestore permission-denied: state 'error' for the visit, no retry loop (one write attempt, later saves do not try again)", r.st === 'error' && r.st2 === 'error' && r.sets === 1, JSON.stringify(r));
+  await page.close();
+}
+{
+  const page = await openFb({ user: U1, signInUser: U1, failSet: 'unavailable', cloudDocs: {} }, LOCAL1);
+  await page.waitForTimeout(100);
+  const r = await page.evaluate(async () => { const z = window.__zb; await new Promise(r => setTimeout(r, 2200)); return { st: z.cloud.state(), sets: window.__fb.sets.length }; });
+  check("firestore unavailable: one quick retry, then 'pending' (not 'error')", r.st === 'pending' && r.sets >= 2 && r.sets <= 4, JSON.stringify(r));
+  await page.close();
+}
+{
+  const page = await openFb({ user: U1, signInUser: U1, failGet: 'unauthenticated', cloudDocs: {} }, LOCAL1);
+  const r = await page.evaluate(async () => { const z = window.__zb; await z.cloud.flush(); return { st: z.cloud.state() }; });
+  check("firestore unauthenticated: state 'local'", r.st === 'local', JSON.stringify(r));
+  await page.close();
+}
+// ---- F9. lazy SDK loading
+{
+  const page = await openFb({ signInUser: U1 }, LOCAL1, { lazy: true });
+  const r = await page.evaluate(async () => { await window.__zb.cloud.flush(); const z = window.__zb; const ok = await z.cloudSignIn(); await z.cloud.flush(); return { loaded: window.__fb && window.__fb.loaded.join(), ok, st: z.cloud.state(), srcs: [...document.querySelectorAll('script[src*=gstatic]')].map(s => s.src.split('/').pop()) }; });
+  check("lazy SDK: the page loads firebase-app-compat, firebase-auth-compat and firebase-firestore-compat from gstatic (10.12.2) in that order, then signs in", r.srcs.join() === 'firebase-app-compat.js,firebase-auth-compat.js,firebase-firestore-compat.js' && r.loaded === 'app,auth,store' && r.ok === true && r.st === 'synced', JSON.stringify(r));
+  await page.close();
+}
+{
+  const page = await open(null, LOCAL1);
+  const r = await page.evaluate(async () => { const z = window.__zb; return { signIn: await z.cloudSignIn(), signOut: await z.cloudSignOut(), prov: z.G.cloud.provider }; });
+  check('cloudSignIn / cloudSignOut are harmless no-ops (false) when the provider is not firebase', r.signIn === false && r.signOut === false && r.prov === null, JSON.stringify(r));
+  await page.close();
+}
+{
+  const page = await open({}, S({ best: 3, rev: 1, updatedAt: 1 }));
+  const r = await page.evaluate(async () => { const z = window.__zb; await z.cloud.flush(); return { prov: z.G.cloud.provider, auth: window.__auth || [], signIn: await z.cloudSignIn() }; });
+  check("claude provider: G.cloud.provider is 'claude', cloudSignIn is a no-op", r.prov === 'claude' && r.signIn === false, JSON.stringify(r));
+  await page.close();
+}
+
+
 let failed = 0;
 for (const r of results) {
   if (!r.ok) failed++;
