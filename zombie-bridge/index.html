@@ -419,6 +419,15 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 .lumseg { display: inline-flex; border-radius: 10px; overflow: hidden; box-shadow: inset 0 0 0 2px rgba(255,255,255,.25); }
 .lumseg button { border: 0; background: transparent; color: var(--paper); font: 900 14px var(--body); letter-spacing: .08em; padding: 8px 14px; cursor: pointer; }
 .lumseg button.on { background: var(--hazard); color: var(--ink); }
+.rkb { width: 30px; height: 30px; flex: none; display: block; filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); } .rkb.big { width: 96px; height: 96px; }
+.rkchip { display: flex; align-items: center; gap: 7px; padding: 4px 12px 4px 4px; border-radius: 999px; background: var(--panel); width: max-content; max-width: 70vw; margin-bottom: 4px; transform-origin: 0 100%; }
+.rkchip .rkt { display: grid; gap: 1px; min-width: 0; } .rkchip b { font: 900 14px/1.1 var(--body); letter-spacing: .08em; color: #fff; white-space: nowrap; } .rkchip .rn { font: 500 10.5px/1.1 var(--body); color: var(--muted); letter-spacing: .04em; white-space: nowrap; }
+.rkchip .rkbar { display: block; height: 4px; border-radius: 3px; background: rgba(255,255,255,.18); overflow: hidden; margin-top: 2px; } .rkchip .rkbar i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #ffb020, #ffd76a); transform-origin: 0 50%; transform: scaleX(0); }
+.rkchip.tick { animation: rktick .5s; } @keyframes rktick { 0% { box-shadow: 0 0 0 2px #e2363b, 0 0 14px #e2363b; } 100% { box-shadow: none; } }
+.rkchip.up { animation: rkup .7s cubic-bezier(.2,1.5,.4,1); } @keyframes rkup { 0% { transform: scale(1.6); box-shadow: 0 0 0 2px #ffd75e, 0 0 22px #ffd75e; } 100% { transform: none; box-shadow: none; } }
+.rkrow { display: flex; align-items: center; justify-content: center; gap: 10px; font: 900 16px var(--body); letter-spacing: .08em; background: var(--panel); border-radius: 14px; padding: 6px 16px 6px 8px; }
+.rkrow small { font: 500 12px var(--body); color: var(--muted); letter-spacing: .1em; display: block; text-align: left; }
+@media (prefers-reduced-motion: reduce) { .rkchip.up, .rkchip.tick { animation: none; } }
 @media (prefers-reduced-motion: reduce) { .mnode.open .mdisc { animation: none; } .unlock { animation: none; } }
 
 </style>
@@ -447,7 +456,7 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
   </div>
   <div id="hint">按住左右拖曳移動 · 小隊自動開火</div>
   <div class="hud-bottom">
-    <div class="squad"><span class="k">小隊</span><span class="v" id="hudSquad">×1</span></div>
+    <div class="squad"><div class="rkchip" id="hudRank" hidden><span id="hudRankIco"></span><span class="rkt"><b id="hudRankName"></b><span class="rn"></span><i class="rkbar"><i id="hudRankBar"></i></i></span></div><span class="k">小隊</span><span class="v" id="hudSquad">×1</span></div>
     <div class="weapon"><span class="k">武器</span><span class="v" id="hudWeapon">手槍</span><span class="pips" id="hudPips" aria-hidden="true"></span></div>
   </div>
 </div>
@@ -542,6 +551,7 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
     <p class="lede" id="resLede"></p>
     <div class="carry" id="resCarry" hidden></div>
     <div class="unlock" id="resUnlock" hidden></div>
+    <div class="rkrow" id="resRank" hidden></div>
     <div class="tally">
       <div class="trow"><span>擊殺</span><b id="resKills">0</b></div>
       <div class="trow"><span>最高連殺</span><b id="resCombo">0</b></div>
@@ -3654,7 +3664,7 @@ function fxUnitSprites() {
     if (q.t >= 1) { list.splice(i, 1); continue; }
     if (q.t < 0 || fireSys.full()) continue;
     const e = q.rev ? 1 - (1 - q.t) * (1 - q.t) : q.t * q.t, x = q.ax + (q.bx - q.ax) * e, z = q.az + (q.bz - q.az) * e;
-    fireSys.push(x, 0.9 + Math.sin(q.t * 3.14) * 0.5, z, q.rev ? 1 : 0.55, q.rev ? 0.55 : 0.8, q.rev ? 0.4 : 1, 0.55 * (1 - 0.3 * q.t), q.tier ? 0.7 : 0.45);
+    fireSys.push(x, 0.9 + Math.sin(q.t * 3.14) * 0.5, z, q.rev ? 1 : 0.7, q.rev ? 0.6 : 0.9, q.rev ? 0.4 : 1, 0.85 * (1 - 0.3 * q.t), q.tier ? 1.1 : 0.7);
   }
 }
 
@@ -3985,7 +3995,9 @@ function drawBullets(dt) {
       bMesh.setMatrixAt(nt, dummy.matrix); tc[nt * 3] = 1; tc[nt * 3 + 1] = 0.5; tc[nt * 3 + 2] = 0.15; nt++;
       continue;
     }
-    const w = bw[i] < WEAPONS.length ? bw[i] : 0, W = WEAPONS[w], rgb = WRGB[w], k = w === G.weapon ? lvK : 1, traj = TRAJ[w];
+    const w = bw[i] < WEAPONS.length ? bw[i] : 0, W = WEAPONS[w], rgb = WRGB[w], traj = TRAJ[w];
+    const wt = bd[i] > W.dmg * 400 ? 2 : bd[i] > W.dmg * 40 ? 1 : 0;       // weight tier of the shot (engine: one shot per figure, damage x its w)
+    const k = (w === G.weapon ? lvK : 1) * (wt ? 1 + 0.75 * wt : 1), br = wt ? 1 + 0.4 * wt : 1;
     if (traj !== 'beam') fxHist(i, bx[i], yb, bz[i], w, TRAJ_DS[traj] || 0.4, dt);
     switch (W.fx) {
       case 'pellet': {
@@ -4024,7 +4036,7 @@ function drawBullets(dt) {
       default: {
         const t = TRACER[W.id] || TRACER.rifle;
         dummy.position.set(bx[i], yb, bz[i]); dummy.rotation.set(0, ang, 0); dummy.scale.set(t[1] * k, t[1] * k, t[0]); dummy.updateMatrix();
-        bMesh.setMatrixAt(nt, dummy.matrix); tc[nt * 3] = rgb[0] * (0.6 + 0.4 * trK); tc[nt * 3 + 1] = rgb[1] * (0.6 + 0.4 * trK); tc[nt * 3 + 2] = rgb[2] * (0.6 + 0.4 * trK); nt++;
+        bMesh.setMatrixAt(nt, dummy.matrix); tc[nt * 3] = rgb[0] * (0.6 + 0.4 * trK) * br; tc[nt * 3 + 1] = rgb[1] * (0.6 + 0.4 * trK) * br; tc[nt * 3 + 2] = rgb[2] * (0.6 + 0.4 * trK) * br; nt++;
         if (BUFFV.split && nt + (nb - i) < MAXB - 1) {       // split buff: a ghost twin beside every tracer
           const sd = (i & 1) ? 0.24 : -0.24;
           dummy.position.set(bx[i] + dz * sd, yb, bz[i] - dx * sd); dummy.scale.set(t[1] * 0.7, t[1] * 0.7, t[0] * 0.9); dummy.updateMatrix();
@@ -4068,15 +4080,44 @@ function drawParticles(dt) {
 }
 
 
-const hud = { pips: $('#hudPips'), lvl: $('#hudLevel'), prog: $('#hudProg'), kills: $('#hudKills'), squad: $('#hudSquad'), weapon: $('#hudWeapon') };
+// big numbers: 2,345 / 12,345 (the HUD counter keeps the full number up to 99,999), then 1.2萬 / 12萬 / 1.2億 (everywhere above 9,999)
+function fxNum(n, wide) {
+  n = Math.max(0, Math.floor(+n || 0));
+  if (n < (wide ? 100000 : 10000)) return n < 1000 ? String(n) : Math.floor(n / 1000) + ',' + String(n % 1000).padStart(3, '0');
+  const f = (v, u) => (v >= 100 ? String(Math.floor(v)) : String(Math.floor(v * 10) / 10)) + u;
+  return n < 1e8 ? f(n / 1e4, '萬') : f(n / 1e8, '億');
+}
+// rank badge: a round badge in the class colour with the class's own insignia (chevrons / bars / stars / a wreath) and `sub` marks
+function fxBadge(cls, sub, big) {
+  cls = clamp(cls | 0, 0, 4); const n = clamp((sub | 0) + 1, 1, 4), c = FX_CLS[cls].acc, hex = '#' + c.toString(16).padStart(6, '0');
+  let g = '';
+  if (cls === 0) for (let i = 0; i < n; i++) g += '<path d="M6 ' + (13 - i * 3.4 + 4) + 'l6 -4 6 4" />';
+  else if (cls === 1) { for (let i = 0; i < n; i++) g += '<path d="M6 ' + (11 - i * 3.4 + 5) + 'l6 -4 6 4" />'; g += '<path d="M5 18h14" />'; }
+  else if (cls === 2) for (let i = 0; i < n; i++) g += '<rect x="7" y="' + (16 - i * 4) + '" width="10" height="2.4" rx=".6" fill="currentColor" stroke="none"/>';
+  else if (cls === 3) for (let i = 0; i < n; i++) g += '<path d="M' + (12 + (i - (n - 1) / 2) * 5.2) + ' 7.5l1.2 2.7 2.9.3-2.2 2 .7 2.9-2.6-1.5-2.6 1.5.7-2.9-2.2-2 2.9-.3z" fill="currentColor" stroke="none"/>';
+  else g = '<path d="M5 12c0-5 3-8 7-8s7 3 7 8M6 9c-1 4 1 8 6 9 5-1 7-5 6-9" fill="none"/><path d="M12 6.5l1.6 3.4 3.7.4-2.8 2.5.8 3.7-3.3-1.9-3.3 1.9.8-3.7-2.8-2.5 3.7-.4z" fill="currentColor" stroke="none"/>';
+  return '<svg class="rkb' + (big ? ' big' : '') + '" viewBox="0 0 24 24" aria-hidden="true" style="--rc:' + hex + '"><circle cx="12" cy="12" r="11" fill="#10151b" stroke="' + hex + '" stroke-width="1.8"/><g style="color:' + hex + '" stroke="' + hex + '" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" fill="none">' + g + '</g></svg>';
+}
+const hud = { rk: $('#hudRank'), rkBar: $('#hudRankBar'), rkName: $('#hudRankName'), rkIco: $('#hudRankIco'), pips: $('#hudPips'), lvl: $('#hudLevel'), prog: $('#hudProg'), kills: $('#hudKills'), squad: $('#hudSquad'), weapon: $('#hudWeapon') };
 const hudCache = {};
 function setText(key, el, v) { if (hudCache[key] !== v) { hudCache[key] = v; el.textContent = v; } }
 let sqPrev = null, progQ = -1, wSig = null;
+const FX_RANKMAX = { k: 0, rk: null };       // the highest rank reached in the stage being played (result screen)
 const cssHex = c => '#' + c.toString(16).padStart(6, '0');
 function updateHud() {
   setText('lvl', hud.lvl, String(G.level));
   setText('kills', hud.kills, String(G.kills));
-  setText('squad', hud.squad, '×' + G.squad);
+  { const rk = G.rank, k = rk ? rk.k | 0 : 0, nx = rk ? Math.max(0, rk.next | 0) : 0, key = (rk ? rk.cls + ':' + rk.sub + ':' + rk.name + ':' + k : 'none');
+    if (rk) {
+      if (hudCache.rk !== key) { hudCache.rk = key; hud.rkIco.innerHTML = k >= 1 ? fxBadge(rk.cls, rk.sub) : ''; hud.rkName.textContent = k >= 1 ? rk.name : '距離首個軍階'; hud.rk.hidden = false; }
+      const pq = Math.round(clamp(1 - nx / 1000, 0, 1) * 100);
+      if (hudCache.rkb !== pq) { hudCache.rkb = pq; hud.rkBar.style.transform = 'scaleX(' + pq / 100 + ')'; }
+      const nt = k >= 1 ? '距離下一階 ' + fxNum(nx) : '還差 ' + fxNum(nx);
+      if (hudCache.rkn !== nt) { hudCache.rkn = nt; hud.rk.querySelector('.rn').textContent = nt; }
+    } else if (!hud.rk.hidden) hud.rk.hidden = true;
+    if (rk && k >= 1 && G.phase === 'run' && k > FX_RANKMAX.k) { FX_RANKMAX.k = k; FX_RANKMAX.rk = { cls: rk.cls, sub: rk.sub, name: rk.name }; }
+  }
+  setText('squad', hud.squad, '×' + fxNum(G.squad, true));
   setText('weapon', hud.weapon, WEAPONS[G.weapon].name + (G.mech ? ' + 機甲' : ''));
   const wsig = G.weapon * 10 + G.weaponLv;
   if (wsig !== wSig) {
@@ -5722,10 +5763,25 @@ bus.on('zombieDied', d => {
   flashAt(d.x, d.big ? 1.9 : 1, d.z, 0.12, 0.7, 1, 0.4);
   if (d.big) { shock(d.x, d.z, 0x9dff5a, 2.4, 0.45); FX.shake = Math.max(FX.shake, 0.2); }
 });
+bus.on('rankUp', d => {
+  const cls = clamp(d && d.cls | 0, 0, 4), bonus = d && d.bonus != null ? (d.bonus < 1 ? Math.round(d.bonus * 1000) / 10 : d.bonus) : 0;
+  bannerPush('晉升 ' + (d && d.name || '') + '！', '#ffd75e', bonus ? '全隊傷害 +' + bonus + '%' : '', 6);
+  FX_UNIT.rankFlash = nowMs() + 900;
+  for (const so of G.soldiers) if (fxTierOf(so.w || 1) === 2) {             // a burst on every 千人隊 figure as its outfit swaps
+    const c = FX_CLSRGB[cls];
+    burst(so.mesh.position.x, 2.2, so.mesh.position.z, 22, c, 5.5, 0.7);
+    shock(so.mesh.position.x, so.mesh.position.z, FX_CLS[cls].acc, 4.2, 0.55);
+    flashAt(so.mesh.position.x, 2.0, so.mesh.position.z, 0.2, 1.3, 1.2, 0.7);
+  }
+  flashScreen('rgb(255,210,90)', 0.22, 300); vibrate([20, 30, 40]);
+  if (SFX.levelUp) SFX.levelUp(); if (SFX.milestone) SFX.milestone(2);
+  hud.rk.classList.remove('up'); void hud.rk.offsetWidth; hud.rk.classList.add('up');
+});
+bus.on('rankDown', () => { hud.rk.classList.remove('tick'); void hud.rk.offsetWidth; hud.rk.classList.add('tick'); });
 bus.on('unitMerge', d => {
   FX_UNIT.mergeUntil = nowMs() + 600;
-  const t = d && d.tier | 0, name = t >= 2 ? '千人隊' : '百人隊';
-  bannerPush(name + ' ×' + ((d && d.count) || 1), t >= 2 ? '#ffd75e' : '#ffc94d', '', 1);
+  const t = d && d.tier | 0, big = t >= 1000 || t === 2, name = big ? '千人隊' : '百人隊';       // tier may be the index into UNIT_TIERS or the figure's w
+  bannerPush(name + ' ×' + ((d && d.count) || 1), big ? '#ffd75e' : '#ffc94d', '', 1);
   SFX.levelUp && SFX.levelUp();
 });
 bus.on('unitSplit', d => { FX_UNIT.splitUntil = nowMs() + 600; flashAt(G.x, 1.6, G.z + 0.8, 0.18, 1, 0.5, 0.35); });
@@ -5945,7 +6001,7 @@ function startNode(id) { if (!selectNode(id)) return false; startRun(); return t
 // the node the game opens on: the last chosen one if it can be played, else the main-path node of the furthest unlocked depth
 function startNodeId() { return nodeDef(SAVE.cur) && nodeState(SAVE.cur) !== 'locked' ? SAVE.cur : mainId(best); }
 function startRun() {
-  SFX.init();
+  SFX.init(); FX_RANKMAX.k = 0; FX_RANKMAX.rk = null;
   if (G.phase !== 'menu') prepareNode(G.node.id);
   for (const id of ['menu', 'over', 'win']) $('#' + id).hidden = true;
   $('#hud').hidden = false;
@@ -6040,7 +6096,7 @@ function goMenu() {
 function syncMenu() {
   $('#menuCoins').textContent = String(SAVE.coins | 0);
   const sv = SAVE.nodes && G.node && SAVE.nodes[G.node.id], entry = G.node && G.node.id !== 'n1' && sv && sv.entry ? sv.entry : TUNE.startSquad, stars = clamp(sv && sv.stars | 0, 0, 3);
-  $('#entryLine').innerHTML = (G.routeName ? '<span class="rn">' + G.routeName + '</span>　' : '') + '起始兵力 ×' + entry + '　<span class="st">' + '★'.repeat(stars) + '<i>' + '★'.repeat(3 - stars) + '</i></span>';
+  $('#entryLine').innerHTML = (G.routeName ? '<span class="rn">' + G.routeName + '</span>　' : '') + '起始兵力 ×' + fxNum(entry) + '　<span class="st">' + '★'.repeat(stars) + '<i>' + '★'.repeat(3 - stars) + '</i></span>';
   const multi = best > 1;
   const prev = $('#stagePrev'), next = $('#stageNext');
   prev.hidden = next.hidden = !multi;
@@ -6183,7 +6239,7 @@ function mapRender(keepScroll) {
     if (n.next.length > 1) html += '<span class="mfork" style="left:' + (p.x + 62) + 'px;top:' + (p.y + 10) + 'px">岔路・二選一</span>';
     html += '<button class="mnode ' + n.state + (MAPV.sel === n.id ? ' sel' : '') + '" type="button" data-id="' + n.id + '" style="left:' + p.x + 'px;top:' + p.y + 'px;--sc:' + MAP_SC[n.scene] + '" aria-label="' + n.name + (n.state === 'locked' ? '（未解鎖）' : '') + '">' +
       '<span class="mdisc">' + mapIcon(n.scene) + '</span><span class="mname">' + n.name + '</span>' +
-      '<span class="msub">' + (n.state === 'locked' ? '未解鎖' : mapStars(n.stars) + '<span>×' + n.entry + '</span>') + '</span>' + mapTradeChip(n) + '</button>';
+      '<span class="msub">' + (n.state === 'locked' ? '未解鎖' : mapStars(n.stars) + '<span>×' + fxNum(n.entry) + '</span>') + '</span>' + mapTradeChip(n) + '</button>';
   }
   html += '<div class="mapv-more" style="top:12px">▲ 繼續向前 ▲</div>';
   const st = keepScroll ? mapEl.scroll.scrollTop : null;
@@ -6196,7 +6252,7 @@ function mapCard() {
   mapEl.card.style.setProperty('--sc', MAP_SC[n.scene]);
   $('#ncIco').innerHTML = mapIcon(n.scene); $('#ncStage').textContent = 'STAGE ' + n.depth + '　' + sc.name; $('#ncName').textContent = n.name;
   $('#ncDesc').textContent = n.state === 'locked' ? '先通關前一關才能解鎖。' : sc.desc;
-  let m = '<span class="nc-pill">起始兵力 ×' + n.entry + '</span><span class="nc-pill st">' + '★'.repeat(n.stars) + '<i>' + '★'.repeat(3 - n.stars) + '</i></span>';
+  let m = '<span class="nc-pill">起始兵力 ×' + fxNum(n.entry) + '</span><span class="nc-pill st">' + '★'.repeat(n.stars) + '<i>' + '★'.repeat(3 - n.stars) + '</i></span>';
   const role = mapTradeRole(n);
   if (role === 'hard') m += '<span class="nc-pill hard">難度↑ 金幣×' + +n.coinMul.toFixed(2) + '</span>';
   else if (role === 'easy') m += '<span class="nc-pill easy">穩健路線</span>';
@@ -6326,8 +6382,9 @@ function showResult(won) {
   const unl = won ? RS.unlocked.map(id => (mapNodeStates().find(n => n.id === id) || {}).name).filter(Boolean) : [];
   RS.toMap = unl.length >= 2;                                       // a branch opened: the next stop is a choice, made on the map
   $r('resUnlock').hidden = true;
+  { const mr = FX_RANKMAX.k >= 1 && FX_RANKMAX.rk; $r('resRank').hidden = !mr; if (mr) $r('resRank').innerHTML = fxBadge(mr.cls, mr.sub) + '<span><small>本關最高軍階</small>' + mr.name + '</span>'; }
   $r('resMain').textContent = !won ? '再試一次' : RS.toMap ? '選擇路線' : '下一關';
-  $r('resSub').textContent = won ? '' : '以 ×' + r.entry + ' 名隊員重新挑戰　·　獲得 50% 金幣';
+  $r('resSub').textContent = won ? '' : '以 ×' + fxNum(r.entry) + ' 名隊員重新挑戰　·　獲得 50% 金幣';
   $r('resSub').hidden = won;
   resEl.hidden = false;
   resCard.classList.remove('go'); void resCard.offsetWidth; resCard.classList.add('go');
@@ -6336,7 +6393,7 @@ function showResult(won) {
   let t = 0.45;
   for (let i = 0; i < stars; i++) { const el = starsEl.children[i]; rsAt(t, () => { el.classList.add('on'); SFX.star(i); }); t += 0.5; }
   if (won) {
-    rsAt(t, () => { carry.innerHTML = '→ 帶到下一關 <b>×' + r.survivors + '</b>'; carry.hidden = false; SFX.good(); });
+    rsAt(t, () => { carry.innerHTML = '→ 帶到下一關 <b>×' + fxNum(r.survivors) + '</b>'; carry.hidden = false; SFX.good(); });
     t += 0.35;
     if (unl.length) { rsAt(t, () => { $r('resUnlock').innerHTML = '解鎖：<b>' + unl.join(' / ') + '</b>'; $r('resUnlock').hidden = false; SFX.milestone(1); }); t += 0.4; }
     if (r.newBest) { rsAt(t, () => { $r('resNew').hidden = false; SFX.milestone(2); }); t += 0.35; }
