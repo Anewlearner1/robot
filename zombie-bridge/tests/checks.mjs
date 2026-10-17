@@ -1580,6 +1580,23 @@ const results = await page.evaluate(() => {
       for (let i = 0; i < 6; i++) zb.step(1 / 60);
       check('a hundred-weight bullet (dmg 100, w 100) kills a crowd: hp-3 zombies around the impact die (>= 20 of 30 from one bullet)', crowd.filter(q => q.hp <= 0 || q.dying > 0).length >= 20, crowd.filter(q => q.hp <= 0 || q.dying > 0).length);
     }
+    // formation spacing of the big figures, events with positions, bullet weight
+    {
+      labU(23456); G.phase = 'run'; G.z = -80; G.shield = 1e9;
+      for (let i = 0; i < 90; i++) { G.shield = 1e9; zb.step(1 / 60); }
+      const SPx = 0.62, minDist = tier => { const fs = G.soldiers.filter(f => f.tier === tier); let m = 1e9; for (let i = 0; i < fs.length; i++) for (let j = i + 1; j < fs.length; j++) m = Math.min(m, Math.hypot(fs[i].x - fs[j].x, fs[i].z - fs[j].z)); return m; };
+      check('formation spacing: thousand-figures stand >= 2.1 x SP apart, hundred-figures >= 1.5 x SP, singles >= SP (no overlap of the bigger figures)', minDist(2) >= 2.1 * SPx - 0.08 && minDist(1) >= 1.5 * SPx - 0.08 && minDist(0) >= SPx - 0.08, [minDist(2), minDist(1), minDist(0)].map(v => v.toFixed(2)).join('/'));
+      check('formation: never wider than a row of singles would be (23,456 soldiers: half width <= 3.5), G.formHalf / G.formDepth are set', zb.formationHalf() <= (8 - 1) / 2 * SPx + 1e-9 && G.formHalf === zb.formationHalf() && G.formDepth > 0, `${zb.formationHalf()} ${G.formDepth}`);
+      const mg = [], sp = []; const o1 = listen('unitMerge', mg), o2 = listen('unitSplit', sp);
+      G.squad = 23999; zb.syncSoldiers(); G.squad = 24000; zb.syncSoldiers();
+      G.squad = 23999; zb.syncSoldiers();
+      check('unitMerge / unitSplit carry tier (the weight), idx, x, z and count', mg.length >= 1 && sp.length >= 1 && [...mg, ...sp].every(e => (e.tier === 100 || e.tier === 1000) && (e.idx === 1 || e.idx === 2) && typeof e.x === 'number' && typeof e.z === 'number' && e.count >= 1), JSON.stringify([mg[0], sp[0]]));
+      o1(); o2();
+      const sh = []; const o3 = listen('shot', sh);
+      G.squad = 1250; zb.syncSoldiers(); for (const f of G.soldiers) f.cd = 0;
+      zb.step(1 / 60); o3();
+      check('shot events carry wt (the shooter weight); bullets keep it in bwt (also zb.fxBul.bwt)', sh.length > 0 && sh.every(e => e.wt === 1000 || e.wt === 200 || e.wt === 100 || e.wt === 1) && sh.some(e => e.wt === 1000) && zb.fxBul.bwt instanceof Float32Array && zb.fxBul.bwt[0] >= 1, sh.map(e => e.wt).join());
+    }
     // growth limits
     {
       labU(1); G.level = 1;

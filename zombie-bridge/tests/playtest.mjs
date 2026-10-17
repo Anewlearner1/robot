@@ -74,6 +74,7 @@ function botRun(cfg) {
     zb.bus.on('gameOver', d => { const L = window.__log; L.reason = d.reason; L.cause = d.cause; L.kind = d.kind; L.overT = G.time; L.overPhase = d.phase; });
     zb.bus.on('win', () => { window.__log.won = true; });
     zb.bus.on('obstacleHit', d => { const L = window.__log; L.obsLost = (L.obsLost || 0) + d.n; (L.hitLog = L.hitLog || []).length < 12 && L.hitLog.push(`${d.kind}@${d.x.toFixed(1)},${d.z.toFixed(0)} n${d.n} Gx${G.x.toFixed(2)} gap${G.gap ? G.gap.lo.toFixed(2) + '..' + G.gap.hi.toFixed(2) : '-'} sq${G.squad} cols${zb.pathBounds().cols}`); });
+    zb.bus.on('rankUp', d => { const L = window.__log; L.rankMax = Math.max(L.rankMax || 0, d.k); });
     zb.bus.on('obstacleBreak', () => { const L = window.__log; L.obsBroken = (L.obsBroken || 0) + 1; });
     zb.bus.on('heroActivated', () => { window.__log.hero = true; });
     // --hold: a forced gun stays no matter which pickup the squad walks over (other guns are ignored, the same gun still levels up)
@@ -277,7 +278,7 @@ function botRun(cfg) {
         const side = x >= 0 ? 1 : -1;
         if (side !== e.side) continue;                 // the other gate of the pair (or nothing) is what we pass
         let v = e.val;
-        if (e.kind === 'mul') v = Math.max(0, G.squad * (e.val - 1));
+        if (e.kind === 'mul') v = Math.max(0, zb.mulGain(G.squad) * (e.val - 1));
         else if (e.kind === 'rate') v = G.squad * e.val * 0.6;                                   // +20 % fire rate ~ a fifth more soldiers
         else if (e.kind === 'level') v = G.weaponLv < WP[G.weapon].maxLv ? (WP[G.weapon].lvMul - 1) * G.squad * 0.7 : zb.TUNE.levelGateRecruits;
         else if (e.kind === 'mystery') v = 3.5 + (G.level / 2 | 0);                              // a gamble that is mostly good
@@ -355,6 +356,7 @@ function botRun(cfg) {
     G.tx = cur + Math.max(-mx, Math.min(mx, want - cur));
     zb.step(dtStep);
     steps++;
+    if (G.squad > (LOG.peak || 0)) LOG.peak = G.squad;
     if (cfg.trace && steps % 60 === 0) trace.push(`${(steps / 60) | 0}s z=${G.z.toFixed(0)} sq=${G.squad} w=${G.weapon} x=${G.x.toFixed(1)} Z=${Z.length}${G.mech ? ' mech' : ''}${G.shield > 0 ? ' shld' : ''}`);
     if ((steps & 127) === 0) { popLayer.textContent = ''; zb.pops.length = 0; }
   }
@@ -372,7 +374,7 @@ function botRun(cfg) {
     bossKilled: LOG.bossDeadT !== undefined,
     bossHpLeft: G.boss ? Math.max(0, G.boss.hp / G.boss.max) : null,
     entry: G.entrySquad, stars: G.result ? G.result.stars : 0, coinsRun: G.result ? G.result.coins : 0, comboBest: G.comboBest, stage: cfg.stage,
-    gateDiffs: LOG.gateDiffs || [], obsLost: LOG.obsLost || 0, hitLog: LOG.hitLog, obsBroken: LOG.obsBroken || 0, deathZ: G.z, trace: cfg.trace ? trace : undefined, hero: !!LOG.hero, heroCharge: (() => { const h = G.events.find(e => e.type === 'hero'); return h ? Math.round(h.charge) + '/' + h.need : null; })(), tier: LOG.tier || 0, pickups: LOG.pickups || 0, badGates: LOG.badGates || 0,
+    gateDiffs: LOG.gateDiffs || [], obsLost: LOG.obsLost || 0, hitLog: LOG.hitLog, rankMax: Math.max(LOG.rankMax || 0, G.rank ? G.rank.k : 0), peak: LOG.peak || 0, obsBroken: LOG.obsBroken || 0, deathZ: G.z, trace: cfg.trace ? trace : undefined, hero: !!LOG.hero, heroCharge: (() => { const h = G.events.find(e => e.type === 'hero'); return h ? Math.round(h.charge) + '/' + h.need : null; })(), tier: LOG.tier || 0, pickups: LOG.pickups || 0, badGates: LOG.badGates || 0,
   };
   return res;
 }
@@ -409,7 +411,7 @@ function botCampaign(cfg) {
       tries++;
       if (cfg.upgrades) buyGreedy();
     }
-    stages.push({ stage: st, node: pid(st), obsLost: res.obsLost, won: res.won, tries, entry: res.entry, squad: res.squad, stars: res.stars, coins: res.coinsRun, boss: res.bossSecs, cause: res.cause, wallet: zb.SAVE.coins });
+    stages.push({ stage: st, node: pid(st), obsLost: res.obsLost, rank: res.rankMax, peak: res.peak, won: res.won, tries, entry: res.entry, squad: res.squad, stars: res.stars, coins: res.coinsRun, boss: res.bossSecs, cause: res.cause, wallet: zb.SAVE.coins });
     if (!res.won) break;
     if (cfg.upgrades) buyGreedy();
   }
@@ -478,12 +480,12 @@ async function page_campaign() {
       for (;;) { const j = next++; if (j >= cfgs.length) return; out[j] = await page.evaluate(c => window.__botCampaign(c), cfgs[j]); }
     }));
     console.log(`campaign path ${path}: ${opt.n} runs, depths 1-${opt.cstages}, upgrades ${opt.upgrades ? 'greedy' : 'none'}, retries ${opt.retries}, seed ${opt.seed}`);
-    console.log('node   reached  cleared|reached  cumulative  tries  entry  survivors  stars  coins/run  boss s  lost to obstacles');
+    console.log('node   reached  cleared|reached  cumulative  tries  entry  survivors  stars  coins/run  boss s  lost to obstacles  peak squad  max rank k');
     for (let st = 1; st <= opt.cstages; st++) {
       const at = out.filter(r => r.stages.length >= st).map(r => r.stages[st - 1]);
       const won = at.filter(x => x.won);
       const m = (a, f) => a.length ? (a.reduce((x, y) => x + f(y), 0) / a.length) : NaN;
-      console.log([at.length ? at[0].node : '?', pct(at.length, opt.n), pct(won.length, at.length), pct(won.length, opt.n), f1(m(at, x => x.tries)), f1(m(at, x => x.entry)), f1(m(won, x => x.squad)), f1(m(won, x => x.stars)), f1(m(at, x => x.coins)), f1(m(won.filter(x => x.boss != null), x => x.boss)), f1(m(at, x => x.obsLost || 0))].map((v, i) => String(v).padEnd(i ? 14 : 7)).join(''));
+      console.log([at.length ? at[0].node : '?', pct(at.length, opt.n), pct(won.length, at.length), pct(won.length, opt.n), f1(m(at, x => x.tries)), f1(m(at, x => x.entry)), f1(m(won, x => x.squad)), f1(m(won, x => x.stars)), f1(m(at, x => x.coins)), f1(m(won.filter(x => x.boss != null), x => x.boss)), f1(m(at, x => x.obsLost || 0)), f1(m(at, x => x.peak || 0)), f1(m(at, x => x.rank || 0))].map((v, i) => String(v).padEnd(i ? 14 : 7)).join(''));
     }
     const upsAvg = {};
     for (const r of out) for (const [k, v] of Object.entries(r.ups)) upsAvg[k] = (upsAvg[k] || 0) + v / out.length;

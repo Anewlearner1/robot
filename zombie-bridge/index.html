@@ -646,7 +646,7 @@ const TUNE = {
   hpPerStage: 0.5,                // ... ordinary zombies +0.5 hp per step (fractions are rolled per zombie) ...
   stagePow: 0.9,                  // ... where a stage's step count is (stage-1)^stagePow
   stageMul: [3.55, 2.1, 2.5],     // trim of the far-end horde growth (`ramp`) per stage; the last entry covers every later stage
-  stageHp: [1.4, 1.09, 0.98, 1.2, 1.16],       // extra zombie hp factor per stage (campaign tuning: counts are capped by MAXZ, so late stages get tougher, not more numerous); the last entry covers every later stage
+  stageHp: [1.55, 1.17, 1.1, 3.0, 5.9],       // extra zombie hp factor per stage (campaign tuning: counts are capped by MAXZ, so late stages get tougher, not more numerous); the last entry covers every later stage
   early: 0.35, rampPow: 2, ramp: 13, hpRamp: 15.5, bruteRamp: 6,   // along the bridge (position p = 0..1): size x (early + ramp*p^rampPow), hp x (1 + hpRamp*p^rampPow), brute count likewise
   count: { open: 3, wall: 50, blob: 30, line: 20, swarm: 24, runners: 20 },
   bruteBase: 3, brutePerStage: 1, bruteHp: 10, bruteHpPerStage: 4,
@@ -668,7 +668,7 @@ const TUNE = {
   splashR2: 3.4, splashDmg: 0.4,  // shells: blast radius squared and damage fraction
   mechDmg: 1.4, mechDmgPerStage: 0.6, mechCd: 0.62,
   // --- boss: hp = bossHp*stage + bossDpsSecs * (squad damage per second that can land on it)
-  bossHp: 220, bossDpsSecs: 11.5, bossDist: 26, bossSpeed: 1.3, bossSpeedPerStage: 0.1,   // bossDist: how far ahead it appears
+  bossHp: 220, bossDpsSecs: 13.5, bossDist: 26, bossSpeed: 1.3, bossSpeedPerStage: 0.1,   // bossDist: how far ahead it appears
   knockMax: 1.4,                  // top knock-back speed (u/s); zombies walk 1-1.7, so a heavy push stalls them, never reverses them
   hordeJitter: 0.25,              // every horde is released at x(1 +- this) of its planned size
   bossKnock: 0,                   // fraction of a gun's knock that moves the boss back (0: bosses are immune; >0 let shotguns stall it forever)
@@ -770,6 +770,11 @@ const UNIT_TIERS = [1, 100, 1000];
 //   Losses: any contact costs ONE soldier (the loss is taken from the singles first; when no single is left a hundred / thousand figure splits:
 //   bus unitSplit { tier: the broken tier, count: figures it became }); an obstacle costs a whole figure (w soldiers). When figures of a lower tier
 //   add up to a higher one they merge: bus unitMerge { tier, count: figures formed }.
+//   (agreed with the front end) tier in the events is the weight value (100 / 1000), idx the index into UNIT_TIERS, both events carry x, z (the merge point /
+//   the broken figure); the `shot` event has wt = the shooter's w; bullets carry their shooter's weight in the per-bullet array bwt (also __zb.fxBul.bwt).
+//   FORMATION: figures are spaced UNIT_SPACE x SP = 1 / 1.5 / 2.1 (the drawn scale of the tiers); a tier group has its own rows and as many columns as fit in the
+//   width of a row of singles; G.formHalf / G.formDepth = half width and front-to-last-row depth of the layout; every figure has ox / oz, its offset from (G.x, G.z).
+//   A top (thousand) figure's w can exceed 1000 above 100,000 soldiers (UNIT_TOPCAP 100 figures).
 // RANKS (owner revision): decided by the CURRENT squad size, live, reset every stage (it starts at the entry squad, silently).
 //   k = floor(G.squad / 1000). k = 0: no rank. k >= 1: idx = min(k - 1, 16), name = RANKS[idx] (1000 = 二等兵 ... 17000 = 元帥); beyond 17000 the badge is
 //   元帥 with ★(k - 17) (name carries the star text). The rank DROPS when the squad falls below a threshold. cls = the outfit class of the rank, used by the
@@ -841,7 +846,7 @@ const MAP = [
   { id: 'n2',  depth: 2, name: '雙岔路',   scene: 'bridge',  next: ['n3a', 'n3b'], diffMul: 1,    coinMul: 1,    x: 0.50, y: 0.76 },
   { id: 'n3a', depth: 3, name: '市區街道', scene: 'city',    next: ['n4a'],        diffMul: 0.97, coinMul: 1.35, x: 0.28, y: 0.60 },
   { id: 'n3b', depth: 3, name: '港口碼頭', scene: 'harbor',  next: ['n4b'],        diffMul: 0.96, coinMul: 1,    x: 0.72, y: 0.60 },
-  { id: 'n4a', depth: 4, name: '地下隧道', scene: 'tunnel',  next: ['n5'],         diffMul: 1.03, coinMul: 1.35, x: 0.26, y: 0.42 },
+  { id: 'n4a', depth: 4, name: '地下隧道', scene: 'tunnel',  next: ['n5'],         diffMul: 1.12, coinMul: 1.35, x: 0.26, y: 0.42 },
   { id: 'n4b', depth: 4, name: '林間公路', scene: 'forest',  next: ['n5'],         diffMul: 1.0,  coinMul: 1,    x: 0.74, y: 0.42 },
   { id: 'n5',  depth: 5, name: '終局高架', scene: 'highway', next: ['p6'],         diffMul: 1,    coinMul: 1.2,  x: 0.50, y: 0.24 },
 ];
@@ -1726,8 +1731,8 @@ const NODE_PLANS = {
   n3b: { extra: 70, segs: [
     SEG('straight', { tokens: ['weapon', 'wall', 'gates'] }),
     SEG('narrow', { half: 1.7, tokens: ['blob', 'line', 'bar'] }),
-    SEG('straight', { tokens: ['weapon', 'gates', 'swarm'] }),
-    SEG('narrow', { half: 1.5, tokens: ['swarm', 'bar'] }),
+    SEG('straight', { tokens: ['weapon', 'gates', 'swarm', 'blob'] }),
+    SEG('narrow', { half: 1.5, tokens: ['swarm', 'blob', 'bar'] }),
     SEG('straight', { tokens: ['wall', 'blob', 'weapon', 'gates', 'weapon'], cycle: ['swarm', 'gates', 'wall', 'brutes'] })] },
   // n4a tunnel (harder, richer): dense head-on columns released late (34 ahead), one narrowing, barriers
   n4a: { extra: 40, segs: [
@@ -2333,7 +2338,7 @@ function syncSoldiers() {
     let sx = 0, sz = 0, n = 0;
     for (let l = 0; l < t; l++) for (const f of removed[l]) { sx += f.x; sz += f.z; n++; }
     for (let k = 0; k < need; k++) n ? make(t, sx / n + rr(-0.2, 0.2), sz / n, false) : make(t, G.x + rr(-0.3, 0.3), G.z + 1.2, false);
-    if (n) bus.emit('unitMerge', { tier: UNIT_TIERS[t], count: need });
+    if (n) bus.emit('unitMerge', { tier: UNIT_TIERS[t], idx: t, w: UNIT_TIERS[t], x: sx / n, z: sz / n, count: need });
   }
   for (let t = 0; t < 2; t++) {                                   // lower figures needed: split from a vanished higher one, else new recruits
     const need = plan.c[t] - cur[t].length;
@@ -2341,7 +2346,7 @@ function syncSoldiers() {
     let src = null;
     for (let h = t + 1; h < 3 && !src; h++) if (removed[h].length) src = removed[h][0];
     for (let k = 0; k < need; k++) src ? make(t, src.x + rr(-0.5, 0.5), src.z + rr(-0.4, 0.4), true) : make(t, G.x + rr(-0.3, 0.3), G.z + 1.2, false);
-    if (src) bus.emit('unitSplit', { tier: UNIT_TIERS[src.tier], count: need });
+    if (src) bus.emit('unitSplit', { tier: UNIT_TIERS[src.tier], idx: src.tier | 0, w: UNIT_TIERS[src.tier | 0], x: src.x, z: src.z, count: need });
   }
   let sorted = true;
   for (let i = 1; i < G.soldiers.length; i++) if ((G.soldiers[i - 1].tier | 0) < (G.soldiers[i].tier | 0)) { sorted = false; break; }
@@ -2365,7 +2370,31 @@ let colCap = 99;
 // fork sides still cap it through colCap.
 function perRow(n) { return Math.min(colCap, n <= 2 ? Math.max(1, n) : Math.min(n < 10 ? 5 : n < 40 ? 6 : n < 80 ? 7 : 8, Math.ceil(Math.sqrt(n * 1.5)))); }
 const laneOf = x => { let b = 0; for (let i = 1; i < 3; i++) if (Math.abs(x - LANES[i]) < Math.abs(x - LANES[b])) b = i; return b; };   // nearest lane index 0..2
-function formationHalf() { return (perRow(G.soldiers.length) - 1) / 2 * SP; }
+// Round 8: figures of a higher tier are drawn bigger (1.5x for a hundred, 2.1x for a thousand, the front end's scale), so the formation spaces them by
+// UNIT_SPACE x SP. Groups (thousands, then hundreds, then singles - the array order) get their own rows; a group uses as many columns as fit in the width a
+// row of singles would have (perRow), so the formation is never wider than before. Each figure gets its offset from the squad centre / front: f.ox, f.oz.
+// G.formHalf is the half width of the widest row, G.formDepth the distance from the front row to the end of the last one (presentation may read both).
+const UNIT_SPACE = [1, 1.5, 2.1];
+const formLay = { half: 0, depth: 0 };
+function layoutFormation() {
+  const fs = G.soldiers, n = fs.length, per = perRow(n);
+  let z = 0, half = 0, i = 0;
+  while (i < n) {
+    const tier = fs[i].tier | 0, sp = SP * UNIT_SPACE[tier];
+    let j = i; while (j < n && (fs[j].tier | 0) === tier) j++;
+    const cnt = j - i, cols = Math.max(1, Math.min(cnt, Math.floor((per - 1) * SP / sp + 1e-6) + 1));
+    const rowsN = Math.ceil(cnt / cols);
+    for (let r = 0; r < rowsN; r++) {
+      const inRow = Math.min(cols, cnt - r * cols);
+      for (let c = 0; c < inRow; c++) { const f = fs[i + r * cols + c]; f.ox = (c - (inRow - 1) / 2) * sp; f.oz = z + r * sp; }
+      half = Math.max(half, (inRow - 1) / 2 * sp);
+    }
+    z += (rowsN - 1) * sp + sp * 1.05;                         // a little more room before the next group
+    i = j;
+  }
+  formLay.half = half; formLay.depth = Math.max(0, z - SP); G.formHalf = half; G.formDepth = formLay.depth;
+}
+function formationHalf() { layoutFormation(); return formLay.half; }
 
 // src: horde kind of the zombie (or 'boss') that caused the death. Safe to call while iterating Z or G.soldiers as long as the
 // caller stops iterating G.soldiers afterwards (the array is spliced / refilled by syncSoldiers).
@@ -3107,7 +3136,8 @@ function updateSquad(dt) {
   const half = formationHalf();
   { let lo = pLo + half, hi = pHi - half; if (G.gap && G.gap.locked) { lo = Math.max(lo, G.gap.lo + half); hi = Math.min(hi, G.gap.hi - half); } G.tx = lo > hi ? (lo + hi) / 2 : clamp(G.tx, lo, hi); }   // narrow / fork: the road is tighter than the deck
   G.x += (G.tx - G.x) * Math.min(1, dt * 14);
-  const n = G.soldiers.length, per = perRow(n);
+  const n = G.soldiers.length;
+  layoutFormation();
   const W = WEAPONS[G.weapon];
   findTargets();
   const shotDmg = W.dmg * Math.pow(W.lvMul, G.weaponLv - 1) * G.dmgMul * (1 + upPer('dmg') * upLv('dmg')) * (1 + G.rank.bonus);   // rank bonus: live, see RANKS
@@ -3118,8 +3148,7 @@ function updateSquad(dt) {
   const running = G.phase === 'run';
   for (let i = 0; i < n; i++) {
     const s = G.soldiers[i];
-    const row = Math.floor(i / per), inRow = Math.min(per, n - row * per), col = i % per;
-    const tx = G.x + (col - (inRow - 1) / 2) * SP, tz = G.z + row * SP;
+    const tx = G.x + s.ox, tz = G.z + s.oz;
     s.x += (tx - s.x) * Math.min(1, dt * 10);
     s.z += (tz - s.z) * Math.min(1, dt * 10);
     let dx = 0, dz = -1, aimX, aimZ;                             // aimX / aimZ: the target's position (a lob lands there)
@@ -3148,7 +3177,7 @@ function updateSquad(dt) {
         spawnBullet(s.x + rx * 0.5 + 0.14, s.z + rz * 0.5, rx, rz, (extra && Math.abs(p - pMid) > pMain + 0.01 ? shotDmg * TUNE.splitDmg : shotDmg) * s.w, 0, G.weapon, i * 1.7, aimX, aimZ, s.w);
       }
       SFX.shot();
-      bus.emit('shot', { x: s.x, z: s.z, w: G.weapon, lv: G.weaponLv });
+      bus.emit('shot', { x: s.x, z: s.z, w: G.weapon, lv: G.weaponLv, wt: s.w });
     }
   }
   updateObstacles(dt);
@@ -3156,9 +3185,8 @@ function updateSquad(dt) {
   if (G.shield > 0) {
     G.shield -= dt;
     shieldMesh.visible = true;
-    const rows = Math.ceil(n / per);
-    shieldMesh.position.set(G.x, 0.9, G.z + (rows - 1) * SP / 2);
-    const r = Math.max(half, (rows - 1) * SP / 2) + 1.1;
+    shieldMesh.position.set(G.x, 0.9, G.z + formLay.depth / 2);
+    const r = Math.max(half, formLay.depth / 2) + 1.1;
     shieldMesh.scale.setScalar(r * (1 + Math.sin(G.time * 10) * 0.02));
     M.shield.opacity = G.shield < 1 ? 0.16 * (Math.sin(G.time * 30) > 0 ? 1 : 0.3) : 0.16;
   } else shieldMesh.visible = false;
@@ -3250,8 +3278,8 @@ function updateZombies(dt) {
       }
     }
     // contact with the squad / mech: only the buckets around the squad (z within -0.7 .. +rows*SP+0.5 of G.z, mech at G.z+0.6)
-    const rows = Math.ceil(G.soldiers.length / Math.max(1, perRow(G.soldiers.length)));
-    const zmin = G.z - 0.7, zmax = G.z + rows * SP + 0.5;
+    layoutFormation();
+    const zmin = G.z - 0.7, zmax = G.z + formLay.depth + 0.5 + SP;
     const m = G.mech;
     const kLo = Math.max(0, Math.floor(G.z + 10 - zmax) - 1), kHi = Math.min(BN - 1, Math.floor(G.z + 10 - zmin) + 1);
     for (let k = kLo; k <= kHi && G.phase !== 'over'; k++) {
@@ -6811,7 +6839,7 @@ function resetSave() {
 }
 // Start stage n from the beginning with its entry squad (same as prepare(n) + startRun()).
 function startStage(n) { prepare(n); startRun(); }
-window.__zb = { cloudSignIn, cloudSignOut, mapOpen, mapSelect, mapRefresh, mapNodeStates, MAPV, rankOf, rankBonus, RANKS, UNIT_TIERS, mulGain, gateHit, unitPlan, killSoldier, hordeSpec, sceneFx, levelObstacles, obstacleGaps, makeObstacle, OBS_KINDS, damageObstacle, MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap, gap: G.gap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
+window.__zb = { cloudSignIn, cloudSignOut, mapOpen, mapSelect, mapRefresh, mapNodeStates, MAPV, rankOf, rankBonus, RANKS, UNIT_TIERS, mulGain, gateHit, unitPlan, killSoldier, hordeSpec, sceneFx, levelObstacles, obstacleGaps, makeObstacle, OBS_KINDS, damageObstacle, MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bwt, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap, gap: G.gap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
   stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0), bw: Array.from(bw.subarray(0, nb)), bl: Array.from(bl.subarray(0, nb)), by: Array.from(by.subarray(0, nb)), bt: Array.from(bt.subarray(0, nb)), bs: Array.from(bs.subarray(0, nb)), bx: Array.from(bx.subarray(0, nb)), bz: Array.from(bz.subarray(0, nb)) }),
   perf: () => ({ pr: PR_STEPS[prIdx], steps: PR_STEPS, avg: Perf.avg, fxScale }) };
 })();
