@@ -1601,8 +1601,9 @@ const results = await page.evaluate(() => {
     {
       labU(1); G.level = 1;
       const g1 = zb.mulGain;
-      check('growth: a x2 gate doubles small squads (100 -> +100) but adds only 30% above the cap C = 120 + 40 x depth (1000 at depth 1 -> +160 + 252)', g1(100) === 100 && Math.abs(g1(1000) - (160 + 0.3 * 840)) < 1e-9 && g1(1e6) < 1e6 * 0.31 + 200);
-      G.level = 5; check('growth: the cap grows with the depth (depth 5: C = 320)', Math.abs(g1(1000) - (320 + 0.3 * 680)) < 1e-9);
+      const Cd = d => T.mulCapBase + T.mulCapPerDepth * d;
+      check('growth: a x2 gate doubles small squads (30 -> +30) but above the cap C = mulCapBase + mulCapPerDepth x depth adds only mulTail of the rest (1000 at depth 1: +C + tail x (1000 - C)); a million adds ~tail x a million', g1(30) === 30 && Math.abs(g1(1000) - (Cd(1) + T.mulTail * (1000 - Cd(1)))) < 1e-9 && g1(1e6) < 1e6 * (T.mulTail + 0.01));
+      G.level = 5; check('growth: the cap grows with the depth (depth 5)', Math.abs(g1(1000) - (Cd(5) + T.mulTail * (1000 - Cd(5)))) < 1e-9 && g1(1000) > (G.level = 1, g1(1000)));
       zb.prepareNode('n2'); zb.start();
       const gate = G.events.find(e => e.type === 'gate' && e.kind === 'add');
       gate.base = undefined; const v0 = gate.val;

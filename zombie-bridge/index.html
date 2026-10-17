@@ -646,7 +646,7 @@ const TUNE = {
   hpPerStage: 0.5,                // ... ordinary zombies +0.5 hp per step (fractions are rolled per zombie) ...
   stagePow: 0.9,                  // ... where a stage's step count is (stage-1)^stagePow
   stageMul: [3.55, 2.1, 2.5],     // trim of the far-end horde growth (`ramp`) per stage; the last entry covers every later stage
-  stageHp: [1.55, 1.17, 1.1, 3.0, 5.9],       // extra zombie hp factor per stage (campaign tuning: counts are capped by MAXZ, so late stages get tougher, not more numerous); the last entry covers every later stage
+  stageHp: [1.48, 1.14, 1.1, 2.2, 6.1],       // extra zombie hp factor per stage (campaign tuning: counts are capped by MAXZ, so late stages get tougher, not more numerous); the last entry covers every later stage
   early: 0.35, rampPow: 2, ramp: 13, hpRamp: 15.5, bruteRamp: 6,   // along the bridge (position p = 0..1): size x (early + ramp*p^rampPow), hp x (1 + hpRamp*p^rampPow), brute count likewise
   count: { open: 3, wall: 50, blob: 30, line: 20, swarm: 24, runners: 20 },
   bruteBase: 3, brutePerStage: 1, bruteHp: 10, bruteHpPerStage: 4,
@@ -668,7 +668,7 @@ const TUNE = {
   splashR2: 3.4, splashDmg: 0.4,  // shells: blast radius squared and damage fraction
   mechDmg: 1.4, mechDmgPerStage: 0.6, mechCd: 0.62,
   // --- boss: hp = bossHp*stage + bossDpsSecs * (squad damage per second that can land on it)
-  bossHp: 220, bossDpsSecs: 13.5, bossDist: 26, bossSpeed: 1.3, bossSpeedPerStage: 0.1,   // bossDist: how far ahead it appears
+  bossHp: 220, bossDpsSecs: 14.5, bossDist: 26, bossSpeed: 1.3, bossSpeedPerStage: 0.1,   // bossDist: how far ahead it appears
   knockMax: 1.4,                  // top knock-back speed (u/s); zombies walk 1-1.7, so a heavy push stalls them, never reverses them
   hordeJitter: 0.25,              // every horde is released at x(1 +- this) of its planned size
   bossKnock: 0,                   // fraction of a gun's knock that moves the boss back (0: bosses are immune; >0 let shotguns stall it forever)
@@ -689,7 +689,8 @@ const TUNE = {
   exBase: 0.03, exStage: 0.012, exMax: 0.08, exploderR: 1.8, exploderDmg: 2, exploderCap: 6,   // exploder zombies: share of a horde, blast radius, blast damage (flat: it stops chaining once zombies have more hp than this)
   shBase: 0.03, shStage: 0.015, shMax: 0.12, shieldSlope: 0.5, shieldHp: 1.3, shieldBreak: 4,   // shield zombies: share, how off-axis a bullet must be to get past (|dx| of its direction), hp factor
   // --- round 8: growth limits for unlimited squads
-  mulCapBase: 120, mulCapPerDepth: 40, mulTail: 0.3,   // a x2 gate doubles up to C = base + perDepth x depth soldiers; above C only mulTail of the rest is added (no exponential blow-up)
+  deepHp: 0.52, deepGrow: 1.06,   // round 8: zombie hp factor of the procedural depths (6+), x deepGrow per further depth, on top of stageHp's last entry
+  mulCapBase: 40, mulCapPerDepth: 10, mulTail: 0.15,   // a x2 gate doubles up to C = base + perDepth x depth soldiers; above C only mulTail of the rest is added (no exponential blow-up)
   gateWMax: 6, gateShotBase: 24, gateShotPerDepth: 4,  // a heavy bullet counts as at most gateWMax hits on a gate / battery; a gate can be shot up by at most base + perDepth x depth
   // --- round 7: obstacles (lane-footprint blocks on the deck; see the round 7 obstacle contract)
   splitMargin: 0.6, splitDense: 1.3, splitObsW: 0.8,   // split: half-width of the median wall (a fork uses 0.45); dense side hordes; footprint width of a side obstacle (leaves a gap >= obsMinGap in a side)
@@ -844,10 +845,10 @@ const SCENES = {
 const MAP = [
   { id: 'n1',  depth: 1, name: '新手橋',   scene: 'bridge',  next: ['n2'],         diffMul: 1,    coinMul: 1,    x: 0.50, y: 0.92 },
   { id: 'n2',  depth: 2, name: '雙岔路',   scene: 'bridge',  next: ['n3a', 'n3b'], diffMul: 1,    coinMul: 1,    x: 0.50, y: 0.76 },
-  { id: 'n3a', depth: 3, name: '市區街道', scene: 'city',    next: ['n4a'],        diffMul: 0.97, coinMul: 1.35, x: 0.28, y: 0.60 },
-  { id: 'n3b', depth: 3, name: '港口碼頭', scene: 'harbor',  next: ['n4b'],        diffMul: 0.96, coinMul: 1,    x: 0.72, y: 0.60 },
-  { id: 'n4a', depth: 4, name: '地下隧道', scene: 'tunnel',  next: ['n5'],         diffMul: 1.12, coinMul: 1.35, x: 0.26, y: 0.42 },
-  { id: 'n4b', depth: 4, name: '林間公路', scene: 'forest',  next: ['n5'],         diffMul: 1.0,  coinMul: 1,    x: 0.74, y: 0.42 },
+  { id: 'n3a', depth: 3, name: '市區街道', scene: 'city',    next: ['n4a'],        diffMul: 1.2,  coinMul: 1.35, x: 0.28, y: 0.60 },
+  { id: 'n3b', depth: 3, name: '港口碼頭', scene: 'harbor',  next: ['n4b'],        diffMul: 1.0, hpMul: 1.72, coinMul: 1,    x: 0.72, y: 0.60 },
+  { id: 'n4a', depth: 4, name: '地下隧道', scene: 'tunnel',  next: ['n5'],         diffMul: 1.6,  coinMul: 1.35, x: 0.26, y: 0.42 },
+  { id: 'n4b', depth: 4, name: '林間公路', scene: 'forest',  next: ['n5'],         diffMul: 1.55, hpMul: 1.85, coinMul: 1,    x: 0.74, y: 0.42 },
   { id: 'n5',  depth: 5, name: '終局高架', scene: 'highway', next: ['p6'],         diffMul: 1,    coinMul: 1.2,  x: 0.50, y: 0.24 },
 ];
 // OBSTACLES (round 7 step 3). Events { type: 'obstacle', kind, x, z, w, d, hp, max, dead, flash, row } in G.events (and __zb.levelObstacles); they have
@@ -870,7 +871,7 @@ const MAP = [
 //   mapSelect{id} is handled synchronously (the node is prepared, G.node set, before bus.emit returns).
 // ---- round 7 logic: the node graph (authored MAP + procedural continuation)
 // Logic additions to MAP: n5.next = ['p6'] (the campaign continues). Procedural nodes ('p<depth>' single at even depths, 'p<depth>a' / 'p<depth>b'
-// at odd depths: a = harder (diffMul 1.12, coinMul 1.3), b = easier) are generated on demand, seeded by depth, with x / y laid out like the
+// at odd depths: a = harder (diffMul 1.06, coinMul 1.3), b = easier (0.97); from depth 6 the zombie hp also carries TUNE.deepHp x deepGrow^(depth-6)) are generated on demand, seeded by depth, with x / y laid out like the
 // authored ones (y = 0.92 - 0.17 * (depth - 1): negative from depth 7 on, the map scrolls). Every node object has:
 //   { id, depth, name, scene, next[], diffMul, coinMul, x, y, seed }.
 const NODE_CACHE = {};
@@ -888,7 +889,7 @@ function genDepth(d) {
     const avoid = new Set(parents.map(q => q.scene));
     const pickScene = taken => { const c = pool.filter(sc => !avoid.has(sc) && !taken.includes(sc)); return c[Math.floor(rng() * c.length)] || pool[0]; };
     const mk = (id, scene, a, x) => {
-      const nd = { id, depth: e, name: SCENES[scene].name + '·' + e, scene, next: [], diffMul: a === 'a' ? 1.12 : a === 'b' ? 0.95 : 1, coinMul: a === 'a' ? 1.3 : a === 'b' ? 1 : 1.2, x, y: Math.round((0.92 - 0.17 * (e - 1)) * 1000) / 1000, seed: e + (a === 'a' ? 1000 : a === 'b' ? 2000 : 0) };
+      const nd = { id, depth: e, name: SCENES[scene].name + '·' + e, scene, next: [], diffMul: a === 'a' ? 1.06 : a === 'b' ? 0.97 : 1, coinMul: a === 'a' ? 1.3 : a === 'b' ? 1 : 1.2, x, y: Math.round((0.92 - 0.17 * (e - 1)) * 1000) / 1000, seed: e + (a === 'a' ? 1000 : a === 'b' ? 2000 : 0) };
       NODE_CACHE[id] = nd; return nd;
     };
     let made;
@@ -1660,7 +1661,7 @@ function hordeSpec(kind, n, side, p) {
   p = Math.pow(p || 0, TUNE.rampPow);
   const sd = Math.pow(n - 1, TUNE.stagePow);      // stage steps: concave when stagePow < 1 (later stages grow more slowly)
   const f = (1 + sd * TUNE.hordeGrow) * (TUNE.early + TUNE.ramp * p * TUNE.stageMul[Math.min(n, TUNE.stageMul.length) - 1]);
-  const hm = TUNE.stageHp[Math.min(n, TUNE.stageHp.length) - 1] * (G.node ? G.node.diffMul : 1);   // diffMul: one branch harder than the other
+  const hm = TUNE.stageHp[Math.min(n, TUNE.stageHp.length) - 1] * (n > 5 ? TUNE.deepHp * Math.pow(TUNE.deepGrow, n - 6) : 1) * (G.node ? (G.node.hpMul || G.node.diffMul) : 1);   // diffMul: one branch harder than the other (the label); hpMul (optional): the real zombie hp factor when the node's content needs compensating
   const hp = (1 + sd * TUNE.hpPerStage) * (1 + TUNE.hpRamp * p) * hm;
   const C = TUNE.count;
   const fx = sceneFx();
@@ -1728,12 +1729,12 @@ const NODE_PLANS = {
     SEG('straight', { tokens: ['weapon', 'gates', 'line', 'weapon'] }),
     SEG('straight', { tokens: ['wall', 'blob', 'gates'], cycle: ['swarm', 'gates', 'wall', 'brutes', 'gates'] })] },
   // n3b harbor (the easier branch): narrow container lanes; container pairs leave a middle lane on the straights
-  n3b: { extra: 70, segs: [
-    SEG('straight', { tokens: ['weapon', 'wall', 'gates'] }),
-    SEG('narrow', { half: 1.7, tokens: ['blob', 'line', 'bar'] }),
-    SEG('straight', { tokens: ['weapon', 'gates', 'swarm', 'blob'] }),
-    SEG('narrow', { half: 1.5, tokens: ['swarm', 'blob', 'bar'] }),
-    SEG('straight', { tokens: ['wall', 'blob', 'weapon', 'gates', 'weapon'], cycle: ['swarm', 'gates', 'wall', 'brutes'] })] },
+  n3b: { extra: 140, segs: [
+    SEG('straight', { tokens: ['weapon', 'wall', 'gates', 'brutes', 'blob'] }),
+    SEG('narrow', { half: 1.7, tokens: ['blob', 'line', 'brutes', 'bar'] }),
+    SEG('straight', { tokens: ['weapon', 'gates', 'swarm', 'wall', 'blob'] }),
+    SEG('narrow', { half: 1.5, tokens: ['swarm', 'blob', 'line', 'brutes', 'bar'] }),
+    SEG('straight', { tokens: ['wall', 'blob', 'weapon', 'gates', 'weapon'], cycle: ['brutes', 'swarm', 'wall', 'gates', 'brutes', 'line', 'blob'] })] },
   // n4a tunnel (harder, richer): dense head-on columns released late (34 ahead), one narrowing, barriers
   n4a: { extra: 40, segs: [
     SEG('straight', { tokens: ['weapon', 'blob', 'gates'] }),
