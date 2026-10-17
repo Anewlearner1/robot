@@ -745,6 +745,34 @@ const UPGRADES = [
   { id: 'shield',  name: '護盾',   desc: '機甲護盾 +1 秒',      per: 1,    max: 5, base: 120, grow: 1.8 },
   { id: 'luck',    name: '幸運',   desc: '金幣 +15%、爆擊率 +3%', per: 0.15, max: 5, base: 150, grow: 1.9 },
 ];
+// ---------------------------------------------------------------- round 8 contract: unlimited squad, 100-soldier units, ranks, Google login
+// Owner (round 8): (1) other players bind progress to a Google account, (2) no squad cap: on screen one figure stands for
+//   100 soldiers' damage, (3) a rank system: every 1000 soldiers accumulated is a promotion, (4) brighter scenes.
+//
+// UNITS: G.squad is the real head count with no upper limit (logic keeps a sanity ceiling far above play, e.g. 1e7).
+//   The drawn formation is a list of figures G.soldiers, each with `w` = soldiers it stands for: UNIT_TIERS[0] = 1 (a
+//   rifleman), UNIT_TIERS[1] = 100 (百人隊, drawn bigger with a banner). Composition: floor(squad / 100) hundred-figures plus
+//   squad % 100 single figures, so 2,345 = 23 + 45. A figure's shots deal w x the per-soldier damage. Logic owns the
+//   composition and keeps the drawn count bounded (it may add a further tier, e.g. 1000, if hundred-figures would exceed
+//   ~100; document it). Losses take one soldier at a time: a zombie reaching a 100-figure costs 1 soldier, and the
+//   formation recomposes. Events: unitMerge { tier, count } when figures of a tier are formed (presentation animates the
+//   merge), unitSplit { tier } when a higher-tier figure breaks back down.
+const UNIT_TIERS = [1, 100];
+// RANKS: lifetime soldiers recruited (SAVE.recruited, every soldier gained from gates, crates, drops, carry-over excluded)
+//   decides the rank: rank index = floor(recruited / 1000), capped at the last entry (元帥; beyond it the badge shows ★n).
+//   Each rank adds a permanent damage bonus (logic owns the per-rank value; suggested +2 %). G.rank = { idx, name, next }
+//   (next = soldiers still needed). Event rankUp { idx, name, bonus } when a promotion happens (presentation shows the
+//   ceremony; logic emits it right away, or queues it to the result screen if mid-run, its call; document it).
+const RANKS = ['二等兵', '一等兵', '上等兵', '下士', '中士', '上士', '士官長', '少尉', '中尉', '上尉', '少校', '中校', '上校', '少將', '中將', '上將', '元帥'];
+// GOOGLE LOGIN (outside claude.ai only): the cloud layer gets a second provider. In the claude.ai viewer (window.claude)
+//   the provider stays 'claude' (db capability). On the standalone site (GitHub Pages) it is 'firebase' when
+//   FIREBASE_CONFIG is filled in: Firebase Auth with the Google provider, the save in Firestore at saves/{uid} (one doc,
+//   same SAVE shape, same merge policy). The SDK is loaded on demand from gstatic only when the provider is firebase.
+//   G.cloud gains provider ('claude' | 'firebase' | null) and account { name, photo } | null. Logic exposes
+//   cloudSignIn() / cloudSignOut() (Google popup, falling back to redirect) and emits authState { provider, signedIn,
+//   name, photo } on every change; cloudSync keeps its meaning. Signed out on the standalone site = local save only.
+const FIREBASE_CONFIG = null;   // the owner pastes the Firebase web config object here (public identifiers, not secrets)
+
 // ---------------------------------------------------------------- round 7 contract: world map, scenes, split routes
 // Owner (round 7): (1) a world map with branching routes, (2) new scenes beyond the bridge, (3) real in-stage splits.
 //
