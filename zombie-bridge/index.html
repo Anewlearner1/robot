@@ -428,6 +428,14 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 .rkrow { display: flex; align-items: center; justify-content: center; gap: 10px; font: 900 16px var(--body); letter-spacing: .08em; background: var(--panel); border-radius: 14px; padding: 6px 16px 6px 8px; }
 .rkrow small { font: 500 12px var(--body); color: var(--muted); letter-spacing: .1em; display: block; text-align: left; }
 @media (prefers-reduced-motion: reduce) { .rkchip.up, .rkchip.tick { animation: none; } }
+.authrow { padding: 0 14px 6px; display: flex; justify-content: flex-start; position: relative; }
+.gbtn { pointer-events: auto; cursor: pointer; display: inline-flex; align-items: center; gap: 9px; border: 0; border-radius: 999px; padding: 7px 16px 7px 10px; background: #fff; color: #1f2329; font: 900 14px var(--body); letter-spacing: .04em; box-shadow: 0 2px 0 rgba(0,0,0,.35), 0 6px 14px rgba(0,0,0,.3); }
+.gbtn svg { width: 20px; height: 20px; flex: none; } .gbtn:active { transform: translateY(1px); } .gbtn:disabled { opacity: .6; }
+.acct { position: relative; } .accbtn { pointer-events: auto; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 999px; padding: 4px 12px 4px 4px; background: var(--panel); color: var(--paper); font: 900 14px var(--body); max-width: 70vw; }
+.accbtn .av { width: 28px; height: 28px; border-radius: 50%; overflow: hidden; background: #4285F4; display: grid; place-items: center; font: 900 14px var(--body); color: #fff; flex: none; } .accbtn .av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.accbtn .an { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40vw; } .accbtn .chev { color: var(--muted); font-size: 11px; }
+.accmenu { position: absolute; left: 0; top: calc(100% + 6px); z-index: 4; min-width: 120px; padding: 4px; border-radius: 12px; background: rgba(22,28,36,.98); box-shadow: 0 0 0 2px rgba(255,255,255,.16), 0 10px 24px rgba(0,0,0,.5); }
+.accmenu button { width: 100%; text-align: left; border: 0; background: transparent; color: var(--paper); font: 900 14px var(--body); padding: 10px 12px; border-radius: 8px; cursor: pointer; } .accmenu button:active { background: rgba(255,255,255,.12); }
 @media (prefers-reduced-motion: reduce) { .mnode.open .mdisc { animation: none; } .unlock { animation: none; } }
 
 </style>
@@ -477,6 +485,10 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
       <div class="mapv-brand"><small>WORLD MAP</small><b>屍潮斷橋</b></div>
       <div class="walletrow menu-wallet"><span class="chip coin" id="menuWallet"><svg class="cico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="#ffd34d" stroke="#a86a00" stroke-width="2"/><circle cx="12" cy="12" r="6.2" fill="none" stroke="#c98a00" stroke-width="2"/></svg><b id="menuCoins">0</b></span><button class="chip hudcloud" id="menuCloud" type="button"></button></div>
       <button class="mapv-help" id="btnRules" type="button" aria-label="玩法說明">?</button>
+    </div>
+    <div class="authrow" id="authRow" hidden>
+      <button class="gbtn" id="authIn" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.5 12.2c0-.8-.1-1.5-.2-2.2H12v4.2h5.9a5 5 0 0 1-2.2 3.3v2.7h3.5c2.1-1.9 3.3-4.7 3.3-8z"/><path fill="#34A853" d="M12 23c3 0 5.4-1 7.2-2.7l-3.5-2.7c-1 .7-2.2 1-3.7 1-2.9 0-5.3-1.9-6.1-4.5H2.3v2.8A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.9 14.1a6.6 6.6 0 0 1 0-4.2V7.1H2.3a11 11 0 0 0 0 9.8l3.6-2.8z"/><path fill="#EA4335" d="M12 5.4c1.6 0 3.1.6 4.2 1.7l3.1-3.1A11 11 0 0 0 2.3 7.1l3.6 2.8C6.7 7.3 9.1 5.4 12 5.4z"/></svg><span>用 Google 登入保存進度</span></button>
+      <div class="acct" id="authAcct" hidden><button class="accbtn" id="authBtn" type="button" aria-haspopup="true" aria-expanded="false"><span class="av" id="authAv"></span><span class="an" id="authName"></span><span class="chev" aria-hidden="true">▾</span></button><div class="accmenu" id="authMenu" hidden><button type="button" id="authOut">登出</button></div></div>
     </div>
     <div class="stagepick">
       <button class="step" id="stagePrev" type="button" aria-label="上一關" hidden></button>
@@ -6608,6 +6620,34 @@ const HUD_CLOUD = {
   error:   { label: '雲端暫停', icon: HUD_CLOUD_CLOUD + '<path d="M4 4l16 16"/>', note: '雲端暫時無法使用，進度仍存在本機。' },
 };
 let hudCloudFrom = null, hudCloudSt = 'off';
+// Google account binding (only when the cloud provider is firebase): G.cloud.provider / account, bus 'authState' { provider, signedIn, name, photo }
+const AUTH = { provider: null, signedIn: false, name: '', photo: '' };
+const HUD_CLOUD_BOUND_NOTE = '已綁定 Google 帳號，換裝置登入同一帳號即可接續進度。';
+const HUD_CLOUD_SIGNIN_NOTE = '登入 Google 帳號後，進度會綁定帳號，換裝置登入同一帳號即可接續；未登入時只存在這台裝置。';
+function hudCloudNote(st) {
+  if (AUTH.provider === 'firebase') return AUTH.signedIn ? (st === 'error' ? HUD_CLOUD.error.note : HUD_CLOUD_BOUND_NOTE) : HUD_CLOUD_SIGNIN_NOTE;
+  return HUD_CLOUD[st].note;
+}
+function hudAuth(info) {
+  info = info || {};
+  AUTH.provider = info.provider || null; AUTH.signedIn = !!info.signedIn; AUTH.name = info.name || ''; AUTH.photo = info.photo || '';
+  const on = AUTH.provider === 'firebase';
+  $('#authRow').hidden = !on;
+  if (!on) return;
+  $('#authIn').hidden = AUTH.signedIn; $('#authAcct').hidden = !AUTH.signedIn;
+  if (AUTH.signedIn) {
+    const av = $('#authAv'); av.textContent = '';
+    const letter = () => { av.textContent = (AUTH.name || '?').trim().slice(0, 1).toUpperCase(); };
+    if (/^https:\/\//.test(AUTH.photo)) { const im = new Image(); im.referrerPolicy = 'no-referrer'; im.alt = ''; im.onerror = letter; im.src = AUTH.photo; av.appendChild(im); } else letter();
+    $('#authName').textContent = AUTH.name || 'Google';
+  } else { $('#authMenu').hidden = true; $('#authBtn').setAttribute('aria-expanded', 'false'); }
+  if (typeof hudCloudSt === 'string' && !$('#hudCloudPop').hidden) $('#hudCloudPopText').textContent = hudCloudNote(hudCloudSt);
+}
+$('#authIn').addEventListener('click', () => { try { if (typeof cloudSignIn === 'function') cloudSignIn(); } catch (e) {} });
+$('#authBtn').addEventListener('click', () => { const m = $('#authMenu'); m.hidden = !m.hidden; $('#authBtn').setAttribute('aria-expanded', String(!m.hidden)); });
+$('#authOut').addEventListener('click', () => { $('#authMenu').hidden = true; try { if (typeof cloudSignOut === 'function') cloudSignOut(); } catch (e) {} });
+document.addEventListener('pointerdown', e => { if (!$('#authMenu').hidden && !(e.target.closest && e.target.closest('#authAcct'))) $('#authMenu').hidden = true; });
+bus.on('authState', hudAuth);
 // Updates every chip. An unknown state is shown as 'off'. The title (tooltip) carries the time only for a synced state.
 function hudCloudChip(state, lastSyncAt) {
   const st = HUD_CLOUD[state] ? state : 'off', def = HUD_CLOUD[st];
@@ -6619,12 +6659,12 @@ function hudCloudChip(state, lastSyncAt) {
     if (when) el.title = when; else el.removeAttribute('title');
   }
   hudCloudSt = st;
-  if (!$('#hudCloudPop').hidden) $('#hudCloudPopText').textContent = def.note;
+  if (!$('#hudCloudPop').hidden) $('#hudCloudPopText').textContent = hudCloudNote(st);
 }
 function hudCloudOpen(btn) {
   const pop = $('#hudCloudPop');
   hudCloudFrom = btn;
-  $('#hudCloudPopText').textContent = HUD_CLOUD[hudCloudSt].note;
+  $('#hudCloudPopText').textContent = hudCloudNote(hudCloudSt);
   pop.hidden = false;
   const r = btn.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
   const below = r.bottom + 8;
@@ -6645,6 +6685,7 @@ document.addEventListener('pointerdown', e => {
 });
 const hudCloudInit = G.cloud || { state: 'off' };
 hudCloudChip(hudCloudInit.state, hudCloudInit.lastSyncAt);
+if (G.cloud && G.cloud.provider) hudAuth({ provider: G.cloud.provider, signedIn: !!G.cloud.account, name: G.cloud.account && G.cloud.account.name, photo: G.cloud.account && G.cloud.account.photo });
 bus.on('cloudSync', e => hudCloudChip(e.state, e.lastSyncAt));
 // A cloud copy changed SAVE (another device's progress arrived): re-read it on the screens that show it. In the menu, jump to
 // the highest unlocked stage, as a fresh boot would; never touch a run (the engine defers remote saves until a run ends).
