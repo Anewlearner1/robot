@@ -75,7 +75,7 @@ body {
 .weapon .v { font-weight: 900; font-size: 20px; text-shadow: 0 2px 0 var(--ink); }
 .weapon .k { font-size: 12px; letter-spacing: .12em; color: var(--muted); text-shadow: 0 1px 2px #000; }
 #hint {
-  position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 84px); transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 134px); transform: translateX(-50%);   /* above the rank chip */
   background: var(--panel); padding: 8px 14px; border-radius: 999px; font-size: 14px; white-space: nowrap;
   transition: opacity .6s;
 }
@@ -415,6 +415,27 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 .unlock { font: 900 15px var(--body); letter-spacing: .06em; color: #10151b; background: linear-gradient(#ffd76a, #f2a416); border-radius: 12px; padding: 7px 14px; box-shadow: 0 3px 0 var(--hazard-deep), 0 0 18px rgba(255,176,32,.45); animation: unlockpop .6s cubic-bezier(.2,1.5,.4,1); max-width: 100%; box-sizing: border-box; }
 .unlock b { font-weight: 900; }
 @keyframes unlockpop { 0% { transform: scale(.6); opacity: 0; } 100% { transform: none; opacity: 1; } }
+.lumrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; max-width: 300px; box-sizing: border-box; padding: 8px 8px 8px 16px; border-radius: 14px; background: var(--panel); font: 900 15px var(--body); letter-spacing: .1em; }
+.lumseg { display: inline-flex; border-radius: 10px; overflow: hidden; box-shadow: inset 0 0 0 2px rgba(255,255,255,.25); }
+.lumseg button { border: 0; background: transparent; color: var(--paper); font: 900 14px var(--body); letter-spacing: .08em; padding: 8px 14px; cursor: pointer; }
+.lumseg button.on { background: var(--hazard); color: var(--ink); }
+.rkb { width: 30px; height: 30px; flex: none; display: block; filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); } .rkb.big { width: 96px; height: 96px; }
+.rkchip { display: flex; align-items: center; gap: 7px; padding: 4px 12px 4px 4px; border-radius: 999px; background: var(--panel); width: max-content; max-width: 70vw; margin-bottom: 4px; transform-origin: 0 100%; }
+.rkchip .rkt { display: grid; gap: 1px; min-width: 0; } .rkchip b { font: 900 14px/1.1 var(--body); letter-spacing: .08em; color: #fff; white-space: nowrap; } .rkchip .rn { font: 500 10.5px/1.1 var(--body); color: var(--muted); letter-spacing: .04em; white-space: nowrap; }
+.rkchip .rkbar { display: block; height: 4px; border-radius: 3px; background: rgba(255,255,255,.18); overflow: hidden; margin-top: 2px; } .rkchip .rkbar i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #ffb020, #ffd76a); transform-origin: 0 50%; transform: scaleX(0); }
+.rkchip.tick { animation: rktick .5s; } @keyframes rktick { 0% { box-shadow: 0 0 0 2px #e2363b, 0 0 14px #e2363b; } 100% { box-shadow: none; } }
+.rkchip.up { animation: rkup .7s cubic-bezier(.2,1.5,.4,1); } @keyframes rkup { 0% { transform: scale(1.6); box-shadow: 0 0 0 2px #ffd75e, 0 0 22px #ffd75e; } 100% { transform: none; box-shadow: none; } }
+.rkrow { display: flex; align-items: center; justify-content: center; gap: 10px; font: 900 16px var(--body); letter-spacing: .08em; background: var(--panel); border-radius: 14px; padding: 6px 16px 6px 8px; }
+.rkrow small { font: 500 12px var(--body); color: var(--muted); letter-spacing: .1em; display: block; text-align: left; }
+@media (prefers-reduced-motion: reduce) { .rkchip.up, .rkchip.tick { animation: none; } }
+.authrow { padding: 0 14px 6px; display: flex; justify-content: flex-start; position: relative; }
+.gbtn { pointer-events: auto; cursor: pointer; display: inline-flex; align-items: center; gap: 9px; border: 0; border-radius: 999px; padding: 7px 16px 7px 10px; background: #fff; color: #1f2329; font: 900 14px var(--body); letter-spacing: .04em; box-shadow: 0 2px 0 rgba(0,0,0,.35), 0 6px 14px rgba(0,0,0,.3); }
+.gbtn svg { width: 20px; height: 20px; flex: none; } .gbtn:active { transform: translateY(1px); } .gbtn:disabled { opacity: .6; }
+.acct { position: relative; } .accbtn { pointer-events: auto; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 999px; padding: 4px 12px 4px 4px; background: var(--panel); color: var(--paper); font: 900 14px var(--body); max-width: 70vw; }
+.accbtn .av { width: 28px; height: 28px; border-radius: 50%; overflow: hidden; background: #4285F4; display: grid; place-items: center; font: 900 14px var(--body); color: #fff; flex: none; } .accbtn .av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.accbtn .an { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40vw; } .accbtn .chev { color: var(--muted); font-size: 11px; }
+.accmenu { position: absolute; left: 0; top: calc(100% + 6px); z-index: 4; min-width: 120px; padding: 4px; border-radius: 12px; background: rgba(22,28,36,.98); box-shadow: 0 0 0 2px rgba(255,255,255,.16), 0 10px 24px rgba(0,0,0,.5); }
+.accmenu button { width: 100%; text-align: left; border: 0; background: transparent; color: var(--paper); font: 900 14px var(--body); padding: 10px 12px; border-radius: 8px; cursor: pointer; } .accmenu button:active { background: rgba(255,255,255,.12); }
 @media (prefers-reduced-motion: reduce) { .mnode.open .mdisc { animation: none; } .unlock { animation: none; } }
 
 </style>
@@ -443,7 +464,7 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
   </div>
   <div id="hint">按住左右拖曳移動 · 小隊自動開火</div>
   <div class="hud-bottom">
-    <div class="squad"><span class="k">小隊</span><span class="v" id="hudSquad">×1</span></div>
+    <div class="squad"><div class="rkchip" id="hudRank" hidden><span id="hudRankIco"></span><span class="rkt"><b id="hudRankName"></b><span class="rn"></span><i class="rkbar"><i id="hudRankBar"></i></i></span></div><span class="k">小隊</span><span class="v" id="hudSquad">×1</span></div>
     <div class="weapon"><span class="k">武器</span><span class="v" id="hudWeapon">手槍</span><span class="pips" id="hudPips" aria-hidden="true"></span></div>
   </div>
 </div>
@@ -464,6 +485,10 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
       <div class="mapv-brand"><small>WORLD MAP</small><b>屍潮斷橋</b></div>
       <div class="walletrow menu-wallet"><span class="chip coin" id="menuWallet"><svg class="cico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="#ffd34d" stroke="#a86a00" stroke-width="2"/><circle cx="12" cy="12" r="6.2" fill="none" stroke="#c98a00" stroke-width="2"/></svg><b id="menuCoins">0</b></span><button class="chip hudcloud" id="menuCloud" type="button"></button></div>
       <button class="mapv-help" id="btnRules" type="button" aria-label="玩法說明">?</button>
+    </div>
+    <div class="authrow" id="authRow" hidden>
+      <button class="gbtn" id="authIn" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.5 12.2c0-.8-.1-1.5-.2-2.2H12v4.2h5.9a5 5 0 0 1-2.2 3.3v2.7h3.5c2.1-1.9 3.3-4.7 3.3-8z"/><path fill="#34A853" d="M12 23c3 0 5.4-1 7.2-2.7l-3.5-2.7c-1 .7-2.2 1-3.7 1-2.9 0-5.3-1.9-6.1-4.5H2.3v2.8A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.9 14.1a6.6 6.6 0 0 1 0-4.2V7.1H2.3a11 11 0 0 0 0 9.8l3.6-2.8z"/><path fill="#EA4335" d="M12 5.4c1.6 0 3.1.6 4.2 1.7l3.1-3.1A11 11 0 0 0 2.3 7.1l3.6 2.8C6.7 7.3 9.1 5.4 12 5.4z"/></svg><span>用 Google 登入保存進度</span></button>
+      <div class="acct" id="authAcct" hidden><button class="accbtn" id="authBtn" type="button" aria-haspopup="true" aria-expanded="false"><span class="av" id="authAv"></span><span class="an" id="authName"></span><span class="chev" aria-hidden="true">▾</span></button><div class="accmenu" id="authMenu" hidden><button type="button" id="authOut">登出</button></div></div>
     </div>
     <div class="stagepick">
       <button class="step" id="stagePrev" type="button" aria-label="上一關" hidden></button>
@@ -492,6 +517,7 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
       <li style="--c: var(--blood)"><span><strong>擊倒巨屍</strong>才算過關，活下來的隊員<strong>帶到下一關</strong>。</span></li>
       <li style="--c: var(--hazard)"><span><strong>世界地圖</strong>上遇到岔路可以二選一：難度高的那條金幣也比較多。</span></li>
     </ul>
+    <div class="lumrow"><span>亮度</span><div class="lumseg" role="group" aria-label="亮度"><button type="button" data-lum="0" aria-pressed="true">標準</button><button type="button" data-lum="1" aria-pressed="false">明亮</button></div></div>
     <button class="btn ghost wide" id="rulesBack" type="button">知道了</button>
   </div>
 </section>
@@ -537,6 +563,7 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
     <p class="lede" id="resLede"></p>
     <div class="carry" id="resCarry" hidden></div>
     <div class="unlock" id="resUnlock" hidden></div>
+    <div class="rkrow" id="resRank" hidden></div>
     <div class="tally">
       <div class="trow"><span>擊殺</span><b id="resKills">0</b></div>
       <div class="trow"><span>最高連殺</span><b id="resCombo">0</b></div>
@@ -567,6 +594,7 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
   <div class="card">
     <span class="eyebrow">PAUSED</span>
     <h2>已暫停</h2>
+    <div class="lumrow"><span>亮度</span><div class="lumseg" role="group" aria-label="亮度"><button type="button" data-lum="0" aria-pressed="true">標準</button><button type="button" data-lum="1" aria-pressed="false">明亮</button></div></div>
     <div class="btnstack">
       <button class="btn wide" id="btnResume" type="button">繼續</button>
       <button class="btn ghost wide" id="btnRestart" type="button">重新開始</button>
@@ -1115,6 +1143,7 @@ const bus = {
 const stage = $('#stage');
 const renderer = new T.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 stage.appendChild(renderer.domElement);
+renderer.toneMapping = T.LinearToneMapping; renderer.toneMappingExposure = 1;
 const scene = new T.Scene();
 const FOG = 0x8fa3b3;
 scene.background = new T.Color(FOG);
@@ -1272,6 +1301,93 @@ const SGEO = fxChBuild((() => {
   P.push(fxS(-0.3, 1.12, -0.02, 0.1, 1.27, -0.5, 0.1, 0x2a2a2a, 3), fxS(0.3, 1.12, -0.02, 0.16, 1.28, -0.28, 0.1, 0x2a2a2a, 3)); // forearms to the gun
   return P;
 })(), false);
+
+// ---- round 8: figure tiers. A figure stands for w soldiers: 1 (rifleman), 100 (百人隊: gold trim, a banner) or 1000 (千人隊: the commander,
+// whose OUTFIT follows the current rank class G.rank.cls 0..4). Built from the same part-list builder, one merged geometry per look.
+const FX_TIER_SCALE = [1, 1.5, 2.1];
+const fxTierOf = w => w >= 1000 ? 2 : w >= 100 ? 1 : 0;
+const FX_CLS = [
+  { name: '士兵', acc: 0x7aa05a }, { name: '士官', acc: 0xd9453f }, { name: '尉官', acc: 0x4f86e8 }, { name: '校官', acc: 0xe3a42a }, { name: '將官', acc: 0xffd75e },
+];
+const GOLD = 0xe8b82a, GOLD2 = 0xc9951a;
+function fxSoldierParts(o) {
+  const P = [], mir = (w, h, d, x, y, z, c, tl, tr) => { P.push(fxB(w, h, d, -x, y, z, c, tl)); P.push(fxB(w, h, d, x, y, z, c, tr)); };
+  mir(0.2, 0.62, 0.24, 0.12, 0.47, 0, o.pants, 1, -1);                 // legs
+  mir(0.22, 0.16, 0.34, 0.12, 0.08, -0.02, 0x15181c, 1, -1);           // boots
+  if (!o.coat) mir(0.23, 0.12, 0.27, 0.12, 0.52, 0, o.knee || o.pants, 1, -1);
+  if (o.coat) P.push(fxB(0.62, 0.86, 0.38, 0, 0.9, 0, o.coat, 3), fxB(0.64, 0.08, 0.4, 0, 0.5, 0, o.coatHem || o.coat, 3));      // long coat down to the knees
+  else { P.push(fxB(0.52, 0.36, 0.3, 0, 0.98, 0, o.jacket, 3)); P.push(fxB(0.54, 0.4, 0.34, 0, 1.2, 0, o.vest, 3)); }
+  P.push(fxB(0.54, 0.07, 0.32, 0, 0.78, 0, o.belt || 0x8a7a50, 3));
+  if (!o.coat) mir(0.1, 0.14, 0.1, 0.31, 0.92, 0.02, o.pouch || 0x3c4a2a, 3, 3);
+  if (o.pack) { P.push(fxB(0.4, 0.5, 0.22, 0, 1.14, 0.27, o.pack, 3)); P.push(fxB(0.36, 0.1, 0.2, 0, 1.44, 0.27, o.pack2 || o.pack, 3)); }
+  mir(0.2, 0.12, 0.3, 0.33, 1.4, 0, o.pad, 3, 3);                       // shoulder pads
+  P.push(fxB(0.26, 0.26, 0.26, 0, 1.56, 0, 0xd7a982, 4));              // head
+  P.push(fxS(-0.3, 1.38, 0, -0.3, 1.12, -0.02, 0.13, o.sleeve || o.jacket || o.coat, 3), fxS(0.3, 1.38, 0, 0.3, 1.12, -0.02, 0.13, o.sleeve || o.jacket || o.coat, 3));
+  P.push(fxS(-0.3, 1.12, -0.02, 0.1, 1.27, -0.5, 0.1, 0x2a2a2a, 3), fxS(0.3, 1.12, -0.02, 0.16, 1.28, -0.28, 0.1, 0x2a2a2a, 3));
+  switch (o.hat) {
+    case 'helmet': P.push(fxB(0.34, 0.18, 0.34, 0, 1.72, 0, o.hatC || 0x1d2733, 4), fxB(0.36, 0.05, 0.36, 0, 1.62, 0, o.hatC2 || 0x2a3646, 4), fxB(0.26, 0.06, 0.04, 0, 1.6, -0.15, 0x54dcff, 4)); break;
+    case 'net': P.push(fxB(0.36, 0.2, 0.36, 0, 1.72, 0, o.hatC, 4), fxB(0.38, 0.06, 0.38, 0, 1.64, 0, o.hatC2, 4), fxB(0.3, 0.04, 0.3, 0, 1.84, 0, 0x6a7a44, 4), fxB(0.26, 0.05, 0.04, 0, 1.6, -0.15, 0x54dcff, 4)); break;
+    case 'beret': P.push(fxB(0.4, 0.1, 0.4, 0.03, 1.73, 0.02, o.hatC, 4), fxB(0.3, 0.05, 0.3, 0.1, 1.8, 0.04, o.hatC, 4), fxB(0.36, 0.05, 0.34, 0, 1.66, 0, 0x14161d, 4), fxB(0.07, 0.07, 0.03, -0.12, 1.72, -0.2, GOLD, 4)); break;
+    case 'peak': P.push(fxB(0.36, 0.14, 0.36, 0, 1.73, 0, o.hatC, 4), fxB(0.38, 0.05, 0.38, 0, 1.66, 0, o.hatBand || 0xf0f0ea, 4), fxB(0.38, 0.05, 0.38, 0, 1.81, 0, o.hatTop || o.hatC, 4), fxB(0.34, 0.03, 0.2, 0, 1.64, -0.26, 0x101114, 4), fxB(0.08, 0.08, 0.03, 0, 1.73, -0.19, GOLD, 4)); break;
+    case 'ornate': P.push(fxB(0.38, 0.2, 0.38, 0, 1.76, 0, o.hatC, 4), fxB(0.4, 0.07, 0.4, 0, 1.66, 0, GOLD, 4), fxB(0.42, 0.06, 0.42, 0, 1.87, 0, GOLD, 4), fxB(0.3, 0.1, 0.3, 0, 1.94, 0, o.hatC, 4), fxB(0.36, 0.03, 0.22, 0, 1.64, -0.27, GOLD2, 4), fxB(0.12, 0.12, 0.03, 0, 1.78, -0.2, GOLD, 4), fxB(0.05, 0.14, 0.05, 0, 2.06, 0, 0xe2363b, 4)); break;
+    default: break;
+  }
+  return P;
+}
+const FX_LOOK = {
+  hundred: { jacket: 0x2f5fd0, vest: 0x22314d, pants: 0x1f2f63, knee: 0x3a4a78, pad: GOLD, pack: 0x4a5a3a, pack2: 0x59693f, hat: 'helmet', hatC: 0x1d2733, hatC2: GOLD, belt: GOLD2 },
+  0: { jacket: 0x58733d, vest: 0x394b2b, pants: 0x3b4a2e, knee: 0x2d3a22, pad: 0x435430, pack: 0x4a5236, pack2: 0x5b6540, hat: 'net', hatC: 0x3a4a2a, hatC2: 0x2a3820, belt: 0x6a5a38 },
+  1: { jacket: 0x1d2433, vest: 0x161c2a, pants: 0x131824, pad: 0x2c3448, hat: 'beret', hatC: 0x8a1f2c, belt: 0x0e1118, pouch: 0x2c3448 },
+  2: { jacket: 0x22336a, vest: 0x22336a, pants: 0x151d3d, pad: 0x22336a, hat: 'peak', hatC: 0x22336a, hatBand: 0xf0f0ea, hatTop: 0xf0f0ea, belt: 0xf0f0ea, pouch: 0x22336a },
+  3: { coat: 0x6b5d45, coatHem: 0x574a36, pants: 0x3a2f22, pad: 0x6b5d45, hat: 'peak', hatC: 0x5a4d38, hatBand: GOLD, hatTop: 0x5a4d38, belt: GOLD2, sleeve: 0x6b5d45 },
+  4: { jacket: 0xefeadc, vest: 0xe2dccb, pants: 0xe8e4d6, pad: GOLD, hat: 'ornate', hatC: 0xf2eee2, belt: GOLD, pouch: GOLD, sleeve: 0xefeadc },
+};
+function fxTierParts(k) {
+  const L = FX_LOOK[k], P = fxSoldierParts(L), mir = (w, h, d, x, y, z, c, tl, tr) => { P.push(fxB(w, h, d, -x, y, z, c, tl)); P.push(fxB(w, h, d, x, y, z, c, tr)); };
+  if (k === 'hundred') {
+    P.push(fxB(0.06, 1.5, 0.06, 0, 2.0, 0.42, 0x6a4a26, 3));                       // banner pole (the flag is its own instanced plane)
+    P.push(fxB(0.1, 0.5, 0.03, 0, 1.2, 0.19, GOLD, 3));                            // gold braid down the back
+    mir(0.06, 0.2, 0.06, 0.18, 1.1, 0.06, GOLD2, 3, 3);                            // gold cuffs
+  } else {
+    P.push(fxB(0.06, 1.7, 0.06, 0.14, 2.25, 0.42, 0x6a4a26, 3));                   // commander's pennant pole
+    if (k === 0) { P.push(fxB(0.3, 0.06, 0.04, 0, 1.12, 0.2, 0x2c3a22, 3)); }
+    if (k === 1) { P.push(fxS(-0.2, 1.4, 0.2, 0, 1.18, 0.21, 0.06, GOLD, 3), fxS(0.2, 1.4, 0.2, 0, 1.18, 0.21, 0.06, GOLD, 3)); P.push(fxS(-0.2, 1.22, 0.2, 0, 1.0, 0.21, 0.06, GOLD, 3), fxS(0.2, 1.22, 0.2, 0, 1.0, 0.21, 0.06, GOLD, 3)); }
+    if (k === 2) {
+      P.push(fxS(-0.24, 1.4, 0.19, 0.24, 0.9, 0.19, 0.07, 0xf0f0ea, 3), fxS(0.24, 1.4, 0.19, -0.24, 0.9, 0.19, 0.07, 0xf0f0ea, 3));   // white cross belts
+      mir(0.22, 0.05, 0.34, 0.33, 1.47, 0, GOLD, 3, 3);                                                                              // shoulder boards
+    }
+    if (k === 3) {
+      mir(0.26, 0.06, 0.36, 0.33, 1.47, 0, GOLD, 3, 3);
+      mir(0.05, 0.4, 0.04, 0.2, 1.22, 0.21, GOLD, 3, 3); mir(0.05, 0.3, 0.04, 0.28, 1.1, 0.21, GOLD2, 3, 3);                       // aiguillette braid
+      for (let i = 0; i < 4; i++) P.push(fxB(0.07, 0.07, 0.03, 0, 1.3 - i * 0.18, 0.2, GOLD, 3));                                     // buttons
+      P.push(fxB(0.5, 0.1, 0.4, 0, 1.4, 0.02, GOLD2, 3));                                                                           // gold collar
+    }
+    if (k === 4) {
+      P.push(fxB(0.72, 1.1, 0.06, 0, 1.0, 0.27, 0xb8222c, 3), fxB(0.78, 0.16, 0.22, 0, 1.46, 0.2, 0xd8434c, 3), fxB(0.74, 0.07, 0.07, 0, 0.45, 0.28, GOLD, 3));   // cape, collar, hem
+      mir(0.18, 0.05, 0.34, 0.33, 1.48, 0, GOLD, 3, 3);
+      mir(0.04, 0.26, 0.04, 0.4, 1.28, 0, GOLD, 3, 3);                                                                              // fringe
+      for (let i = 0; i < 3; i++) { P.push(fxB(0.06, 0.06, 0.07, -0.39, 1.3 - i * 0.1, -0.02, [0xe2363b, 0x2f7bff, 0xffd75e][i], 3), fxB(0.06, 0.06, 0.07, 0.39, 1.3 - i * 0.1, -0.02, [0xffd75e, 0xe2363b, 0x2f7bff][i], 3)); }   // medals on the sleeves
+      P.push(fxB(0.1, 0.1, 0.04, 0, 1.4, 0.3, GOLD, 3));                                                                            // cape clasp
+    }
+  }
+  return P;
+}
+const FX_GEO100 = fxChBuild(fxTierParts('hundred'), false);
+const FX_GEO1K = [0, 1, 2, 3, 4].map(k => fxChBuild(fxTierParts(k), false));
+// banners: the 「百」 flag of a hundred figure and the 「千」 pennant of a thousand figure (instanced planes with a canvas texture)
+function fxFlagTex(ch, bg, fg, edge) {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+  const draw = () => {
+    const x = c.getContext('2d');
+    x.fillStyle = edge; x.fillRect(0, 0, 128, 128); x.fillStyle = bg; x.fillRect(8, 8, 112, 112);
+    x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '900 92px "Noto Sans TC", sans-serif'; x.lineWidth = 8; x.strokeStyle = 'rgba(0,0,0,.35)'; x.strokeText(ch, 64, 70); x.fillStyle = fg; x.fillText(ch, 64, 70);
+  };
+  draw();
+  const t = new T.CanvasTexture(c); t.anisotropy = 2;
+  return { tex: t, draw: () => { draw(); t.needsUpdate = true; } };
+}
+const FX_FLAGS = [fxFlagTex('百', '#b3202a', '#ffd75e', '#e8b82a'), fxFlagTex('千', '#ffffff', '#1a1a1a', '#e8b82a')];
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { for (const f of FX_FLAGS) f.draw(); }).catch(() => {});
 // Mech faces -z.
 const MGEO = boxes([
   [0.5, 1.3, 0.6, -0.45, 0.65, 0, 0x55606e],
@@ -1381,12 +1497,14 @@ const CLOCK = { uTime: { value: 0 } };
 // Character shader (zombies, soldiers, boss): per-instance walk / lurch / hunch / head tilt / recoil, zombie palette slots with glowing
 // eyes, and a cheap rim (fresnel) term tinted by the theme's fog colour. All through onBeforeCompile on a Lambert material.
 const RIM = { color: { value: new T.Color(0x9fb4c8) } };
+const FX_RIMS = [], FX_CHAR_MATS = [];
 function fxChar(mat, o) {
+  FX_CHAR_MATS.push(mat);
   const pal = o.pal ? o.pal.map(h => { const c = new T.Color(h); return new T.Vector3(c.r, c.g, c.b); }) : null;
   const zombie = !!pal;
   mat.onBeforeCompile = sh => {
     sh.uniforms.uTime = CLOCK.uTime; sh.uniforms.uHip = { value: o.hip }; sh.uniforms.uFreq = { value: o.freq };
-    sh.uniforms.uRimC = RIM.color; sh.uniforms.uRim = { value: o.rim };
+    sh.uniforms.uRimC = RIM.color; const ru = { value: o.rim }; FX_RIMS.push({ u: ru, b: o.rim }); sh.uniforms.uRim = ru;
     sh.uniforms.uEyeC = { value: new T.Color(o.eye || 0xffd24a) };
     sh.uniforms.uWalk = { value: new T.Vector4(0, 1, 1, 0) }; sh.uniforms.uStyle = { value: new T.Vector4(o.hunch || 0, 0, 0, 0.5) };
     if (pal) sh.uniforms.uPal = { value: pal };
@@ -3576,18 +3694,31 @@ function drawZombies(t) {
   shZMesh.instanceMatrix.needsUpdate = true; shZMesh.instanceColor.needsUpdate = true;
 }
 
-// Soldiers: logic keeps a transform carrier (Object3D) per soldier; this renders them all in one instanced draw call.
+// Soldiers: logic keeps a transform carrier (Object3D) per figure; each figure stands for so.w soldiers (1 / 100 / 1000, round 8).
+// One instanced mesh per look: singles, 百人隊, and 千人隊 in five outfits (only the class of the current rank is ever visible).
 const SOLDIER_CAP = MAXVIS + 24;
-const sWalk = new T.InstancedBufferAttribute(new Float32Array(SOLDIER_CAP * 4), 4).setUsage(T.DynamicDrawUsage);
-const sGeoI = SGEO.clone();
-sGeoI.setAttribute('aWalk', sWalk);
-sGeoI.setAttribute('aStyle', new T.InstancedBufferAttribute(new Float32Array(SOLDIER_CAP * 4), 4));
-const sMesh = new T.InstancedMesh(sGeoI, fxChar(new T.MeshLambertMaterial({ vertexColors: true }), { hip: 0.75, freq: 5.5, rim: 0.25 }), SOLDIER_CAP);
-sMesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
-sMesh.setColorAt(0, tmpC.setRGB(1, 1, 1)); sMesh.instanceColor.setUsage(T.DynamicDrawUsage);
-sMesh.frustumCulled = false;
-sMesh.count = 0;
-scene.add(sMesh);
+function fxFigMesh(geo, mat) {
+  const g = geo.clone(), walk = new T.InstancedBufferAttribute(new Float32Array(SOLDIER_CAP * 4), 4).setUsage(T.DynamicDrawUsage);
+  g.setAttribute('aWalk', walk);
+  g.setAttribute('aStyle', new T.InstancedBufferAttribute(new Float32Array(SOLDIER_CAP * 4), 4));
+  const m = new T.InstancedMesh(g, mat || fxChar(new T.MeshLambertMaterial({ vertexColors: true }), { hip: 0.75, freq: 5.5, rim: 0.25 }), SOLDIER_CAP);
+  m.instanceMatrix.setUsage(T.DynamicDrawUsage);
+  m.setColorAt(0, tmpC.setRGB(1, 1, 1)); m.instanceColor.setUsage(T.DynamicDrawUsage);
+  m.frustumCulled = false; m.count = 0; m.visible = false;
+  scene.add(m);
+  return { mesh: m, walk, n: 0 };
+}
+const sFig = fxFigMesh(SGEO), hFig = fxFigMesh(FX_GEO100), kFig = FX_GEO1K.map(g => fxFigMesh(g));
+const sMesh = sFig.mesh, sWalk = sFig.walk;
+const FX_FLAGGEO = new T.PlaneGeometry(1, 1).translate(0.5, 0, 0);
+const fxFlagMesh = ti => {
+  const m = new T.InstancedMesh(FX_FLAGGEO, new T.MeshBasicMaterial({ map: FX_FLAGS[ti].tex, side: T.DoubleSide }), SOLDIER_CAP);
+  m.instanceMatrix.setUsage(T.DynamicDrawUsage); m.setColorAt(0, tmpC.setRGB(1, 1, 1)); m.instanceColor.setUsage(T.DynamicDrawUsage);
+  m.instanceColor.array.fill(1); m.frustumCulled = false; m.count = 0; m.visible = false; scene.add(m); return m;
+};
+const flagH = fxFlagMesh(0), flagK = fxFlagMesh(1);
+const pipMesh = new T.InstancedMesh(boxes([[0.07, 0.05, 0.05, 0, 0, 0, 0xffd75e]]), M.vc, 256);
+pipMesh.instanceMatrix.setUsage(T.DynamicDrawUsage); pipMesh.frustumCulled = false; pipMesh.count = 0; pipMesh.visible = false; scene.add(pipMesh);
 // Held guns: one instanced mesh per weapon type (the squad all carries the same gun, so exactly one is visible = one draw call).
 // Level-ups raise the gun's emissive glow; firing kicks it back a little.
 const gunMat = new T.MeshLambertMaterial({ vertexColors: true });
@@ -3600,32 +3731,104 @@ const gunMeshes = HELD_GEO.map(g => {
 });
 const KICK = { bullet: 0.05, pellet: 0.12, rail: 0.16, flame: 0.02, rocket: 0.2 };
 const GLOW = [0, 0.16, 0.34];
+const FX_RANK0 = { k: 0, idx: -1, name: '', cls: 0, sub: 0, next: 1000 };
+const fxRank = () => G.rank || FX_RANK0;
+const FX_UNIT = { mergeUntil: 0, splitUntil: 0, ghosts: [], glow: [], tierN: [0, 0, 0] };
+const fxM1 = new T.Matrix4(), fxM2 = new T.Matrix4(), fxM3 = new T.Matrix4(), fxV1 = new T.Vector3(), fxE1 = new T.Euler(), fxQ1 = new T.Quaternion(), fxS1 = new T.Vector3();
+const FX_CLSRGB = [[0.55, 0.85, 0.4], [1, 0.38, 0.32], [0.4, 0.62, 1], [1, 0.68, 0.2], [1, 0.85, 0.35]];
+const easeOutBack = t => { const c = 1.7; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+function fxSpawnGhosts(so, tier, reverse) {
+  const n = reverse ? 2 : tier === 2 ? 10 : 7, ox = so.mesh.position.x, oz = so.mesh.position.z;
+  if (reverse) { for (let k = 0; k < n && FX_UNIT.ghosts.length < 70; k++) FX_UNIT.ghosts.push({ ax: G.x, az: G.z + 0.8, bx: ox, bz: oz, t: -Math.random() * 0.08, rev: true, tier: 0 }); return; }
+  for (let k = 0; k < n && FX_UNIT.ghosts.length < 70; k++) {
+    const a = k / n * 6.283 + Math.random() * 0.6, r = (tier === 2 ? 3.2 : 2.3) * (0.7 + Math.random() * 0.5);
+    FX_UNIT.ghosts.push({ ax: ox + Math.cos(a) * r, az: oz + Math.sin(a) * r * 0.8, bx: ox, bz: oz, t: -Math.random() * 0.12, rev: !!reverse, tier });
+  }
+}
 function drawSoldiers() {
-  const n = Math.min(G.soldiers.length, SOLDIER_CAP), stepping = G.phase === 'run' ? 1 : 0;
+  const n = Math.min(G.soldiers.length, SOLDIER_CAP), stepping = G.phase === 'run' ? 1 : 0, now = nowMs();
   const w = G.weapon, W = WEAPONS[w], gm = gunMeshes[w], kmax = KICK[W.fx] || 0.05, per = 1 / W.rate;
+  const rk = fxRank(), kf = kFig[clamp(rk.cls | 0, 0, 4)];
+  sFig.n = hFig.n = 0; for (const f of kFig) f.n = 0;
+  let nFlagH = 0, nFlagK = 0, nPip = 0; FX_UNIT.glow.length = 0; FX_UNIT.tierN[0] = FX_UNIT.tierN[1] = FX_UNIT.tierN[2] = 0;
+  const fa = flagH.instanceMatrix.array, fk = flagK.instanceMatrix.array, pa = pipMesh.instanceMatrix.array;
+  const sub = clamp(rk.sub | 0, 0, 4), kc = clamp(rk.cls | 0, 0, 4);
   for (let i = 0; i < n; i++) {
-    const so = G.soldiers[i], m = so.mesh, ry = m.rotation.y;
-    dummy.position.copy(m.position);
-    dummy.rotation.set(0, ry, 0);
-    dummy.updateMatrix();
-    sMesh.setMatrixAt(i, dummy.matrix);
-    const since = per - so.cd;                                   // time since this soldier last fired
+    const so = G.soldiers[i], m = so.mesh, ry = m.rotation.y, tier = fxTierOf(so.w || 1);
+    FX_UNIT.tierN[tier]++;
+    const F = tier === 0 ? sFig : tier === 1 ? hFig : kf, j = F.n++;
+    let sc = FX_TIER_SCALE[tier], pop = 1;
+    if (!so.fxB) {                                                        // first sight of this figure
+      so.fxB = now;
+      if (G.phase === 'run' && !reduced) {
+        if (tier > 0 && FX_UNIT.mergeUntil > now) { so.fxAnim = now; fxSpawnGhosts(so, tier, false); }
+        else if (tier === 0 && FX_UNIT.splitUntil > now) { so.fxAnim = now; if (FX_UNIT.ghosts.length < 40) fxSpawnGhosts(so, 0, true); }
+      }
+    }
+    if (so.fxAnim) {                                                      // merge: held back for the ghosts to arrive, then a pop; split: a quick pop out
+      const age = (now - so.fxAnim) / 1000, d0 = tier > 0 ? 0.34 : 0.05;
+      if (age > d0 + 0.45) so.fxAnim = 0;
+      else if (age < d0) pop = tier > 0 ? 0.001 : 0.2;
+      else { pop = Math.max(0.01, easeOutBack(clamp((age - d0) / 0.4, 0, 1))); if (!so.fxFl && tier > 0) { so.fxFl = 1; flashAt(m.position.x, 1.6 * sc, m.position.z, 0.22, 1.3, 1.1, 0.5); shock(m.position.x, m.position.z, 0xffd75e, 2.4 + tier, 0.4); } }
+    }
+    sc *= pop;
+    dummy.position.copy(m.position); dummy.rotation.set(0, ry, 0); dummy.scale.setScalar(sc); dummy.updateMatrix();
+    F.mesh.setMatrixAt(j, dummy.matrix);
+    fxM1.copy(dummy.matrix);
+    const since = per - so.cd;                                           // time since this soldier last fired
     const kn = since >= 0 && since < 0.09 ? 1 - since / 0.09 : 0, kick = kn * kmax;
-    sWalk.array[i * 4] = i * 0.5 - 0.785; sWalk.array[i * 4 + 1] = stepping; sWalk.array[i * 4 + 2] = 1; sWalk.array[i * 4 + 3] = kn;   // kn: upper-body recoil
-    if (!so.fxc) { const h = Math.random(), h2 = Math.random(), h3 = Math.random(); so.fxc = [0.9 + 0.2 * h * (0.9 + 0.2 * h2), 0.92 + 0.16 * h, 0.9 + 0.2 * h * (0.9 + 0.2 * h3)]; }   // small per-soldier colour variance
-    sMesh.instanceColor.array[i * 3] = so.fxc[0]; sMesh.instanceColor.array[i * 3 + 1] = so.fxc[1]; sMesh.instanceColor.array[i * 3 + 2] = so.fxc[2];
-    dummy.position.x += Math.sin(ry) * kick; dummy.position.z += Math.cos(ry) * kick;
+    F.walk.array[j * 4] = i * 0.5 - 0.785; F.walk.array[j * 4 + 1] = stepping; F.walk.array[j * 4 + 2] = 1 - 0.14 * tier; F.walk.array[j * 4 + 3] = kn;   // kn: upper-body recoil
+    if (!so.fxc) { const h = Math.random(), h2 = Math.random(), h3 = Math.random(); so.fxc = [1.2 + 0.2 * h * (0.9 + 0.2 * h2), 1.22 + 0.16 * h, 1.2 + 0.2 * h * (0.9 + 0.2 * h3)]; }   // small per-soldier colour variance (round 8: a step brighter so the squad reads on dark ground)
+    const ic = F.mesh.instanceColor.array;
+    if (tier === 0) { ic[j * 3] = so.fxc[0]; ic[j * 3 + 1] = so.fxc[1]; ic[j * 3 + 2] = so.fxc[2]; } else { ic[j * 3] = ic[j * 3 + 1] = ic[j * 3 + 2] = 1; }
+    dummy.position.x += Math.sin(ry) * kick * sc; dummy.position.z += Math.cos(ry) * kick * sc;
     dummy.updateMatrix();
     gm.setMatrixAt(i, dummy.matrix);
+    if (tier === 1 && pop > 0.05) {                                      // 「百」 flag on its pole, waving
+      const wv = reduced ? 0 : Math.sin(G.time * 5 + i) * 0.25;
+      fxM2.makeRotationY(wv).setPosition(0, 2.6, 0.42); fxM3.multiplyMatrices(fxM1, fxM2); fxM2.makeScale(0.36, 0.28, 1); fxM3.multiply(fxM2);
+      fxM3.toArray(fa, nFlagH * 16); nFlagH++;
+      FX_UNIT.glow.push(m.position.x, 0.35, m.position.z, 1, 0.8, 0.3, 0.12, 2.2);   // low halo at the feet, so the uniform keeps its colours
+    } else if (tier === 2 && pop > 0.05) {                               // 千 pennant in the class colour + shoulder pips for `sub`
+      const wv = reduced ? 0 : Math.sin(G.time * 4 + i) * 0.22;
+      fxM2.makeRotationY(wv).setPosition(0.14, 2.92, 0.42); fxM3.multiplyMatrices(fxM1, fxM2); fxM2.makeScale(0.36, 0.28, 1); fxM3.multiply(fxM2);
+      fxM3.toArray(fk, nFlagK * 16);
+      flagK.setColorAt(nFlagK, tmpC.setRGB(FX_CLSRGB[kc][0] * 0.9 + 0.1, FX_CLSRGB[kc][1] * 0.9 + 0.1, FX_CLSRGB[kc][2] * 0.9 + 0.1)); nFlagK++;
+      for (let s = -1; s <= 1 && nPip + sub * 2 <= 250; s += 2) for (let q = 0; q < sub; q++) {
+        fxM2.makeTranslation(s * 0.33, 1.53 + (rk.cls === 3 || rk.cls === 2 || rk.cls === 4 ? 0.04 : 0), -0.1 + q * 0.085); fxM3.multiplyMatrices(fxM1, fxM2); fxM3.toArray(pa, nPip * 16); nPip++;
+      }
+      const c = FX_CLSRGB[kc];
+      FX_UNIT.glow.push(m.position.x, 0.4, m.position.z, c[0], c[1], c[2], rk.cls === 4 ? 0.3 : 0.16, rk.cls === 4 ? 4.4 : 3.2);
+    }
+    shadowW[i] = sc;
   }
-  sMesh.count = n;
-  sMesh.instanceMatrix.needsUpdate = true; sMesh.instanceColor.needsUpdate = true;
-  sWalk.needsUpdate = true;
+  for (const F of [sFig, hFig, ...kFig]) {
+    const m = F.mesh, cnt = F.n;
+    m.count = cnt; m.visible = cnt > 0;
+    m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true; F.walk.needsUpdate = true;
+  }
+  flagH.count = nFlagH; flagH.visible = nFlagH > 0; flagH.instanceMatrix.needsUpdate = true;
+  flagK.count = nFlagK; flagK.visible = nFlagK > 0; flagK.instanceMatrix.needsUpdate = true; if (flagK.instanceColor) flagK.instanceColor.needsUpdate = true;
+  pipMesh.count = nPip; pipMesh.visible = nPip > 0; pipMesh.instanceMatrix.needsUpdate = true;
   for (let k = 0; k < gunMeshes.length; k++) gunMeshes[k].visible = k === w && n > 0;
   gm.count = n;
   gm.instanceMatrix.needsUpdate = true;
   gunMat.emissive.setHex(W.color).multiplyScalar(GLOW[clamp(G.weaponLv, 1, 3) - 1]);
   gunMat.emissive.r += BUFFV.r * 1.6; gunMat.emissive.g += BUFFV.g * 1.6; gunMat.emissive.b += BUFFV.b * 1.6;
+}
+const shadowW = new Float32Array(SOLDIER_CAP + 8).fill(1);
+// glows of the big figures and the ghosts of a merge / split, pushed into the fire system by worldSprites
+function fxUnitSprites() {
+  const g = FX_UNIT.glow;
+  for (let i = 0; i < g.length && !fireSys.full(); i += 8) fireSys.push(g[i], g[i + 1], g[i + 2], g[i + 3], g[i + 4], g[i + 5], g[i + 6], g[i + 7]);
+  const list = FX_UNIT.ghosts;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const q = list[i]; q.t += renderDt / 0.34;
+    if (q.t >= 1) { list.splice(i, 1); continue; }
+    if (q.t < 0 || fireSys.full()) continue;
+    const e = q.rev ? 1 - (1 - q.t) * (1 - q.t) : q.t * q.t, x = q.ax + (q.bx - q.ax) * e, z = q.az + (q.bz - q.az) * e;
+    fireSys.push(x, 0.9 + Math.sin(q.t * 3.14) * 0.5, z, q.rev ? 1 : 0.7, q.rev ? 0.6 : 0.9, q.rev ? 0.4 : 1, 0.85 * (1 - 0.3 * q.t), q.tier ? 1.1 : 0.7);
+  }
 }
 
 // Blob shadows: one instanced draw call for every soldier, zombie, mech and the boss.
@@ -3655,7 +3858,7 @@ function drawShadows() {
     if (zb.z < zmin) continue;
     shadowAt(zb.x, zb.z, zb.s * 0.85 * (zb.dying > 0 ? zb.dying / 0.35 : 1));
   }
-  for (let i = 0; i < G.soldiers.length; i++) shadowAt(G.soldiers[i].x, G.soldiers[i].z, 0.78);
+  for (let i = 0; i < G.soldiers.length; i++) shadowAt(G.soldiers[i].x, G.soldiers[i].z, 0.78 * (shadowW[i] || 1));
   if (G.mech) shadowAt(G.mech.x, G.mech.z, 2.1);
   for (let i = 0; i < lobN; i++) shadowAt(lobX[i], lobZ[i], 0.5 + Math.max(0, 2.4 - lobY[i]) * 0.1);   // where the rocket is over the deck
   const b = G.boss;
@@ -3955,7 +4158,9 @@ function drawBullets(dt) {
       bMesh.setMatrixAt(nt, dummy.matrix); tc[nt * 3] = 1; tc[nt * 3 + 1] = 0.5; tc[nt * 3 + 2] = 0.15; nt++;
       continue;
     }
-    const w = bw[i] < WEAPONS.length ? bw[i] : 0, W = WEAPONS[w], rgb = WRGB[w], k = w === G.weapon ? lvK : 1, traj = TRAJ[w];
+    const w = bw[i] < WEAPONS.length ? bw[i] : 0, W = WEAPONS[w], rgb = WRGB[w], traj = TRAJ[w];
+    const wt = bwt[i] >= 1000 ? 2 : bwt[i] >= 100 ? 1 : 0;       // weight tier of the shot (bwt: how many soldiers the shooting figure stands for)
+    const k = (w === G.weapon ? lvK : 1) * (wt ? 1 + 0.75 * wt : 1), br = wt ? 1 + 0.4 * wt : 1;
     if (traj !== 'beam') fxHist(i, bx[i], yb, bz[i], w, TRAJ_DS[traj] || 0.4, dt);
     switch (W.fx) {
       case 'pellet': {
@@ -3994,7 +4199,7 @@ function drawBullets(dt) {
       default: {
         const t = TRACER[W.id] || TRACER.rifle;
         dummy.position.set(bx[i], yb, bz[i]); dummy.rotation.set(0, ang, 0); dummy.scale.set(t[1] * k, t[1] * k, t[0]); dummy.updateMatrix();
-        bMesh.setMatrixAt(nt, dummy.matrix); tc[nt * 3] = rgb[0] * (0.6 + 0.4 * trK); tc[nt * 3 + 1] = rgb[1] * (0.6 + 0.4 * trK); tc[nt * 3 + 2] = rgb[2] * (0.6 + 0.4 * trK); nt++;
+        bMesh.setMatrixAt(nt, dummy.matrix); tc[nt * 3] = rgb[0] * (0.6 + 0.4 * trK) * br; tc[nt * 3 + 1] = rgb[1] * (0.6 + 0.4 * trK) * br; tc[nt * 3 + 2] = rgb[2] * (0.6 + 0.4 * trK) * br; nt++;
         if (BUFFV.split && nt + (nb - i) < MAXB - 1) {       // split buff: a ghost twin beside every tracer
           const sd = (i & 1) ? 0.24 : -0.24;
           dummy.position.set(bx[i] + dz * sd, yb, bz[i] - dx * sd); dummy.scale.set(t[1] * 0.7, t[1] * 0.7, t[0] * 0.9); dummy.updateMatrix();
@@ -4038,15 +4243,44 @@ function drawParticles(dt) {
 }
 
 
-const hud = { pips: $('#hudPips'), lvl: $('#hudLevel'), prog: $('#hudProg'), kills: $('#hudKills'), squad: $('#hudSquad'), weapon: $('#hudWeapon') };
+// big numbers: 2,345 / 12,345 (the HUD counter keeps the full number up to 99,999), then 1.2萬 / 12萬 / 1.2億 (everywhere above 9,999)
+function fxNum(n, wide) {
+  n = Math.max(0, Math.floor(+n || 0));
+  if (n < (wide ? 100000 : 10000)) return n < 1000 ? String(n) : Math.floor(n / 1000) + ',' + String(n % 1000).padStart(3, '0');
+  const f = (v, u) => (v >= 100 ? String(Math.floor(v)) : String(Math.floor(v * 10) / 10)) + u;
+  return n < 1e8 ? f(n / 1e4, '萬') : f(n / 1e8, '億');
+}
+// rank badge: a round badge in the class colour with the class's own insignia (chevrons / bars / stars / a wreath) and `sub` marks
+function fxBadge(cls, sub, big) {
+  cls = clamp(cls | 0, 0, 4); const n = clamp((sub | 0) + 1, 1, 4), c = FX_CLS[cls].acc, hex = '#' + c.toString(16).padStart(6, '0');
+  let g = '';
+  if (cls === 0) for (let i = 0; i < n; i++) g += '<path d="M6 ' + (13 - i * 3.4 + 4) + 'l6 -4 6 4" />';
+  else if (cls === 1) { for (let i = 0; i < n; i++) g += '<path d="M6 ' + (11 - i * 3.4 + 5) + 'l6 -4 6 4" />'; g += '<path d="M5 18h14" />'; }
+  else if (cls === 2) for (let i = 0; i < n; i++) g += '<rect x="7" y="' + (16 - i * 4) + '" width="10" height="2.4" rx=".6" fill="currentColor" stroke="none"/>';
+  else if (cls === 3) for (let i = 0; i < n; i++) g += '<path d="M' + (12 + (i - (n - 1) / 2) * 5.2) + ' 7.5l1.2 2.7 2.9.3-2.2 2 .7 2.9-2.6-1.5-2.6 1.5.7-2.9-2.2-2 2.9-.3z" fill="currentColor" stroke="none"/>';
+  else g = '<path d="M5 12c0-5 3-8 7-8s7 3 7 8M6 9c-1 4 1 8 6 9 5-1 7-5 6-9" fill="none"/><path d="M12 6.5l1.6 3.4 3.7.4-2.8 2.5.8 3.7-3.3-1.9-3.3 1.9.8-3.7-2.8-2.5 3.7-.4z" fill="currentColor" stroke="none"/>';
+  return '<svg class="rkb' + (big ? ' big' : '') + '" viewBox="0 0 24 24" aria-hidden="true" style="--rc:' + hex + '"><circle cx="12" cy="12" r="11" fill="#10151b" stroke="' + hex + '" stroke-width="1.8"/><g style="color:' + hex + '" stroke="' + hex + '" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" fill="none">' + g + '</g></svg>';
+}
+const hud = { rk: $('#hudRank'), rkBar: $('#hudRankBar'), rkName: $('#hudRankName'), rkIco: $('#hudRankIco'), pips: $('#hudPips'), lvl: $('#hudLevel'), prog: $('#hudProg'), kills: $('#hudKills'), squad: $('#hudSquad'), weapon: $('#hudWeapon') };
 const hudCache = {};
 function setText(key, el, v) { if (hudCache[key] !== v) { hudCache[key] = v; el.textContent = v; } }
 let sqPrev = null, progQ = -1, wSig = null;
+const FX_RANKMAX = { k: 0, rk: null };       // the highest rank reached in the stage being played (result screen)
 const cssHex = c => '#' + c.toString(16).padStart(6, '0');
 function updateHud() {
   setText('lvl', hud.lvl, String(G.level));
   setText('kills', hud.kills, String(G.kills));
-  setText('squad', hud.squad, '×' + G.squad);
+  { const rk = G.rank, k = rk ? rk.k | 0 : 0, nx = rk ? Math.max(0, rk.next | 0) : 0, key = (rk ? rk.cls + ':' + rk.sub + ':' + rk.name + ':' + k : 'none');
+    if (rk) {
+      if (hudCache.rk !== key) { hudCache.rk = key; hud.rkIco.innerHTML = k >= 1 ? fxBadge(rk.cls, rk.sub) : ''; hud.rkName.textContent = k >= 1 ? rk.name : '距離首個軍階'; hud.rk.hidden = false; }
+      const pq = Math.round(clamp(1 - nx / 1000, 0, 1) * 100);
+      if (hudCache.rkb !== pq) { hudCache.rkb = pq; hud.rkBar.style.transform = 'scaleX(' + pq / 100 + ')'; }
+      const nt = k >= 1 ? '距離下一階 ' + fxNum(nx) : '還差 ' + fxNum(nx);
+      if (hudCache.rkn !== nt) { hudCache.rkn = nt; hud.rk.querySelector('.rn').textContent = nt; }
+    } else if (!hud.rk.hidden) hud.rk.hidden = true;
+    if (rk && k >= 1 && G.phase === 'run' && k > FX_RANKMAX.k) { FX_RANKMAX.k = k; FX_RANKMAX.rk = { cls: rk.cls, sub: rk.sub, name: rk.name }; }
+  }
+  setText('squad', hud.squad, '×' + fxNum(G.squad, true));
   setText('weapon', hud.weapon, WEAPONS[G.weapon].name + (G.mech ? ' + 機甲' : ''));
   const wsig = G.weapon * 10 + G.weaponLv;
   if (wsig !== wSig) {
@@ -4718,7 +4952,7 @@ function updateWorld(t) {
 }
 // sprites for glowing things, pushed into the fire system just before it is flushed
 function worldSprites() {
-  fxLampSprites(); fxObsSprites(G.time);
+  fxLampSprites(); fxObsSprites(G.time); fxUnitSprites();
   const pu = reduced ? 0.6 : 0.5 + 0.5 * Math.sin(G.time * 7);
   for (const e of worldList) {
     if (!e.grp || !e.grp.visible || G.z - e.z < -3 || G.z - e.z > 60) continue;
@@ -4817,11 +5051,11 @@ function updateGateReveal(e, dt) {
 // ================================================================ round 4: themes, route props, lanes, curved world, stage intro
 // ---- themes (G.theme -> sky, fog, lights, extras)
 const THEMES = {
-  dawn:   { sky: 0xe3b79c, fogNear: 28, fogFar: 84, hemiSky: 0xffe6d2, hemiGnd: 0x6a5c58, hemiI: 1.0, sun: 0xffd4a8, sunI: 0.85, sunPos: [-7, 8, 6], tracer: 1 },
+  dawn:   { sky: 0xe3b79c, fogNear: 28, fogFar: 84, hemiSky: 0xffe6d2, hemiGnd: 0x7a6c68, hemiI: 1.05, sun: 0xffd4a8, sunI: 0.85, sunPos: [-7, 8, 6], tracer: 1 },
   haze:   { sky: 0x8fa3b3, fogNear: 24, fogFar: 78, hemiSky: 0xe2e9f1, hemiGnd: 0x4a4038, hemiI: 0.95, sun: 0xfff2dc, sunI: 0.75, sunPos: [6, 12, 5], tracer: 1 },
-  sunset: { sky: 0xd78552, fogNear: 22, fogFar: 72, hemiSky: 0xffcfa6, hemiGnd: 0x5a3a36, hemiI: 0.9, sun: 0xff9a55, sunI: 1.0, sunPos: [9, 5, 3], tracer: 1.05 },
-  night:  { sky: 0x070d20, fogNear: 14, fogFar: 58, hemiSky: 0x5668a8, hemiGnd: 0x161a2c, hemiI: 0.6, sun: 0x7f93e0, sunI: 0.4, sunPos: [-5, 10, 4], tracer: 1.5, lamps: true },
-  storm:  { sky: 0x36424c, fogNear: 12, fogFar: 50, hemiSky: 0x8fa0ae, hemiGnd: 0x2a3036, hemiI: 0.65, sun: 0xaabdd2, sunI: 0.35, sunPos: [3, 12, 6], tracer: 1.15, rain: true },
+  sunset: { sky: 0xd78552, fogNear: 22, fogFar: 72, hemiSky: 0xffcfa6, hemiGnd: 0x6a4a46, hemiI: 1.0, sun: 0xff9a55, sunI: 1.0, sunPos: [9, 5, 3], tracer: 1.05 },
+  night:  { sky: 0x131b3c, fogNear: 17, fogFar: 64, hemiSky: 0x8394d0, hemiGnd: 0x3a4262, hemiI: 0.88, sun: 0x93a6ea, sunI: 0.62, sunPos: [-5, 10, 4], tracer: 1.5, lamps: true, rimK: 1.5, em: 0x0f1428, lift: 0.07 },
+  storm:  { sky: 0x4d5d6b, fogNear: 16, fogFar: 58, hemiSky: 0xaebdca, hemiGnd: 0x434e56, hemiI: 0.9, sun: 0xb8c8dc, sunI: 0.55, sunPos: [3, 12, 6], tracer: 1.15, rain: true, rimK: 1.3, em: 0x0c1115, lift: 0.05 },
 };
 const TH = { id: null, cur: THEMES.haze, flash: 0, ltIn: 6, again: 0, fApplied: -1 };
 const LIGHTNING = new T.Color(0xdbe6ff), tmpTc = new T.Color();
@@ -4855,6 +5089,23 @@ const rainMesh = new T.LineSegments(rainGeo, new T.ShaderMaterial({
 }));
 rainMesh.frustumCulled = false; rainMesh.visible = false;
 scene.add(rainMesh);
+// brightness setting 亮度: 0 標準, 1 明亮 (one more step of light, a lifted sky and a little exposure); remembered in localStorage
+const LUM = { v: 0, key: 'zombie-bridge-lum' };
+try { LUM.v = localStorage.getItem(LUM.key) === '1' ? 1 : 0; } catch (e) {}
+const WHITE_C = new T.Color(0xffffff);
+function fxSetLum(v, persist) {
+  LUM.v = v ? 1 : 0; TH.fApplied = -1;
+  if (persist) { try { localStorage.setItem(LUM.key, String(LUM.v)); } catch (e) {} }
+  for (const b of document.querySelectorAll('[data-lum]')) { const on = +b.dataset.lum === LUM.v; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+}
+function fxApplyLight() {                       // everything that depends on theme + brightness setting except the lightning flash
+  const th = TH.cur, l = LUM.v, k = 1 + 0.15 * l;
+  renderer.toneMappingExposure = 1 + (th.lift || 0) + 0.07 * l;
+  sun.intensity = th.sunI * k;
+  const em = new T.Color(th.em || 0x15191f).multiplyScalar(1 + 0.5 * l);
+  for (const m of FX_CHAR_MATS) m.emissive.copy(em);
+  for (const r of FX_RIMS) r.u.value = r.b * (th.rimK || 1) * (1 + 0.2 * l);
+}
 function fxUpdateTheme(dt) {
   const id = THEMES[G.theme] ? G.theme : 'haze';
   fxUpdateSceneFx(dt);
@@ -4873,9 +5124,10 @@ function fxUpdateTheme(dt) {
   if (f !== TH.fApplied) {
     TH.fApplied = f;
     scene.fog.near = th.fogNear * SCN.fogK; scene.fog.far = th.fogFar * SCN.fogK;
-    tmpTc.setHex(th.sky).lerp(SCN.sky, SCN.mix).lerp(LIGHTNING, f * 0.55);
+    tmpTc.setHex(th.sky).lerp(SCN.sky, SCN.mix).lerp(WHITE_C, 0.07 * LUM.v).lerp(LIGHTNING, f * 0.55);
     scene.background.copy(tmpTc); scene.fog.color.copy(tmpTc);
-    hemi.intensity = th.hemiI + f * 1.1;
+    hemi.intensity = (th.hemiI + 0.06 * LUM.v) * (1 + 0.12 * LUM.v) + f * 1.1;
+    fxApplyLight();
   }
 }
 
@@ -4970,7 +5222,7 @@ function fxProp2(name) {
     case 'gantry': return boxes([[0.32, 6.1, 0.32, -4.6, 3.05, 0, 0x555b63], [0.32, 6.1, 0.32, 4.6, 3.05, 0, 0x555b63], [9.5, 0.5, 0.4, 0, 5.95, 0, 0x4a5058],
       [2.9, 1.4, 0.12, -2.0, 4.9, 0.26, 0x1f6f4c], [2.9, 1.4, 0.12, 2.0, 4.9, 0.26, 0x1f6f4c], [2.2, 0.16, 0.13, -2.0, 5.1, 0.34, 0xf1f1f1], [1.6, 0.14, 0.13, -2.0, 4.7, 0.34, 0xf1f1f1], [2.2, 0.16, 0.13, 2.0, 5.1, 0.34, 0xf1f1f1], [1.6, 0.14, 0.13, 2.0, 4.7, 0.34, 0xf1f1f1]]);
     case 'wreckflip': return boxes([[1.5, 0.45, 3.4, 0, 1.1, 0, 0x30343a], [1.7, 0.5, 3.5, 0, 0.55, 0, 0x8a4f3c], [1.4, 0.4, 1.6, 0, 0.2, -0.1, 0x3d4349], [0.28, 0.5, 0.55, -0.9, 1.5, 1.1, 0x181818], [0.28, 0.5, 0.55, 0.9, 1.5, 1.1, 0x181818], [0.28, 0.5, 0.55, -0.9, 1.5, -1.1, 0x181818], [0.28, 0.5, 0.55, 0.9, 1.5, -1.1, 0x181818]]);
-    case 'tunwall': return boxes([[0.8, 6.8, 6.1, 0, 3.4, 0, 0x5c677b], [0.16, 1.2, 6.1, 0.4, 1.0, 0, 0x6a7385], [0.14, 0.18, 6.1, 0.42, 5.4, 0, 0xfff0c0], [0.12, 0.12, 6.1, 0.42, 2.0, 0, 0xe3a820],
+    case 'tunwall': return boxes([[0.8, 6.8, 6.1, 0, 3.4, 0, 0x7a869c], [0.16, 1.2, 6.1, 0.4, 1.0, 0, 0x6a7385], [0.14, 0.18, 6.1, 0.42, 5.4, 0, 0xfff0c0], [0.12, 0.12, 6.1, 0.42, 2.0, 0, 0xe3a820],
       [0.14, 6.6, 0.22, 0.42, 3.3, 3.0, 0x2c313b], [0.1, 1.7, 0.9, 0.42, 0.95, 1.6, 0x2f9e5a], [0.1, 0.2, 0.9, 0.42, 1.9, 1.6, 0xffffff]]);
     case 'tunrib': return boxes([[0.5, 0.5, 0.5, -4.7, 6.6, 0, 0x2a2e36], [0.5, 0.5, 0.5, 4.7, 6.6, 0, 0x2a2e36], [2.4, 0.18, 0.3, -3.4, 6.85, 0, 0x343944], [2.4, 0.18, 0.3, 3.4, 6.85, 0, 0x343944]]);      // arch ribs only near the walls: the middle stays open to the camera
     case 'tunlamp': return boxes([[0.34, 0.12, 1.5, 0, 6.3, 0, 0xffe9b0], [0.06, 0.5, 0.06, 0, 6.65, 0, 0x2a2e36]]);
@@ -5018,10 +5270,10 @@ const fxSegScene = (seg, side) => (seg && seg.type === 'split' && (side < 0 ? se
 const SCENE_FX = {
   bridge:  { fogK: 1, sky: 0x8fa3b3, mix: 0 },
   highway: { fogK: 1, sky: 0xd78552, mix: 0 },
-  tunnel:  { fogK: 0.8, sky: 0x0a0f1e, mix: 0.92 },
+  tunnel:  { fogK: 0.9, sky: 0x151d36, mix: 0.85 },
   city:    { fogK: 0.9, sky: 0xe3b79c, mix: 0 },
   harbor:  { fogK: 1.25, sky: 0x7d98a8, mix: 0.4 },
-  forest:  { fogK: 0.72, sky: 0x9fb89a, mix: 0.7 },
+  forest:  { fogK: 0.9, sky: 0xa8c4a2, mix: 0.7 },
 };
 const SCN = { fogK: 1, mix: 0, sky: new T.Color(0x8fa3b3), ver: 0 };
 const fxSceneAtZ = z => { const r = G.route; if (!r || !r.length) return fxStageScene(); let seg = r[0]; for (let i = 0; i < r.length; i++) if (z <= r[i].z0) seg = r[i]; return fxSegScene(seg, G.x < 0 ? -1 : 1); };
@@ -5148,7 +5400,7 @@ function fxDecor(sc, side, z0, z1, c) {
       break;
     }
     case 'tunnel': {
-      road(0x383c45, 0.012);
+      road(0x4a505c, 0.012);
       for (const s of sides) for (let z = z0 - 3; z > z1 - 2.9; z -= 6.1) c.add('tunwall', s * (ROAD + 0.75), 0, z, s < 0 ? 0 : Math.PI, 0, 1);
       for (let z = z0 - 4.5; z > z1 + 1; z -= 9) {
         if (!side) c.add('tunrib', 0, 0, z, 0, 0, 1);
@@ -5641,7 +5893,7 @@ bus.on('shot', d => {
 });
 function shotFx(d) {
   const w = d.w >= 0 && d.w < WEAPONS.length ? d.w : G.weapon, W = WEAPONS[w], c = WRGB[w];
-  const x = d.x + 0.14, z = d.z + MUZZLE[w], gl = 1 + 0.25 * ((d.lv || 1) - 1);
+  const x = d.x + 0.14, z = d.z + MUZZLE[w], gl = (1 + 0.25 * ((d.lv || 1) - 1)) * (d.wt >= 1000 ? 1.8 : d.wt >= 100 ? 1.35 : 1);   // 百人隊 / 千人隊 fire bigger flashes
   switch (W.fx) {
     case 'pellet':
       flashAt(x - 0.06, 1.28, z, 0.1, 1.2 * gl, 0.75 * gl, 0.4); flashAt(x + 0.06, 1.28, z - 0.1, 0.08, 1, 0.6, 0.3);
@@ -5674,6 +5926,28 @@ bus.on('zombieDied', d => {
   flashAt(d.x, d.big ? 1.9 : 1, d.z, 0.12, 0.7, 1, 0.4);
   if (d.big) { shock(d.x, d.z, 0x9dff5a, 2.4, 0.45); FX.shake = Math.max(FX.shake, 0.2); }
 });
+bus.on('rankUp', d => {
+  const cls = clamp(d && d.cls | 0, 0, 4), bonus = d && d.bonus != null ? (d.bonus < 1 ? Math.round(d.bonus * 1000) / 10 : d.bonus) : 0;
+  bannerPush('晉升 ' + (d && d.name || '') + '！', '#ffd75e', bonus ? '全隊傷害 +' + bonus + '%' : '', 6);
+  FX_UNIT.rankFlash = nowMs() + 900;
+  for (const so of G.soldiers) if (fxTierOf(so.w || 1) === 2) {             // a burst on every 千人隊 figure as its outfit swaps
+    const c = FX_CLSRGB[cls];
+    burst(so.mesh.position.x, 2.2, so.mesh.position.z, 22, c, 5.5, 0.7);
+    shock(so.mesh.position.x, so.mesh.position.z, FX_CLS[cls].acc, 4.2, 0.55);
+    flashAt(so.mesh.position.x, 2.0, so.mesh.position.z, 0.2, 1.3, 1.2, 0.7);
+  }
+  flashScreen('rgb(255,210,90)', 0.22, 300); vibrate([20, 30, 40]);
+  if (SFX.levelUp) SFX.levelUp(); if (SFX.milestone) SFX.milestone(2);
+  hud.rk.classList.remove('up'); void hud.rk.offsetWidth; hud.rk.classList.add('up');
+});
+bus.on('rankDown', () => { hud.rk.classList.remove('tick'); void hud.rk.offsetWidth; hud.rk.classList.add('tick'); });
+bus.on('unitMerge', d => {
+  FX_UNIT.mergeUntil = nowMs() + 600;
+  const t = d && d.tier | 0, big = t >= 1000 || t === 2, name = big ? '千人隊' : '百人隊';       // tier may be the index into UNIT_TIERS or the figure's w
+  bannerPush(name + ' ×' + ((d && d.count) || 1), big ? '#ffd75e' : '#ffc94d', '', 1);
+  SFX.levelUp && SFX.levelUp();
+});
+bus.on('unitSplit', d => { FX_UNIT.splitUntil = nowMs() + 600; flashAt(G.x, 1.6, G.z + 0.8, 0.18, 1, 0.5, 0.35); });
 bus.on('soldierDied', d => {
   vignette(0.9, 520);
   vibrate(30);
@@ -5891,7 +6165,7 @@ function startNode(id) { if (!selectNode(id)) return false; startRun(); return t
 // the node the game opens on: the last chosen one if it can be played, else the main-path node of the furthest unlocked depth
 function startNodeId() { return nodeDef(SAVE.cur) && nodeState(SAVE.cur) !== 'locked' ? SAVE.cur : mainId(best); }
 function startRun() {
-  SFX.init();
+  SFX.init(); FX_RANKMAX.k = 0; FX_RANKMAX.rk = null;
   if (G.phase !== 'menu') prepareNode(G.node.id);
   for (const id of ['menu', 'over', 'win']) $('#' + id).hidden = true;
   $('#hud').hidden = false;
@@ -5986,7 +6260,7 @@ function goMenu() {
 function syncMenu() {
   $('#menuCoins').textContent = String(SAVE.coins | 0);
   const sv = SAVE.nodes && G.node && SAVE.nodes[G.node.id], entry = G.node && G.node.id !== 'n1' && sv && sv.entry ? sv.entry : TUNE.startSquad, stars = clamp(sv && sv.stars | 0, 0, 3);
-  $('#entryLine').innerHTML = (G.routeName ? '<span class="rn">' + G.routeName + '</span>　' : '') + '起始兵力 ×' + entry + '　<span class="st">' + '★'.repeat(stars) + '<i>' + '★'.repeat(3 - stars) + '</i></span>';
+  $('#entryLine').innerHTML = (G.routeName ? '<span class="rn">' + G.routeName + '</span>　' : '') + '起始兵力 ×' + fxNum(entry) + '　<span class="st">' + '★'.repeat(stars) + '<i>' + '★'.repeat(3 - stars) + '</i></span>';
   const multi = best > 1;
   const prev = $('#stagePrev'), next = $('#stageNext');
   prev.hidden = next.hidden = !multi;
@@ -6129,7 +6403,7 @@ function mapRender(keepScroll) {
     if (n.next.length > 1) html += '<span class="mfork" style="left:' + (p.x + 62) + 'px;top:' + (p.y + 10) + 'px">岔路・二選一</span>';
     html += '<button class="mnode ' + n.state + (MAPV.sel === n.id ? ' sel' : '') + '" type="button" data-id="' + n.id + '" style="left:' + p.x + 'px;top:' + p.y + 'px;--sc:' + MAP_SC[n.scene] + '" aria-label="' + n.name + (n.state === 'locked' ? '（未解鎖）' : '') + '">' +
       '<span class="mdisc">' + mapIcon(n.scene) + '</span><span class="mname">' + n.name + '</span>' +
-      '<span class="msub">' + (n.state === 'locked' ? '未解鎖' : mapStars(n.stars) + '<span>×' + n.entry + '</span>') + '</span>' + mapTradeChip(n) + '</button>';
+      '<span class="msub">' + (n.state === 'locked' ? '未解鎖' : mapStars(n.stars) + '<span>×' + fxNum(n.entry) + '</span>') + '</span>' + mapTradeChip(n) + '</button>';
   }
   html += '<div class="mapv-more" style="top:12px">▲ 繼續向前 ▲</div>';
   const st = keepScroll ? mapEl.scroll.scrollTop : null;
@@ -6142,7 +6416,7 @@ function mapCard() {
   mapEl.card.style.setProperty('--sc', MAP_SC[n.scene]);
   $('#ncIco').innerHTML = mapIcon(n.scene); $('#ncStage').textContent = 'STAGE ' + n.depth + '　' + sc.name; $('#ncName').textContent = n.name;
   $('#ncDesc').textContent = n.state === 'locked' ? '先通關前一關才能解鎖。' : sc.desc;
-  let m = '<span class="nc-pill">起始兵力 ×' + n.entry + '</span><span class="nc-pill st">' + '★'.repeat(n.stars) + '<i>' + '★'.repeat(3 - n.stars) + '</i></span>';
+  let m = '<span class="nc-pill">起始兵力 ×' + fxNum(n.entry) + '</span><span class="nc-pill st">' + '★'.repeat(n.stars) + '<i>' + '★'.repeat(3 - n.stars) + '</i></span>';
   const role = mapTradeRole(n);
   if (role === 'hard') m += '<span class="nc-pill hard">難度↑ 金幣×' + +n.coinMul.toFixed(2) + '</span>';
   else if (role === 'easy') m += '<span class="nc-pill easy">穩健路線</span>';
@@ -6188,6 +6462,8 @@ mapEl.scroll.addEventListener('scroll', () => {          // procedural nodes kee
 }, { passive: true });
 window.addEventListener('resize', () => { if (!$('#menu').hidden) mapRefresh(); });
 $('#btnRules').addEventListener('click', () => { $('#rulesOv').hidden = false; });
+for (const b of document.querySelectorAll('[data-lum]')) b.addEventListener('click', () => fxSetLum(+b.dataset.lum, true));
+fxSetLum(LUM.v, false);
 $('#rulesBack').addEventListener('click', () => { $('#rulesOv').hidden = true; });
 function mapGo() {
   const n = MAPV.byId[MAPV.sel];
@@ -6270,8 +6546,9 @@ function showResult(won) {
   const unl = won ? RS.unlocked.map(id => (mapNodeStates().find(n => n.id === id) || {}).name).filter(Boolean) : [];
   RS.toMap = unl.length >= 2;                                       // a branch opened: the next stop is a choice, made on the map
   $r('resUnlock').hidden = true;
+  { const mr = FX_RANKMAX.k >= 1 && FX_RANKMAX.rk; $r('resRank').hidden = !mr; if (mr) $r('resRank').innerHTML = fxBadge(mr.cls, mr.sub) + '<span><small>本關最高軍階</small>' + mr.name + '</span>'; }
   $r('resMain').textContent = !won ? '再試一次' : RS.toMap ? '選擇路線' : '下一關';
-  $r('resSub').textContent = won ? '' : '以 ×' + r.entry + ' 名隊員重新挑戰　·　獲得 50% 金幣';
+  $r('resSub').textContent = won ? '' : '以 ×' + fxNum(r.entry) + ' 名隊員重新挑戰　·　獲得 50% 金幣';
   $r('resSub').hidden = won;
   resEl.hidden = false;
   resCard.classList.remove('go'); void resCard.offsetWidth; resCard.classList.add('go');
@@ -6280,7 +6557,7 @@ function showResult(won) {
   let t = 0.45;
   for (let i = 0; i < stars; i++) { const el = starsEl.children[i]; rsAt(t, () => { el.classList.add('on'); SFX.star(i); }); t += 0.5; }
   if (won) {
-    rsAt(t, () => { carry.innerHTML = '→ 帶到下一關 <b>×' + r.survivors + '</b>'; carry.hidden = false; SFX.good(); });
+    rsAt(t, () => { carry.innerHTML = '→ 帶到下一關 <b>×' + fxNum(r.survivors) + '</b>'; carry.hidden = false; SFX.good(); });
     t += 0.35;
     if (unl.length) { rsAt(t, () => { $r('resUnlock').innerHTML = '解鎖：<b>' + unl.join(' / ') + '</b>'; $r('resUnlock').hidden = false; SFX.milestone(1); }); t += 0.4; }
     if (r.newBest) { rsAt(t, () => { $r('resNew').hidden = false; SFX.milestone(2); }); t += 0.35; }
@@ -6495,6 +6772,34 @@ const HUD_CLOUD = {
   error:   { label: '雲端暫停', icon: HUD_CLOUD_CLOUD + '<path d="M4 4l16 16"/>', note: '雲端暫時無法使用，進度仍存在本機。' },
 };
 let hudCloudFrom = null, hudCloudSt = 'off';
+// Google account binding (only when the cloud provider is firebase): G.cloud.provider / account, bus 'authState' { provider, signedIn, name, photo }
+const AUTH = { provider: null, signedIn: false, name: '', photo: '' };
+const HUD_CLOUD_BOUND_NOTE = '已綁定 Google 帳號，換裝置登入同一帳號即可接續進度。';
+const HUD_CLOUD_SIGNIN_NOTE = '登入 Google 帳號後，進度會綁定帳號，換裝置登入同一帳號即可接續；未登入時只存在這台裝置。';
+function hudCloudNote(st) {
+  if (AUTH.provider === 'firebase') return AUTH.signedIn ? (st === 'error' ? HUD_CLOUD.error.note : HUD_CLOUD_BOUND_NOTE) : HUD_CLOUD_SIGNIN_NOTE;
+  return HUD_CLOUD[st].note;
+}
+function hudAuth(info) {
+  info = info || {};
+  AUTH.provider = info.provider || null; AUTH.signedIn = !!info.signedIn; AUTH.name = info.name || ''; AUTH.photo = info.photo || '';
+  const on = AUTH.provider === 'firebase';
+  $('#authRow').hidden = !on;
+  if (!on) return;
+  $('#authIn').hidden = AUTH.signedIn; $('#authAcct').hidden = !AUTH.signedIn;
+  if (AUTH.signedIn) {
+    const av = $('#authAv'); av.textContent = '';
+    const letter = () => { av.textContent = (AUTH.name || '?').trim().slice(0, 1).toUpperCase(); };
+    if (/^https:\/\//.test(AUTH.photo)) { const im = new Image(); im.referrerPolicy = 'no-referrer'; im.alt = ''; im.onerror = letter; im.src = AUTH.photo; av.appendChild(im); } else letter();
+    $('#authName').textContent = AUTH.name || 'Google';
+  } else { $('#authMenu').hidden = true; $('#authBtn').setAttribute('aria-expanded', 'false'); }
+  if (typeof hudCloudSt === 'string' && !$('#hudCloudPop').hidden) $('#hudCloudPopText').textContent = hudCloudNote(hudCloudSt);
+}
+$('#authIn').addEventListener('click', () => { try { if (typeof cloudSignIn === 'function') cloudSignIn(); } catch (e) {} });
+$('#authBtn').addEventListener('click', () => { const m = $('#authMenu'); m.hidden = !m.hidden; $('#authBtn').setAttribute('aria-expanded', String(!m.hidden)); });
+$('#authOut').addEventListener('click', () => { $('#authMenu').hidden = true; try { if (typeof cloudSignOut === 'function') cloudSignOut(); } catch (e) {} });
+document.addEventListener('pointerdown', e => { if (!$('#authMenu').hidden && !(e.target.closest && e.target.closest('#authAcct'))) $('#authMenu').hidden = true; });
+bus.on('authState', hudAuth);
 // Updates every chip. An unknown state is shown as 'off'. The title (tooltip) carries the time only for a synced state.
 function hudCloudChip(state, lastSyncAt) {
   const st = HUD_CLOUD[state] ? state : 'off', def = HUD_CLOUD[st];
@@ -6506,12 +6811,12 @@ function hudCloudChip(state, lastSyncAt) {
     if (when) el.title = when; else el.removeAttribute('title');
   }
   hudCloudSt = st;
-  if (!$('#hudCloudPop').hidden) $('#hudCloudPopText').textContent = def.note;
+  if (!$('#hudCloudPop').hidden) $('#hudCloudPopText').textContent = hudCloudNote(st);
 }
 function hudCloudOpen(btn) {
   const pop = $('#hudCloudPop');
   hudCloudFrom = btn;
-  $('#hudCloudPopText').textContent = HUD_CLOUD[hudCloudSt].note;
+  $('#hudCloudPopText').textContent = hudCloudNote(hudCloudSt);
   pop.hidden = false;
   const r = btn.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
   const below = r.bottom + 8;
@@ -6532,6 +6837,7 @@ document.addEventListener('pointerdown', e => {
 });
 const hudCloudInit = G.cloud || { state: 'off' };
 hudCloudChip(hudCloudInit.state, hudCloudInit.lastSyncAt);
+if (G.cloud && G.cloud.provider) hudAuth({ provider: G.cloud.provider, signedIn: !!G.cloud.account, name: G.cloud.account && G.cloud.account.name, photo: G.cloud.account && G.cloud.account.photo });
 bus.on('cloudSync', e => hudCloudChip(e.state, e.lastSyncAt));
 // A cloud copy changed SAVE (another device's progress arrived): re-read it on the screens that show it. In the menu, jump to
 // the highest unlocked stage, as a fresh boot would; never touch a run (the engine defers remote saves until a run ends).
@@ -6841,7 +7147,7 @@ function resetSave() {
 }
 // Start stage n from the beginning with its entry squad (same as prepare(n) + startRun()).
 function startStage(n) { prepare(n); startRun(); }
-window.__zb = { cloudSignIn, cloudSignOut, mapOpen, mapSelect, mapRefresh, mapNodeStates, MAPV, rankOf, rankBonus, RANKS, UNIT_TIERS, mulGain, gateHit, unitPlan, killSoldier, hordeSpec, sceneFx, levelObstacles, obstacleGaps, makeObstacle, OBS_KINDS, damageObstacle, MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bwt, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap, gap: G.gap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
+window.__zb = { fxSetLum, LUM, cloudSignIn, cloudSignOut, mapOpen, mapSelect, mapRefresh, mapNodeStates, MAPV, rankOf, rankBonus, RANKS, UNIT_TIERS, mulGain, gateHit, unitPlan, killSoldier, hordeSpec, sceneFx, levelObstacles, obstacleGaps, makeObstacle, OBS_KINDS, damageObstacle, MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bwt, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap, gap: G.gap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
   stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0), bw: Array.from(bw.subarray(0, nb)), bl: Array.from(bl.subarray(0, nb)), by: Array.from(by.subarray(0, nb)), bt: Array.from(bt.subarray(0, nb)), bs: Array.from(bs.subarray(0, nb)), bx: Array.from(bx.subarray(0, nb)), bz: Array.from(bz.subarray(0, nb)) }),
   perf: () => ({ pr: PR_STEPS[prIdx], steps: PR_STEPS, avg: Perf.avg, fxScale }) };
 })();
