@@ -2,17 +2,22 @@ import type { SfxName } from "../audio";
 import { getEquipmentDefinition } from "../data/equipment";
 import { getFishById } from "../data/fish";
 import {
+  GAME_CONFIG,
   applyCatch,
-  calculateSalePrice,
   createNewSave,
+  createTimingRound,
   getFishingIntervalSeconds,
-  isMinigameEligible,
-  isMinigamePromptExpired,
+  getRoundResult,
+  isMinigameWindowOpen,
+  keepPending,
   markActive,
   rollCatch,
   sellAllInventory,
-  sellInventoryItem,
+  sellAllPending,
+  sellInventoryFish,
+  sellPending,
   settleOffline,
+  tapRound,
   updateSettings,
   upgradeEquipment
 } from "../services";
@@ -22,46 +27,50 @@ import type {
   FishRarity,
   GameSave,
   LoadResult,
-  OfflineSummary
+  MinigameResult,
+  OfflineSummary,
+  TapResult,
+  TimingRound
 } from "../services";
 import { RARITY_LABEL, formatCoins } from "./format";
 import { MAX_TICK_MS, advanceIdleTimer } from "./timer";
 
-export type Tab = "lake" | "backpack" | "upgrade" | "encyclopedia" | "settings";
-
-/** What the fishing line is doing right now. The idle timer only runs in `idle`. */
-export type Mode =
-  | { kind: "idle" }
-  /** A rare+ fish bit; waiting for 收線 / 不理牠 / the 15 s timeout. */
-  | { kind: "prompt"; fishId: string; shownAt: number }
-  /** The tension-bar minigame is on screen (the component owns the round itself). */
-  | { kind: "minigame"; fishId: string; startedAt: number };
+export type Tab = "lake" | "bag" | "equipment" | "encyclopedia" | "settings";
 
 export interface LogEntry {
   id: number;
   fishId: string;
   rarity: FishRarity;
-  outcome: "sold" | "inventory";
-  coins: number;
-  perfect: boolean;
+  /** "sold": auto-sold; "pending": waiting in the bag's 待處理 list. */
+  outcome: "sold" | "pending";
+  /** Coins from the automatic sale (0 when pending). */
+  saleCoins: number;
+  /** Coins from the bobber-timing bonus (0 for a miss / no tap). */
+  bonusCoins: number;
+  minigameResult: MinigameResult | null;
   isNew: boolean;
   at: number;
 }
 
-export type Dialog =
-  | { kind: "offline"; summary: OfflineSummary }
-  | { kind: "corrupt"; backupKey: string | null }
-  | {
-      kind: "catch";
-      fishId: string;
-      success: boolean;
-      price: number;
-      isNew: boolean;
-    };
+/** Non-blocking banners / cards. They never cover the tab bar and have no backdrop. */
+export type Notice =
+  | { id: number; kind: "offline"; summary: OfflineSummary }
+  | { id: number; kind: "corrupt"; backupKey: string | null }
+  | { id: number; kind: "rare"; fishId: string; isNew: boolean };
+
+type NoticeInput = Notice extends infer N ? (N extends Notice ? Omit<N, "id"> : never) : never;
 
 export interface Toast {
   id: number;
   text: string;
+}
+
+/** Instant feedback after the player's (first) tap in the timing window. */
+export interface TapFeedback {
+  id: number;
+  result: TapResult;
+  /** `clockMs` after which the feedback disappears. */
+  untilMs: number;
 }
 
 export interface GameState {
@@ -69,84 +78,118 @@ export interface GameState {
   /** false when the last write to localStorage failed. */
   saveOk: boolean;
   tab: Tab;
-  mode: Mode;
-  /** Idle-timer progress toward the next catch. */
+  /** Countdown progress toward the next catch. It never pauses (only a hidden page stops it). */
   progressMs: number;
   /** Wall-clock time of the last tick. */
   now: number;
   /** Play-time clock (sum of tick deltas); drives short effects. */
   clockMs: number;
   catchFx: { rarity: FishRarity; untilMs: number } | null;
+  /** The bobber-timing round of the current countdown; non-null during its last `windowSeconds`. */
+  round: TimingRound | null;
+  tapFeedback: TapFeedback | null;
+  nextFxId: number;
   /** Newest first, at most MAX_LOG. */
   log: LogEntry[];
   nextLogId: number;
-  /** Queue: the first one is on screen. */
-  dialogs: Dialog[];
+  notices: Notice[];
+  nextNoticeId: number;
   toast: Toast | null;
   nextToastId: number;
   /** Sound effects to play for the last change; `seq` increments whenever there is something new. */
   sfx: { seq: number; names: SfxName[] };
-  hiddenAt: number | null;
 }
 
 export const MAX_LOG = 5;
+export const MAX_NOTICES = 3;
 export const CATCH_FX_MS = 2000;
+export const TAP_FEEDBACK_MS = 1400;
 
 export type GameAction =
   | { type: "tick"; dtMs: number; now: number; rng: () => number }
-  | { type: "startReel"; now: number }
-  | { type: "ignorePrompt"; now: number }
-  | { type: "finishMinigame"; success: boolean; now: number }
+  /** The player tapped the lake (or pressed Space). Only the first tap of a round counts. */
+  | { type: "tap"; now: number }
   | { type: "hide"; now: number }
   | { type: "show"; now: number; rng: () => number }
   | { type: "heartbeat"; now: number }
   | { type: "setTab"; tab: Tab }
-  | { type: "sell"; itemId: string }
-  | { type: "sellAll" }
+  | { type: "sellPending"; id: string; qty?: number }
+  | { type: "keepPending"; id: string; qty?: number }
+  | { type: "sellInventory"; fishId: string; qty: number }
+  | { type: "sellAllPending" }
+  | { type: "sellAllInventory" }
   | { type: "upgrade"; equipment: EquipmentType }
   | { type: "updateSettings"; patch: Partial<GameSave["settings"]> }
   | { type: "importSave"; save: GameSave; now: number }
   | { type: "reset"; now: number }
-  | { type: "dismissDialog" }
+  | { type: "dismissNotice"; id: number }
   | { type: "dismissToast"; id: number };
 
 export interface BootInput {
   load: LoadResult;
   now: number;
   rng: () => number;
-  hidden?: boolean;
 }
 
-export function createInitialState({ load, now, rng, hidden = false }: BootInput): GameState {
+/** Boot: load -> settleOffline (before the first save) -> show the summary / corrupt card. */
+export function createInitialState({ load, now, rng }: BootInput): GameState {
   let save: GameSave;
-  const dialogs: Dialog[] = [];
-  if (load.status === "loaded") {
-    const settled = settleOffline(load.save, now, rng);
-    save = settled.save;
-    if (settled.summary.effectiveCatches > 0) dialogs.push({ kind: "offline", summary: settled.summary });
-  } else if (load.status === "corrupt") {
-    save = load.save;
-    dialogs.push({ kind: "corrupt", backupKey: load.backupKey });
-  } else {
-    save = createNewSave(now);
-  }
-  return {
-    save,
+  const base: GameState = {
+    save: createNewSave(now),
     saveOk: true,
     tab: "lake",
-    mode: { kind: "idle" },
     progressMs: 0,
     now,
     clockMs: 0,
     catchFx: null,
+    round: null,
+    tapFeedback: null,
+    nextFxId: 1,
     log: [],
     nextLogId: 1,
-    dialogs,
+    notices: [],
+    nextNoticeId: 1,
     toast: null,
     nextToastId: 1,
-    sfx: { seq: 0, names: [] },
-    hiddenAt: hidden ? now : null
+    sfx: { seq: 0, names: [] }
   };
+  if (load.status === "loaded") {
+    const settled = settleOffline(load.save, now, rng);
+    save = settled.save;
+    const state = { ...base, save };
+    return settled.summary.effectiveCatches > 0 ? pushNotice(state, { kind: "offline", summary: settled.summary }) : state;
+  }
+  if (load.status === "corrupt") {
+    return pushNotice({ ...base, save: load.save }, { kind: "corrupt", backupKey: load.backupKey });
+  }
+  return base;
+}
+
+// --- selectors ------------------------------------------------------------------------------
+
+/** Total fish waiting in 待處理 (for the tab badge). */
+export function getPendingCount(save: Pick<GameSave, "pendingFish">): number {
+  return save.pendingFish.reduce((sum, row) => sum + row.quantity, 0);
+}
+
+function intervalMsOf(save: GameSave): number {
+  return getFishingIntervalSeconds(save.equipmentLevels.rod) * 1000;
+}
+
+/**
+ * Milliseconds elapsed inside the current timing round at wall-clock time `now`. It is derived
+ * from the countdown (so the window always ends exactly when the catch settles) plus the time
+ * since the last tick, which keeps the indicator and the tap evaluation on one time base.
+ */
+export function getRoundElapsedMs(
+  state: Pick<GameState, "round" | "progressMs" | "now" | "save">,
+  now: number = state.now
+): number {
+  const round = state.round;
+  if (!round) return 0;
+  const remaining = intervalMsOf(state.save) - state.progressMs;
+  const sinceTick = Math.min(Math.max(0, now - state.now), MAX_TICK_MS);
+  return Math.min(round.windowMs, Math.max(0, round.windowMs - remaining + sinceTick));
 }
 
 // --- helpers --------------------------------------------------------------------------------
@@ -159,69 +202,70 @@ function withToast(state: GameState, text: string): GameState {
   return { ...state, toast: { id: state.nextToastId, text }, nextToastId: state.nextToastId + 1 };
 }
 
+function pushNotice(state: GameState, notice: NoticeInput): GameState {
+  const added = [...state.notices, { ...notice, id: state.nextNoticeId } as Notice];
+  let notices = added;
+  while (notices.length > MAX_NOTICES) {
+    const oldestRare = notices.findIndex((entry) => entry.kind === "rare");
+    notices = notices.filter((_, index) => index !== (oldestRare >= 0 ? oldestRare : 0));
+  }
+  return { ...state, notices, nextNoticeId: state.nextNoticeId + 1 };
+}
+
+/** A rare-catch banner is stale once that fish is no longer waiting in 待處理. */
+function pruneRareNotices(state: GameState): GameState {
+  const waiting = new Set(state.save.pendingFish.map((row) => row.fishId));
+  const notices = state.notices.filter((notice) => notice.kind !== "rare" || waiting.has(notice.fishId));
+  return notices.length === state.notices.length ? state : { ...state, notices };
+}
+
 function catchToastText(event: CatchEvent): string | null {
   const parts: string[] = [];
+  if (event.bonusCoins > 0) parts.push(`+${formatCoins(event.bonusCoins)} 時機獎勵`);
+  if (event.perfectStreak.after >= 2) parts.push(`連續完美 ×${event.perfectStreak.after}`);
   if (event.isNewDiscovery) parts.push(`新魚種：${getFishById(event.fishId)?.name ?? "？"}`);
   for (const rarity of event.newlyUnlockedRarities) parts.push(`解鎖「${RARITY_LABEL[rarity]}」魚種！`);
   return parts.length > 0 ? parts.join("　") : null;
 }
 
-interface LandOptions {
-  perfect: boolean;
-  now: number;
-  /** Open the result dialog (after a minigame round). */
-  dialog?: { success: boolean };
-  sfx: SfxName[];
-}
-
-/** Resolve a caught fish into the save, the log and the scene effect; the line goes back to idle. */
-function land(state: GameState, fishId: string, opts: LandOptions): GameState {
-  const fish = getFishById(fishId);
-  if (!fish) return { ...state, mode: { kind: "idle" } };
-  const { save, event } = applyCatch(state.save, fishId, { perfect: opts.perfect, now: opts.now });
+/**
+ * The countdown ended: roll the fish and settle it exactly once with the round's result
+ * ('minigame' source when the player tapped, 'active' otherwise; 'none' when there was no tap).
+ */
+function settle(state: GameState, now: number, rng: () => number): GameState {
+  const fish = rollCatch(state.save, rng);
+  const tapped = state.round?.tap != null;
+  const result: MinigameResult = state.round ? getRoundResult(state.round) : "none";
+  const { save, event } = applyCatch(state.save, fish.id, {
+    source: tapped ? "minigame" : "active",
+    now,
+    minigame: { result }
+  });
   const entry: LogEntry = {
     id: state.nextLogId,
-    fishId,
+    fishId: fish.id,
     rarity: fish.rarity,
     outcome: event.outcome,
-    coins: event.coinsEarned,
-    perfect: event.perfect,
+    saleCoins: event.saleCoins,
+    bonusCoins: event.bonusCoins,
+    minigameResult: event.minigameResult,
     isNew: event.isNewDiscovery,
-    at: opts.now
+    at: now
   };
   let next: GameState = {
     ...state,
     save,
-    mode: { kind: "idle" },
+    round: null,
     log: [entry, ...state.log].slice(0, MAX_LOG),
     nextLogId: state.nextLogId + 1,
     catchFx: { rarity: fish.rarity, untilMs: state.clockMs + CATCH_FX_MS }
   };
+  if (event.outcome === "pending") {
+    next = pushNotice(next, { kind: "rare", fishId: fish.id, isNew: event.isNewDiscovery });
+  }
   const toast = catchToastText(event);
   if (toast) next = withToast(next, toast);
-  if (opts.dialog) {
-    next = {
-      ...next,
-      dialogs: [
-        ...next.dialogs,
-        {
-          kind: "catch",
-          fishId,
-          success: opts.dialog.success,
-          price: calculateSalePrice(fish, save.equipmentLevels.bait, event.perfect),
-          isNew: event.isNewDiscovery
-        }
-      ]
-    };
-  }
-  return withSfx(next, ...opts.sfx);
-}
-
-const landSfx = (rarity: FishRarity): SfxName[] => (rarity === "legendary" ? ["legendary"] : ["catch"]);
-
-function landUnattended(state: GameState, fishId: string, now: number): GameState {
-  const rarity = getFishById(fishId)?.rarity ?? "common";
-  return land({ ...state, progressMs: 0 }, fishId, { perfect: false, now, sfx: landSfx(rarity) });
+  return withSfx(next, fish.rarity === "legendary" ? "legendary" : fish.autoSell ? "catch" : "rare");
 }
 
 // --- reducer --------------------------------------------------------------------------------
@@ -232,83 +276,93 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const dt = Math.min(Math.max(0, action.dtMs), MAX_TICK_MS);
       let next: GameState = { ...state, now: action.now, clockMs: state.clockMs + dt };
       if (next.catchFx && next.clockMs >= next.catchFx.untilMs) next = { ...next, catchFx: null };
+      if (next.tapFeedback && next.clockMs >= next.tapFeedback.untilMs) next = { ...next, tapFeedback: null };
 
-      if (state.mode.kind === "idle") {
-        const intervalMs = getFishingIntervalSeconds(state.save.equipmentLevels.rod) * 1000;
-        const step = advanceIdleTimer(state.progressMs, dt, intervalMs);
-        next = { ...next, progressMs: step.progressMs };
-        if (step.fired) {
-          const fish = rollCatch(next.save, action.rng);
-          if (isMinigameEligible(fish)) {
-            return withSfx(
-              { ...next, progressMs: 0, mode: { kind: "prompt", fishId: fish.id, shownAt: action.now } },
-              "rare"
-            );
-          }
-          return land(next, fish.id, { perfect: false, now: action.now, sfx: landSfx(fish.rarity) });
-        }
-      } else if (state.mode.kind === "prompt" && isMinigamePromptExpired(state.mode.shownAt, action.now)) {
-        return landUnattended(next, state.mode.fishId, action.now);
+      const intervalMs = intervalMsOf(state.save);
+      const step = advanceIdleTimer(state.progressMs, dt, intervalMs);
+      next = { ...next, progressMs: step.progressMs };
+      if (step.fired) return settle(next, action.now, action.rng);
+
+      // The last `windowSeconds` of the countdown: start the bobber-timing round (the countdown keeps running).
+      if (!next.round && isMinigameWindowOpen(intervalMs - next.progressMs)) {
+        next = withSfx({ ...next, round: createTimingRound(GAME_CONFIG.minigame, action.rng) }, "minigame-tick");
       }
       return next;
     }
 
-    case "startReel":
-      if (state.mode.kind !== "prompt") return state;
-      if (isMinigamePromptExpired(state.mode.shownAt, action.now)) return state;
-      return { ...state, mode: { kind: "minigame", fishId: state.mode.fishId, startedAt: action.now } };
-
-    case "ignorePrompt":
-      if (state.mode.kind !== "prompt") return state;
-      return landUnattended(state, state.mode.fishId, action.now);
-
-    case "finishMinigame": {
-      if (state.mode.kind !== "minigame") return state;
-      return land({ ...state, progressMs: 0 }, state.mode.fishId, {
-        perfect: action.success,
-        now: action.now,
-        dialog: { success: action.success },
-        sfx: action.success ? ["minigame-success"] : ["minigame-fail"]
-      });
+    case "tap": {
+      if (!state.round) return state;
+      const tapped = tapRound(state.round, getRoundElapsedMs(state, action.now));
+      if (!tapped.counted) return state; // only the first tap of a round counts
+      return withSfx(
+        {
+          ...state,
+          round: tapped.round,
+          tapFeedback: { id: state.nextFxId, result: tapped.result, untilMs: state.clockMs + TAP_FEEDBACK_MS },
+          nextFxId: state.nextFxId + 1
+        },
+        tapped.result === "miss" ? "minigame-fail" : "minigame-success"
+      );
     }
 
-    case "hide":
-      return { ...state, hiddenAt: action.now, save: markActive(state.save, action.now), now: action.now };
+    case "hide": {
+      const save = markActive(state.save, action.now);
+      return { ...state, now: action.now, save };
+    }
 
     case "show": {
-      const away = state.hiddenAt === null ? 0 : Math.max(0, action.now - state.hiddenAt);
-      let next: GameState = { ...state, hiddenAt: null, now: action.now };
-      // A round that was left hanging while the tab was in the background just lands normally.
-      if (next.mode.kind === "minigame" && away > 15_000) {
-        next = landUnattended(next, next.mode.fishId, action.now);
-      } else if (next.mode.kind === "prompt" && isMinigamePromptExpired(next.mode.shownAt, action.now)) {
-        next = landUnattended(next, next.mode.fishId, action.now);
-      }
-      const settled = settleOffline(next.save, action.now, action.rng);
-      next = { ...next, save: settled.save };
-      if (settled.summary.effectiveCatches > 0) {
-        next = { ...next, dialogs: [...next.dialogs, { kind: "offline", summary: settled.summary }] };
-      }
-      return next;
+      const settled = settleOffline(state.save, action.now, action.rng);
+      const next: GameState = { ...state, now: action.now, save: settled.save };
+      return settled.summary.effectiveCatches > 0
+        ? pushNotice(next, { kind: "offline", summary: settled.summary })
+        : next;
     }
 
-    case "heartbeat":
-      return { ...state, save: markActive(state.save, action.now) };
+    case "heartbeat": {
+      const save = markActive(state.save, action.now);
+      return save === state.save ? state : { ...state, save };
+    }
 
-    case "setTab":
-      return state.tab === action.tab ? state : { ...state, tab: action.tab };
+    case "setTab": {
+      if (state.tab === action.tab) return state;
+      const next = { ...state, tab: action.tab };
+      // Arriving at 魚包 answers the rare-catch banners.
+      return action.tab === "bag" ? { ...next, notices: next.notices.filter((notice) => notice.kind !== "rare") } : next;
+    }
 
-    case "sell": {
-      const result = sellInventoryItem(state.save, action.itemId);
+    case "sellPending": {
+      const result = sellPending(state.save, action.id, action.qty);
       if (!result.ok) return state;
-      return withSfx(withToast({ ...state, save: result.save }, `賣出獲得 ${formatCoins(result.coinsEarned)} 金幣`), "coin");
+      const name = getFishById(result.fishId)?.name ?? "魚";
+      return withSfx(
+        withToast(pruneRareNotices({ ...state, save: result.save }), `賣出 ${name} ×${result.soldCount}，獲得 ${formatCoins(result.coinsEarned)} 金幣`),
+        "coin"
+      );
     }
 
-    case "sellAll": {
-      const result = sellAllInventory(state.save);
-      if (result.soldCount === 0) return state;
+    case "keepPending": {
+      const result = keepPending(state.save, action.id, action.qty);
+      if (!result.ok) return state;
+      const name = getFishById(result.fishId)?.name ?? "魚";
+      return withToast(pruneRareNotices({ ...state, save: result.save }), `已保留 ${name} ×${result.keptCount}`);
+    }
+
+    case "sellInventory": {
+      const result = sellInventoryFish(state.save, action.fishId, action.qty);
+      if (!result.ok) return state;
+      const name = getFishById(result.fishId)?.name ?? "魚";
       return withSfx(
-        withToast({ ...state, save: result.save }, `賣出 ${result.soldCount} 隻，獲得 ${formatCoins(result.coinsEarned)} 金幣`),
+        withToast({ ...state, save: result.save }, `賣出 ${name} ×${result.soldCount}，獲得 ${formatCoins(result.coinsEarned)} 金幣`),
+        "coin"
+      );
+    }
+
+    case "sellAllPending":
+    case "sellAllInventory": {
+      const result = action.type === "sellAllPending" ? sellAllPending(state.save) : sellAllInventory(state.save);
+      if (!result.ok) return state;
+      return withSfx(
+        withToast(pruneRareNotices({ ...state, save: result.save }), `賣出 ${result.soldCount} 隻，獲得 ${formatCoins(result.coinsEarned)} 金幣`),
         "coin"
       );
     }
@@ -316,7 +370,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case "upgrade": {
       const { save, result } = upgradeEquipment(state.save, action.equipment);
       if (!result.success) {
-        return withToast(state, result.reason === "MAX_LEVEL" ? "已經是最高等級了" : "金幣不夠喔");
+        return withToast(state, result.reason === "MAX_LEVEL" ? "已達最高等級" : "金幣不夠喔");
       }
       return withSfx(
         withToast({ ...state, save }, `${getEquipmentDefinition(action.equipment).name}升到 Lv.${result.level}！`),
@@ -333,11 +387,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           ...state,
           // Importing is "being here now": no offline credit for the time since the file was exported.
           save: markActive(action.save, action.now),
-          mode: { kind: "idle" },
           progressMs: 0,
           catchFx: null,
+          round: null,
+          tapFeedback: null,
           log: [],
-          dialogs: [],
+          notices: [],
           tab: "lake"
         },
         "存檔匯入完成"
@@ -349,19 +404,22 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         {
           ...state,
           save: { ...fresh, settings: state.save.settings },
-          mode: { kind: "idle" },
           progressMs: 0,
           catchFx: null,
+          round: null,
+          tapFeedback: null,
           log: [],
-          dialogs: [],
+          notices: [],
           tab: "lake"
         },
         "已重設遊戲，從頭開始吧"
       );
     }
 
-    case "dismissDialog":
-      return state.dialogs.length === 0 ? state : { ...state, dialogs: state.dialogs.slice(1) };
+    case "dismissNotice":
+      return state.notices.some((notice) => notice.id === action.id)
+        ? { ...state, notices: state.notices.filter((notice) => notice.id !== action.id) }
+        : state;
 
     case "dismissToast":
       return state.toast && state.toast.id === action.id ? { ...state, toast: null } : state;

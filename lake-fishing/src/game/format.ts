@@ -1,4 +1,7 @@
-import type { FishRarity } from "../services";
+import type { FishRarity, MinigameResult, TapResult } from "../services";
+import { RARITY_ORDER } from "../services";
+
+export { RARITY_ORDER };
 
 export const RARITY_LABEL: Record<FishRarity, string> = {
   common: "普通",
@@ -8,7 +11,20 @@ export const RARITY_LABEL: Record<FishRarity, string> = {
   legendary: "傳說"
 };
 
-export const RARITY_ORDER: readonly FishRarity[] = ["common", "uncommon", "rare", "epic", "legendary"];
+/** Instant feedback shown when the player taps in the bobber-timing window. */
+export const TAP_LABEL: Record<TapResult, string> = {
+  perfect: "完美！",
+  success: "不錯！",
+  miss: "差一點"
+};
+
+/** Short tag for the catch log; "none" (no tap) has no tag. */
+export const RESULT_TAG: Record<MinigameResult, string | null> = {
+  perfect: "完美",
+  success: "不錯",
+  miss: "差一點",
+  none: null
+};
 
 /** 1234567 -> "1,234,567" (always ASCII separators so the width is stable). */
 export function formatCoins(value: number): string {

@@ -46,3 +46,23 @@ export function readFileText(file: File): Promise<string> {
     reader.readAsText(file);
   });
 }
+
+/** The raw text of a corrupt-save backup (`localStorage[backupKey]`), or null when it cannot be read. */
+export function readBackupText(backupKey: string | null): string | null {
+  if (!backupKey) return null;
+  try {
+    return localStorage.getItem(backupKey);
+  } catch {
+    return null;
+  }
+}
+
+/** Copy text to the clipboard; resolves false (never throws) when the browser refuses. */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}

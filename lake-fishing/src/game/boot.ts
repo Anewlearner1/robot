@@ -14,14 +14,7 @@ export function getGameStore(): GameStore {
   if (!store) {
     const now = Date.now();
     const load = loadFromLocalStorage(undefined, now);
-    store = createGameStore(
-      createInitialState({
-        load,
-        now,
-        rng: Math.random,
-        hidden: typeof document !== "undefined" && document.hidden
-      })
-    );
+    store = createGameStore(createInitialState({ load, now, rng: Math.random }));
   }
   return store;
 }

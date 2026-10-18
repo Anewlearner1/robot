@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { parseImportedSave } from "../services";
+import { getCollectionProgress, parseImportedSave } from "../services";
 import type { GameSave } from "../services";
 import { formatCoins } from "../game/format";
 import { exportSave, readFileText } from "../game/saveFile";
@@ -53,6 +53,21 @@ export function SettingsScreen({ save, onSettings, onImport, onReset }: Props) {
       <div className="px-panel setting-group">
         <div className="setting-row">
           <span className="setting-label">
+            <Icon name="star" px={2} /> 音效
+          </span>
+          <button
+            className={`switch ${settings.soundEnabled ? "on" : ""}`}
+            role="switch"
+            aria-checked={settings.soundEnabled}
+            aria-label="音效"
+            data-sfx="none"
+            onClick={() => onSettings({ soundEnabled: !settings.soundEnabled })}
+          >
+            <span className="switch-knob" />
+          </button>
+        </div>
+        <div className="setting-row">
+          <span className="setting-label">
             <Icon name={settings.musicEnabled ? "music-on" : "music-off"} px={2} /> 背景音樂
           </span>
           <button
@@ -67,7 +82,7 @@ export function SettingsScreen({ save, onSettings, onImport, onReset }: Props) {
         </div>
         <div className="setting-row col">
           <label className="setting-label" htmlFor="volume">
-            音量 <span className="muted">{Math.round(settings.musicVolume * 100)}%</span>
+            音樂音量 <span className="muted">{Math.round(settings.musicVolume * 100)}%</span>
           </label>
           <input
             id="volume"
@@ -96,7 +111,9 @@ export function SettingsScreen({ save, onSettings, onImport, onReset }: Props) {
 
       <div className="px-panel setting-group">
         <h2 className="group-title">存檔</h2>
-        <p className="tiny muted">進度會自動儲存在這個瀏覽器。換裝置前可以匯出備份。</p>
+        <p className="backup-warning" role="note" data-testid="backup-warning">
+          進度只存在這個瀏覽器：清除瀏覽器資料可能會遺失存檔，換瀏覽器或裝置也不會同步。請定期匯出備份。
+        </p>
         <div className="btn-row">
           <button className="btn" onClick={doExport}>
             匯出存檔
@@ -156,7 +173,7 @@ export function SettingsScreen({ save, onSettings, onImport, onReset }: Props) {
           }}
         >
           <p className="center">
-            這份存檔有 <span className="coin-text">{formatCoins(pendingImport.coins)}</span> 金幣、已發現 {pendingImport.discoveredFishIds.length} 種魚。
+            這份存檔有 <span className="coin-text">{formatCoins(pendingImport.coins)}</span> 金幣、已發現 {getCollectionProgress(pendingImport.discoveredFishIds).discovered} 種魚。
             <br />
             匯入後會取代目前的進度。
           </p>
@@ -173,7 +190,7 @@ export function SettingsScreen({ save, onSettings, onImport, onReset }: Props) {
             onReset();
           }}
         >
-          <p className="center">所有金幣、裝備、背包與圖鑑都會清空，無法復原。（建議先匯出備份）</p>
+          <p className="center">所有金幣、裝備、魚包與圖鑑都會清空，無法復原。（建議先匯出備份）</p>
         </ConfirmDialog>
       )}
     </section>

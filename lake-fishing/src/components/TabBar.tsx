@@ -4,13 +4,13 @@ import { Icon } from "./Pixel";
 
 const TABS: { id: Tab; label: string; icon: IconName }[] = [
   { id: "lake", label: "湖畔", icon: "lake" },
-  { id: "backpack", label: "背包", icon: "backpack" },
-  { id: "upgrade", label: "升級", icon: "rod" },
+  { id: "bag", label: "魚包", icon: "backpack" },
+  { id: "equipment", label: "裝備", icon: "rod" },
   { id: "encyclopedia", label: "圖鑑", icon: "book" },
   { id: "settings", label: "設定", icon: "gear" }
 ];
 
-export function TabBar({ tab, onChange, backpackCount }: { tab: Tab; onChange: (tab: Tab) => void; backpackCount: number }) {
+export function TabBar({ tab, onChange, pendingCount }: { tab: Tab; onChange: (tab: Tab) => void; pendingCount: number }) {
   return (
     <nav className="tabbar" aria-label="主選單">
       {TABS.map((item) => (
@@ -18,11 +18,12 @@ export function TabBar({ tab, onChange, backpackCount }: { tab: Tab; onChange: (
           key={item.id}
           className={`tab ${tab === item.id ? "active" : ""}`}
           aria-current={tab === item.id ? "page" : undefined}
+          aria-label={item.id === "bag" && pendingCount > 0 ? `${item.label}，待處理 ${pendingCount} 隻` : undefined}
           onClick={() => onChange(item.id)}
         >
           <span className="tab-icon">
             <Icon name={item.icon} px={2} />
-            {item.id === "backpack" && backpackCount > 0 && <span className="badge" aria-hidden="true">{backpackCount > 99 ? "99+" : backpackCount}</span>}
+            {item.id === "bag" && pendingCount > 0 && <span className="badge" aria-hidden="true">{pendingCount > 99 ? "99+" : pendingCount}</span>}
           </span>
           <span className="tab-label">{item.label}</span>
         </button>

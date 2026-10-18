@@ -106,17 +106,69 @@ input {
   touch-action: manipulation;
 }
 
-.selectable {
-  -webkit-user-select: text;
-  user-select: text;
-  word-break: break-all;
+/* Tablet portrait: still one column, a little wider. Desktop (>= 900px): two columns (see below). */
+@media (min-width: 600px) and (max-width: 899.98px) {
+  .app {
+    max-width: 560px;
+  }
+}
+@media (min-width: 900px) {
+  .app {
+    max-width: 1180px;
+  }
 }
 
-.main {
+.layout {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+.stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.side {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* Phone / tablet lake tab: the scene takes what the catch log leaves. */
+.app[data-tab="lake"][data-wide="false"] .side {
+  flex: 0 1 auto;
+  max-height: 62%;
+}
+@media (min-width: 900px) {
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(380px, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .stage {
+    border-right: 3px solid var(--edge-light);
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.selectable {
+  -webkit-user-select: text;
+  user-select: text;
+  word-break: break-all;
 }
 
 .screen {
@@ -325,19 +377,16 @@ input {
   border: 2px solid var(--edge);
 }
 
-/* ---- lake screen ------------------------------------------------------------------------ */
+/* ---- lake stage (scene + HUD + timing bar + countdown) ----------------------------------- */
 
-.screen.lake {
-  padding: 0;
-  gap: 0;
-  overflow: hidden;
-}
 .lake-view {
   position: relative;
   flex: 1 1 auto;
-  min-height: 160px;
+  min-height: 170px;
   background: #223a5c;
   overflow: hidden;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 .lake-canvas {
   position: absolute;
@@ -360,7 +409,16 @@ input {
   pointer-events: none;
 }
 .hud > * {
+  pointer-events: none;
+}
+.hud button {
   pointer-events: auto;
+}
+.hud-left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
 }
 .hud-right {
   display: flex;
@@ -378,6 +436,18 @@ input {
   font-weight: bold;
   font-size: 18px;
   color: var(--gold);
+}
+.dex-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 10px;
+  background: rgba(27, 42, 65, 0.88);
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 .coin-float {
   position: absolute;
@@ -425,9 +495,9 @@ input {
   font-size: 12px;
   font-weight: bold;
 }
-.lake-info {
+.countdown {
   flex: none;
-  padding: 12px 14px 10px;
+  padding: 10px 14px 10px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -448,12 +518,144 @@ input {
   font-variant-numeric: tabular-nums;
   color: var(--gold);
 }
+
+/* ---- bobber timing bar (overlay on the lake; never takes pointer events) ---------------- */
+
+.timing {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  padding: 8px 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(14, 24, 39, 0.9);
+  border: 3px solid var(--gold);
+  pointer-events: none;
+  animation: timing-in 0.18s steps(3) both;
+}
+@keyframes timing-in {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+}
+.timing.is-used {
+  border-color: var(--edge-light);
+}
+.timing-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+.timing-title {
+  font-weight: bold;
+  color: var(--gold);
+}
+.timing.is-used .timing-title {
+  color: var(--muted);
+}
+.timing-hint {
+  color: var(--text);
+}
+.timing-track {
+  position: relative;
+  height: 24px;
+  background: #0b1320;
+  border: 3px solid var(--edge-light);
+}
+.timing-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--good-dark);
+  background-image: repeating-linear-gradient(90deg, transparent 0 6px, rgba(0, 0, 0, 0.16) 6px 8px);
+  border-left: 2px solid var(--good);
+  border-right: 2px solid var(--good);
+}
+.timing-perfect {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--gold);
+  background-image: repeating-linear-gradient(90deg, transparent 0 4px, rgba(0, 0, 0, 0.16) 4px 6px);
+}
+.timing-marker {
+  position: absolute;
+  top: -5px;
+  bottom: -5px;
+  left: 0;
+  width: 8px;
+  margin-left: -4px;
+  background: #fff;
+  border: 2px solid var(--edge);
+}
+.timing-left {
+  height: 6px;
+  background: #0b1320;
+  border: 1px solid var(--edge-light);
+}
+.timing-left-fill {
+  height: 100%;
+  width: 0;
+  background: var(--muted);
+}
+
+.tap-feedback {
+  position: absolute;
+  left: 50%;
+  bottom: 118px;
+  transform: translateX(-50%);
+  z-index: 2;
+  padding: 2px 14px;
+  font-size: 28px;
+  font-weight: bold;
+  white-space: nowrap;
+  text-shadow: 3px 3px 0 var(--edge), -1px -1px 0 var(--edge), 1px -1px 0 var(--edge), -1px 1px 0 var(--edge);
+  pointer-events: none;
+  animation: fb-float 1.2s ease-out both;
+}
+.tap-feedback.is-perfect {
+  color: var(--gold);
+}
+.tap-feedback.is-success {
+  color: var(--good);
+}
+.tap-feedback.is-miss {
+  color: #9ec7ff;
+}
+@keyframes fb-float {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 14px) scale(0.8);
+  }
+  25% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1.12);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -12px) scale(1);
+  }
+}
+
+/* ---- catch log ------------------------------------------------------------------------- */
+
+.lake-panel {
+  padding-top: 10px;
+  gap: 8px;
+}
+.panel-title {
+  font-size: 14px;
+  color: var(--muted);
+}
 .log {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin-top: 2px;
-  min-height: 166px;
 }
 .log-empty {
   color: var(--muted);
@@ -462,13 +664,13 @@ input {
 }
 .log-row {
   display: grid;
-  grid-template-columns: 48px 1fr auto;
+  grid-template-columns: 64px 1fr auto;
   align-items: center;
   gap: 8px;
-  height: 30px;
+  min-height: 36px;
   background: var(--panel-lo);
   border-left: 3px solid var(--edge-light);
-  padding: 0 8px 0 4px;
+  padding: 2px 8px 2px 4px;
   font-size: 13px;
 }
 .log-row:first-child {
@@ -494,9 +696,17 @@ input {
   opacity: 0.85;
 }
 .log-result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   font-weight: bold;
   font-size: 13px;
   white-space: nowrap;
+  line-height: 1.25;
+}
+.log-bonus {
+  font-size: 11px;
+  color: var(--good);
 }
 .bag-text {
   color: #7ec8ff;
@@ -509,6 +719,107 @@ input {
   background: var(--danger);
   color: #fff;
   vertical-align: middle;
+}
+
+/* ---- notices (non-blocking banners / cards: no backdrop, never over the tab bar) -------- */
+
+.notice-area {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 2px;
+  max-height: 64dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.lake-panel {
+  flex: 0 0 auto;
+}
+.notice {
+  position: relative;
+  padding: 8px 8px 8px 10px;
+  background: var(--panel-hi);
+  border-color: var(--gold);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: none;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.notice-rare {
+  flex-direction: row;
+  align-items: center;
+  border-color: var(--rc, var(--gold));
+}
+.notice-corrupt {
+  border-color: var(--danger);
+}
+.notice-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.notice-text {
+  font-size: 13px;
+  line-height: 1.45;
+}
+.notice-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.notice-head h2 {
+  font-size: 16px;
+  color: var(--gold);
+}
+.notice-corrupt .notice-head h2 {
+  color: #ff9d96;
+}
+.notice-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.notice-close {
+  appearance: none;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin: -8px -4px -8px 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+.notice-close:active {
+  color: var(--text);
+}
+.backup-text {
+  width: 100%;
+  resize: vertical;
+  background: var(--panel-lo);
+  color: var(--text);
+  border: 3px solid var(--edge-light);
+  font: inherit;
+  font-size: 12px;
+  padding: 6px;
+}
+@media (max-width: 359px) {
+  .notice-rare {
+    flex-wrap: wrap;
+  }
 }
 
 /* ---- generic screen pieces ------------------------------------------------------------- */
@@ -544,11 +855,164 @@ input {
 }
 .item-card {
   display: grid;
-  grid-template-columns: 64px 1fr auto;
+  grid-template-columns: 64px 1fr;
   align-items: center;
-  gap: 10px;
+  gap: 8px 10px;
   padding: 10px;
   border-color: var(--rc, var(--edge-light));
+}
+.item-card > .seg,
+.item-card > .item-actions {
+  grid-column: 1 / -1;
+}
+.item-actions {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 8px;
+}
+.item-actions .btn {
+  padding: 6px 8px;
+}
+.item-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.qty {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.rarity-tag {
+  font-size: 11px;
+  font-weight: bold;
+  padding: 0 5px;
+  border: 2px solid;
+  line-height: 1.3;
+}
+.seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border: 3px solid var(--edge-light);
+  background: var(--panel-lo);
+}
+.seg-btn {
+  appearance: none;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-weight: bold;
+  cursor: pointer;
+}
+.seg-btn.on {
+  background: var(--panel-hi);
+  color: var(--gold);
+  box-shadow: inset 0 -3px 0 var(--gold);
+}
+.bag-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.section-head h2 {
+  font-size: 17px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.count-pill {
+  min-width: 24px;
+  padding: 0 7px;
+  background: var(--panel-hi);
+  border: 2px solid var(--edge-light);
+  font-size: 13px;
+  text-align: center;
+  color: var(--gold);
+}
+.btn-small {
+  min-height: 44px;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+.shortfall {
+  font-size: 13px;
+  color: #ffb36b;
+}
+.shortfall b {
+  color: var(--gold);
+}
+.backup-warning {
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 8px 10px;
+  background: var(--panel-lo);
+  border-left: 4px solid var(--gold);
+  color: var(--text);
+}
+.chips {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+.chip {
+  appearance: none;
+  min-height: 44px;
+  padding: 0 4px;
+  background: var(--panel);
+  border: 3px solid var(--edge-light);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: bold;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.chip.on {
+  background: var(--gold);
+  border-color: var(--gold-dark);
+  color: #1b2a41;
+}
+.dex-cell.selected {
+  outline: 3px solid var(--gold);
+  outline-offset: 1px;
+}
+.detail-card {
+  position: sticky;
+  bottom: -8px;
+  z-index: 5;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--panel-hi);
+  border-color: var(--rc, var(--gold));
+}
+.detail-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.detail-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.detail-title h2 {
+  font-size: 18px;
+}
+.detail-desc {
+  font-size: 13px;
+  line-height: 1.5;
 }
 .item-name {
   font-weight: bold;
@@ -558,31 +1022,14 @@ input {
   gap: 8px;
   flex-wrap: wrap;
 }
-.perfect-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 11px;
-  color: #1b2a41;
-  background: var(--gold);
-  padding: 0 5px;
-}
 .empty {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 30px 20px;
+  gap: 6px;
+  padding: 16px 16px;
   text-align: center;
 }
-.sticky-actions {
-  position: sticky;
-  bottom: -20px;
-  padding: 10px 0 20px;
-  margin-bottom: -20px;
-  background: linear-gradient(transparent, var(--panel-lo) 30%);
-}
-
 .upgrade-card {
   padding: 12px;
   display: flex;
@@ -645,6 +1092,20 @@ input {
   flex: none;
   color: var(--gold);
   font-size: 12px;
+}
+@media (max-width: 519px) {
+  .effect-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+  .effect-row > div {
+    flex: none;
+  }
+  .effect-row .arrow {
+    align-self: center;
+    transform: rotate(90deg);
+  }
 }
 
 .progress-panel {
@@ -732,25 +1193,19 @@ input {
   appearance: none;
   position: relative;
   width: 64px;
-  height: 34px;
+  height: 44px;
   padding: 0;
   cursor: pointer;
   background: var(--panel-lo);
   border: 3px solid var(--edge-light);
   flex: none;
 }
-.switch::after {
-  /* enlarge the touch target to 44px */
-  content: "";
-  position: absolute;
-  inset: -8px -4px;
-}
 .switch-knob {
   position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 22px;
-  height: 22px;
+  top: 5px;
+  left: 5px;
+  width: 28px;
+  height: 28px;
   background: var(--muted);
 }
 .switch.on {
@@ -759,7 +1214,7 @@ input {
 }
 .switch.on .switch-knob {
   left: auto;
-  right: 3px;
+  right: 5px;
   background: #fff;
 }
 .slider {
@@ -923,36 +1378,35 @@ input {
 .dialog-actions .btn-big {
   flex: 1.4;
 }
-.bite-fish {
-  display: flex;
-  justify-content: center;
-  padding: 14px 0;
-  background: radial-gradient(circle at 50% 50%, rgba(77, 166, 255, 0.35), transparent 70%), var(--panel-lo);
-  animation: sway 1.4s ease-in-out infinite;
-}
-@keyframes sway {
-  50% {
-    transform: translateY(-4px);
-  }
-}
 .toast {
   position: absolute;
   z-index: 40;
-  left: 16px;
-  right: 16px;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: fit-content;
+  max-width: min(420px, calc(100% - 32px));
   bottom: calc(74px + var(--safe-b));
-  padding: 10px 12px;
+  padding: 8px 14px;
   text-align: center;
   font-weight: bold;
+  font-size: 14px;
   background: var(--panel-hi);
   border-color: var(--gold);
   pointer-events: none;
   animation: toast-in 0.2s steps(4) both;
 }
-/* On the lake the log sits at the bottom, so the toast goes below the HUD instead. */
-.app[data-tab="lake"] .toast {
-  top: calc(64px + var(--safe-t));
+/* On the lake (and in the wide layout) the toast goes below the HUD instead. It never takes pointer events. */
+.app[data-tab="lake"] .toast,
+.app[data-wide="true"] .toast {
+  top: calc(98px + var(--safe-t));
   bottom: auto;
+}
+.app[data-wide="true"] .toast {
+  left: 16px;
+  right: auto;
+  margin: 0;
+  max-width: min(420px, 40%);
 }
 @keyframes toast-in {
   from {
@@ -961,150 +1415,14 @@ input {
   }
 }
 
-/* ---- minigame --------------------------------------------------------------------------- */
-
-.minigame {
-  position: absolute;
-  inset: 0;
-  z-index: 35;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: calc(14px + var(--safe-t)) 18px calc(16px + var(--safe-b));
-  background: linear-gradient(#10243f, #0c1a2e 55%, #0b1320);
-  touch-action: none;
-  cursor: pointer;
-}
-.minigame.holding {
-  background: linear-gradient(#173560, #0f2748 55%, #0b1320);
-}
-.mg-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.mg-head h2 {
-  font-size: 22px;
-  color: var(--gold);
-}
-.mg-timer {
-  font-size: 22px;
-  font-weight: bold;
-  font-variant-numeric: tabular-nums;
-}
-.mg-stage {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: 180px;
-  display: flex;
-  justify-content: center;
-  padding: 6px 0;
-}
-.mg-bar {
-  position: relative;
-  width: 76px;
-  height: 100%;
-  background: var(--panel-lo);
-  overflow: visible;
-}
-.mg-end {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 12px;
-  color: var(--muted);
-  z-index: 2;
-}
-.mg-end-top {
-  top: 4px;
-}
-.mg-end-bottom {
-  bottom: 4px;
-}
-.mg-danger {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 10%;
-  background: repeating-linear-gradient(45deg, rgba(229, 89, 79, 0.45) 0 6px, rgba(229, 89, 79, 0.15) 6px 12px);
-}
-.mg-zone {
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  background: var(--good);
-  background-image: repeating-linear-gradient(0deg, transparent 0 6px, rgba(0, 0, 0, 0.14) 6px 8px);
-  border: 3px solid #b7f0bb;
-  opacity: 0.85;
-}
-.in-zone .mg-zone {
-  box-shadow: 0 0 0 3px rgba(111, 207, 116, 0.5);
-  opacity: 1;
-}
-.mg-marker {
-  position: absolute;
-  left: -10px;
-  right: -10px;
-  height: 14px;
-  margin-bottom: -7px;
-  background: var(--gold);
-  border: 3px solid var(--gold-dark);
-  z-index: 3;
-}
-.mg-fish {
-  position: absolute;
-  left: calc(50% + 56px);
-  margin-bottom: -16px;
-  filter: drop-shadow(0 0 0 var(--rc));
-  z-index: 3;
-}
-.mg-fish-img {
-  animation: wiggle 0.5s steps(2) infinite;
-}
-.holding .mg-fish-img {
-  animation-duration: 0.25s;
-}
-@keyframes wiggle {
-  50% {
-    transform: translateY(-3px);
-  }
-}
-.mg-progress {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-weight: bold;
-}
-.mg-progress-label {
-  display: flex;
-  justify-content: space-between;
-  font-size: 13px;
-}
-.mg-hint {
-  padding: 12px;
-  text-align: center;
-  font-weight: bold;
-  min-height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.minigame.in-zone .mg-hint {
-  border-color: var(--good);
-  color: var(--good);
-}
-.minigame.done-success .mg-hint {
-  border-color: var(--gold);
-  color: var(--gold);
-}
-.mg-quit {
-  align-self: center;
-  min-width: 120px;
-}
-
 /* ---- motion preferences ---------------------------------------------------------------- */
 
+:root[data-reduced-motion="true"] .tap-feedback {
+  animation: none;
+}
+:root[data-reduced-motion="true"] .timing {
+  animation: none;
+}
 :root[data-reduced-motion="true"] *,
 :root[data-reduced-motion="true"] *::before,
 :root[data-reduced-motion="true"] *::after {
@@ -1113,6 +1431,10 @@ input {
   transition-duration: 0.001ms !important;
 }
 @media (prefers-reduced-motion: reduce) {
+  .tap-feedback,
+  .timing {
+    animation: none;
+  }
   *,
   *::before,
   *::after {
@@ -1124,10 +1446,24 @@ input {
 
 /* Short phones: tighten the lake log a little. */
 @media (max-height: 700px) {
-  .log {
-    min-height: 0;
-  }
   .log-row {
-    height: 28px;
+    min-height: 30px;
+  }
+  .app[data-tab="lake"][data-wide="false"] .side {
+    max-height: 56%;
+  }
+}
+
+/* Wide layout: the right column has room, so the catch log reads a little larger. */
+@media (min-width: 900px) {
+  .lake-panel .log-row {
+    min-height: 44px;
+    font-size: 15px;
+  }
+  .lake-panel .log-bonus {
+    font-size: 12px;
+  }
+  .notice-text {
+    font-size: 14px;
   }
 }

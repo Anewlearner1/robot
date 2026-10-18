@@ -1,29 +1,31 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { EquipmentType, GameSave } from "../services";
 import { getAudio } from "./audio";
 import type { SfxName } from "./audio";
 import { getGameStore } from "./boot";
+import { getRoundElapsedMs } from "./state";
 import type { GameState, Tab } from "./state";
 
-/** How often the game clock is pushed into the UI (idle countdown, prompt timer). */
+/** How often the game clock is pushed into the UI (countdown). The timing bar animates on its own. */
 const TICK_MS = 100;
-/** Keeps `lastActiveAt` fresh while the game is open, so a crash does not over-credit offline time. */
+/** Keeps `lastOfflineSettlementAt` fresh while the game is open, so a crash does not over-credit offline time. */
 const HEARTBEAT_MS = 30_000;
 
 export interface GameActions {
   setTab(tab: Tab): void;
-  startReel(): void;
-  ignorePrompt(): void;
-  finishMinigame(success: boolean): void;
-  sell(itemId: string): void;
-  sellAll(): void;
+  /** Tap the lake / press Space: the first tap of a timing round counts, later ones are ignored. */
+  tap(): void;
+  sellPending(id: string, qty?: number): void;
+  keepPending(id: string, qty?: number): void;
+  sellInventory(fishId: string, qty: number): void;
+  sellAllPending(): void;
+  sellAllInventory(): void;
   upgrade(equipment: EquipmentType): void;
   updateSettings(patch: Partial<GameSave["settings"]>): void;
   importSave(save: GameSave): void;
   reset(): void;
-  dismissDialog(): void;
+  dismissNotice(id: number): void;
   dismissToast(id: number): void;
-  playSfx(name: SfxName): void;
 }
 
 export interface UseGame {
@@ -31,39 +33,47 @@ export interface UseGame {
   actions: GameActions;
   /** settings.reducedMotion or the OS preference. */
   reducedMotion: boolean;
+  /** Milliseconds elapsed in the current timing round right now (for the animated indicator). */
+  getRoundElapsed: () => number;
 }
 
-function usePrefersReducedMotion(): boolean {
-  const [prefers, setPrefers] = useState(() => {
+function useMediaQueryMatch(query: string): boolean {
+  const [matches, setMatches] = useState(() => {
     try {
-      return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      return window.matchMedia(query).matches;
     } catch {
       return false;
     }
   });
   useEffect(() => {
-    let query: MediaQueryList;
+    let list: MediaQueryList;
     try {
-      query = window.matchMedia("(prefers-reduced-motion: reduce)");
+      list = window.matchMedia(query);
     } catch {
       return;
     }
-    const onChange = () => setPrefers(query.matches);
-    query.addEventListener("change", onChange);
-    return () => query.removeEventListener("change", onChange);
-  }, []);
-  return prefers;
+    const onChange = () => setMatches(list.matches);
+    onChange();
+    list.addEventListener("change", onChange);
+    return () => list.removeEventListener("change", onChange);
+  }, [query]);
+  return matches;
+}
+
+/** True at the two-column breakpoint (>= 900px wide). */
+export function useWideLayout(): boolean {
+  return useMediaQueryMatch("(min-width: 900px)");
 }
 
 export function useGame(): UseGame {
   const store = getGameStore();
   // The controller defaults to volume 0.7; always start it from the loaded save's settings.
   const audioOf = () => {
-    const { musicVolume, musicEnabled } = store.getState().save.settings;
-    return getAudio({ volume: musicVolume, musicEnabled });
+    const { musicVolume, musicEnabled, soundEnabled } = store.getState().save.settings;
+    return getAudio({ volume: musicVolume, musicEnabled, sfxEnabled: soundEnabled });
   };
   const state = useSyncExternalStore(store.subscribe, store.getState);
-  const prefersReduced = usePrefersReducedMotion();
+  const prefersReduced = useMediaQueryMatch("(prefers-reduced-motion: reduce)");
   const reducedMotion = state.save.settings.reducedMotion || prefersReduced;
 
   // Game clock, visibility, heartbeat.
@@ -89,6 +99,7 @@ export function useGame(): UseGame {
         store.dispatch({ type: "hide", now: Date.now() });
         audio.pause();
       } else {
+        // Settle the time away first, then carry on with the heartbeat.
         store.dispatch({ type: "show", now: Date.now(), rng: Math.random });
         audio.resume();
         last = performance.now();
@@ -145,12 +156,14 @@ export function useGame(): UseGame {
     };
   }, [store]);
 
-  const { musicEnabled, musicVolume } = state.save.settings;
+  // Audio settings apply at boot (getAudio) and immediately whenever they change.
+  const { musicEnabled, musicVolume, soundEnabled } = state.save.settings;
   useEffect(() => {
     const audio = audioOf();
     audio.setVolume(musicVolume);
     audio.setMusicEnabled(musicEnabled);
-  }, [musicEnabled, musicVolume]);
+    audio.setSfxEnabled(soundEnabled);
+  }, [musicEnabled, musicVolume, soundEnabled]);
 
   useEffect(() => {
     document.documentElement.dataset.reducedMotion = reducedMotion ? "true" : "false";
@@ -159,21 +172,23 @@ export function useGame(): UseGame {
   const actions = useMemo<GameActions>(
     () => ({
       setTab: (tab) => store.dispatch({ type: "setTab", tab }),
-      startReel: () => store.dispatch({ type: "startReel", now: Date.now() }),
-      ignorePrompt: () => store.dispatch({ type: "ignorePrompt", now: Date.now() }),
-      finishMinigame: (success) => store.dispatch({ type: "finishMinigame", success, now: Date.now() }),
-      sell: (itemId) => store.dispatch({ type: "sell", itemId }),
-      sellAll: () => store.dispatch({ type: "sellAll" }),
+      tap: () => store.dispatch({ type: "tap", now: Date.now() }),
+      sellPending: (id, qty) => store.dispatch({ type: "sellPending", id, qty }),
+      keepPending: (id, qty) => store.dispatch({ type: "keepPending", id, qty }),
+      sellInventory: (fishId, qty) => store.dispatch({ type: "sellInventory", fishId, qty }),
+      sellAllPending: () => store.dispatch({ type: "sellAllPending" }),
+      sellAllInventory: () => store.dispatch({ type: "sellAllInventory" }),
       upgrade: (equipment) => store.dispatch({ type: "upgrade", equipment }),
       updateSettings: (patch) => store.dispatch({ type: "updateSettings", patch }),
       importSave: (save) => store.dispatch({ type: "importSave", save, now: Date.now() }),
       reset: () => store.dispatch({ type: "reset", now: Date.now() }),
-      dismissDialog: () => store.dispatch({ type: "dismissDialog" }),
-      dismissToast: (id) => store.dispatch({ type: "dismissToast", id }),
-      playSfx: (name) => audioOf().playSfx(name)
+      dismissNotice: (id) => store.dispatch({ type: "dismissNotice", id }),
+      dismissToast: (id) => store.dispatch({ type: "dismissToast", id })
     }),
     [store]
   );
 
-  return { state, actions, reducedMotion };
+  const getRoundElapsed = useCallback(() => getRoundElapsedMs(store.getState(), Date.now()), [store]);
+
+  return { state, actions, reducedMotion, getRoundElapsed };
 }

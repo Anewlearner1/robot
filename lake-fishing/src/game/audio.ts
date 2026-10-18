@@ -10,10 +10,11 @@ export type { AudioController, SfxName };
 let controller: AudioController | null = null;
 
 /** App-lifetime singleton (safe under React StrictMode's double mounting). */
-export function getAudio(initial?: { volume: number; musicEnabled: boolean }): AudioController {
+export function getAudio(initial?: { volume: number; musicEnabled: boolean; sfxEnabled: boolean }): AudioController {
   controller ??= createAudioController({
     initialVolume: initial?.volume,
-    initialMusicEnabled: initial?.musicEnabled
+    initialMusicEnabled: initial?.musicEnabled,
+    initialSfxEnabled: initial?.sfxEnabled
   });
   return controller;
 }

@@ -10,12 +10,12 @@ const TYPES: { type: EquipmentType; icon: IconName }[] = [
   { type: "bait", icon: "bait" }
 ];
 
-export function UpgradeScreen({ save, onUpgrade }: { save: GameSave; onUpgrade: (type: EquipmentType) => void }) {
+export function EquipmentScreen({ save, onUpgrade }: { save: GameSave; onUpgrade: (type: EquipmentType) => void }) {
   return (
-    <section className="screen" aria-label="升級">
+    <section className="screen" aria-label="裝備">
       <header className="screen-head">
         <h1>
-          <Icon name="rod" px={2} /> 升級
+          <Icon name="rod" px={2} /> 裝備
         </h1>
         <div className="head-stat px-panel">
           <Icon name="coin" px={1} /> {formatCoins(save.coins)}
@@ -25,7 +25,7 @@ export function UpgradeScreen({ save, onUpgrade }: { save: GameSave; onUpgrade: 
         {TYPES.map(({ type, icon }) => {
           const info = describeEquipmentUpgrade(type, save.equipmentLevels[type], save.coins);
           return (
-            <li key={type} className="upgrade-card px-panel">
+            <li key={type} className="upgrade-card px-panel" data-testid={`equip-${type}`}>
               <div className="upgrade-top">
                 <span className="upgrade-icon px-panel">
                   <Icon name={icon} px={3} />
@@ -61,6 +61,11 @@ export function UpgradeScreen({ save, onUpgrade }: { save: GameSave; onUpgrade: 
                   </>
                 )}
               </div>
+              {!info.isMaxLevel && !info.canAfford && (
+                <p className="shortfall" role="status">
+                  還差 <b>{formatCoins(info.shortfall)}</b> 金幣
+                </p>
+              )}
               <button
                 className="btn btn-primary btn-wide"
                 data-sfx="none"
