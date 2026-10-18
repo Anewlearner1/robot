@@ -42,7 +42,7 @@ async function open(cfg, local) {
   const page = await browser.newPage({ viewport: { width: 200, height: 200 } });
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
-  await page.addInitScript(() => { window.requestAnimationFrame = () => 0; });
+  await page.addInitScript(() => { window.requestAnimationFrame = () => 0; window.__FIREBASE_CONFIG_OVERRIDE = null; });   // the shipped page has a real Firebase config: these tests are about the claude / no-cloud paths
   if (cfg !== null) await page.addInitScript(`(${fakeViewer.toString()})(${JSON.stringify(cfg)})`);
   if (local) await page.addInitScript(`try { localStorage.setItem('zombie-bridge-save', ${JSON.stringify(JSON.stringify(local))}); } catch (e) {}`);
   await page.route('**/three.min.js', r => r.fulfill({ body: fs.readFileSync(three), contentType: 'application/javascript' }));

@@ -829,7 +829,15 @@ function rankOf(squad) {
 //   G.cloud gains provider ('claude' | 'firebase' | null) and account { name, photo } | null. Logic exposes
 //   cloudSignIn() / cloudSignOut() (Google popup, falling back to redirect) and emits authState { provider, signedIn,
 //   name, photo } on every change; cloudSync keeps its meaning. Signed out on the standalone site = local save only.
-const FIREBASE_CONFIG = null;   // the owner pastes the Firebase web config object here (public identifiers, not secrets)
+const FIREBASE_CONFIG = {       // Firebase web config (public identifiers, not secrets; access is enforced by firestore.rules)
+  apiKey: "AIzaSyAUs_EG8F5mHIJb05gWxiTYu7FJmAeA4yc",
+  authDomain: "zombiebridge-1ca30.firebaseapp.com",
+  projectId: "zombiebridge-1ca30",
+  storageBucket: "zombiebridge-1ca30.firebasestorage.app",
+  messagingSenderId: "302157455429",
+  appId: "1:302157455429:web:66aae0c0a84e9d92e8032c",
+  measurementId: "G-SMRXG7T1CF"
+};
 //   (round 8 logic) PROVIDER DESIGN. The cloud layer is one state machine (merge policy mergeSaves, debounce 1.5 s, epoch resets, one onSnapshot, remote saves
 //   deferred while a run is on, error states) over a document reference with get() / set() / onSnapshot() - both providers just supply that reference:
 //   - 'claude'   window.claude is present (the artifact viewer): the db capability, data/users/<id>/save, exactly as in round 6.
@@ -6996,7 +7004,7 @@ const cloudAuthEvent = (signedIn, extra) => {
   const acct = G.cloud.account;
   bus.emit('authState', Object.assign({ provider: G.cloud.provider, signedIn: !!signedIn, name: acct ? acct.name : '', photo: acct ? acct.photo : '' }, extra || {}));
 };
-const cloudFirebaseConfig = () => window.claude ? null : (window.__FIREBASE_CONFIG_OVERRIDE || FIREBASE_CONFIG);
+const cloudFirebaseConfig = () => window.claude ? null : ('__FIREBASE_CONFIG_OVERRIDE' in window ? window.__FIREBASE_CONFIG_OVERRIDE : FIREBASE_CONFIG);   // the test hook may also say null = no config
 function cloudProviderFor(c) {
   if (c && typeof c.use === 'function') return 'claude';
   return cloudFirebaseConfig() ? 'firebase' : null;
