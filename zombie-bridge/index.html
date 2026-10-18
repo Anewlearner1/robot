@@ -646,7 +646,7 @@ const TUNE = {
   hpPerStage: 0.5,                // ... ordinary zombies +0.5 hp per step (fractions are rolled per zombie) ...
   stagePow: 0.9,                  // ... where a stage's step count is (stage-1)^stagePow
   stageMul: [3.55, 2.1, 2.5],     // trim of the far-end horde growth (`ramp`) per stage; the last entry covers every later stage
-  stageHp: [1.48, 1.14, 1.1, 2.2, 6.1],       // extra zombie hp factor per stage (campaign tuning: counts are capped by MAXZ, so late stages get tougher, not more numerous); the last entry covers every later stage
+  stageHp: [1.48, 1.07, 1.03, 2.1, 5.6],       // extra zombie hp factor per stage (campaign tuning: counts are capped by MAXZ, so late stages get tougher, not more numerous); the last entry covers every later stage
   early: 0.35, rampPow: 2, ramp: 13, hpRamp: 15.5, bruteRamp: 6,   // along the bridge (position p = 0..1): size x (early + ramp*p^rampPow), hp x (1 + hpRamp*p^rampPow), brute count likewise
   count: { open: 3, wall: 50, blob: 30, line: 20, swarm: 24, runners: 20 },
   bruteBase: 3, brutePerStage: 1, bruteHp: 10, bruteHpPerStage: 4,
@@ -668,7 +668,7 @@ const TUNE = {
   splashR2: 3.4, splashDmg: 0.4,  // shells: blast radius squared and damage fraction
   mechDmg: 1.4, mechDmgPerStage: 0.6, mechCd: 0.62,
   // --- boss: hp = bossHp*stage + bossDpsSecs * (squad damage per second that can land on it)
-  bossHp: 220, bossDpsSecs: 14.5, bossDist: 26, bossSpeed: 1.3, bossSpeedPerStage: 0.1,   // bossDist: how far ahead it appears
+  bossHp: 220, bossDpsSecs: 12.2, bossDist: 26, bossSpeed: 1.3, bossSpeedPerStage: 0.1,   // bossDist: how far ahead it appears
   knockMax: 1.4,                  // top knock-back speed (u/s); zombies walk 1-1.7, so a heavy push stalls them, never reverses them
   hordeJitter: 0.25,              // every horde is released at x(1 +- this) of its planned size
   bossKnock: 0,                   // fraction of a gun's knock that moves the boss back (0: bosses are immune; >0 let shotguns stall it forever)
@@ -689,7 +689,7 @@ const TUNE = {
   exBase: 0.03, exStage: 0.012, exMax: 0.08, exploderR: 1.8, exploderDmg: 2, exploderCap: 6,   // exploder zombies: share of a horde, blast radius, blast damage (flat: it stops chaining once zombies have more hp than this)
   shBase: 0.03, shStage: 0.015, shMax: 0.12, shieldSlope: 0.5, shieldHp: 1.3, shieldBreak: 4,   // shield zombies: share, how off-axis a bullet must be to get past (|dx| of its direction), hp factor
   // --- round 8: growth limits for unlimited squads
-  deepHp: 0.52, deepGrow: 1.04,   // round 8: zombie hp factor of the procedural depths (6+), x deepGrow per further depth, on top of stageHp's last entry
+  deepHp: 0.46, deepGrow: 1.04, deepRef: 350, deepSizePow: 0.7, bossDeepSecs: 1.35,   // procedural depths also scale with the squad they start with: x clamp((entry / deepRef) ^ deepSizePow, 0.5, 4), so big snowballs meet tougher zombies and a weak squad an easier level; bossDeepSecs: longer boss fights from depth 6 on   // round 8: zombie hp factor of the procedural depths (6+), x deepGrow per further depth, on top of stageHp's last entry
   mulCapBase: 40, mulCapPerDepth: 10, mulTail: 0.15,   // a x2 gate doubles up to C = base + perDepth x depth soldiers; above C only mulTail of the rest is added (no exponential blow-up)
   gateWMax: 6, gateShotBase: 24, gateShotPerDepth: 4,  // a heavy bullet counts as at most gateWMax hits on a gate / battery; a gate can be shot up by at most base + perDepth x depth
   // --- round 7: obstacles (lane-footprint blocks on the deck; see the round 7 obstacle contract)
@@ -848,7 +848,7 @@ const MAP = [
   { id: 'n3a', depth: 3, name: '市區街道', scene: 'city',    next: ['n4a'],        diffMul: 1.2,  coinMul: 1.35, x: 0.28, y: 0.60 },
   { id: 'n3b', depth: 3, name: '港口碼頭', scene: 'harbor',  next: ['n4b'],        diffMul: 1.0, hpMul: 1.72, coinMul: 1,    x: 0.72, y: 0.60 },
   { id: 'n4a', depth: 4, name: '地下隧道', scene: 'tunnel',  next: ['n5'],         diffMul: 1.6,  coinMul: 1.35, x: 0.26, y: 0.42 },
-  { id: 'n4b', depth: 4, name: '林間公路', scene: 'forest',  next: ['n5'],         diffMul: 1.55, hpMul: 1.85, coinMul: 1,    x: 0.74, y: 0.42 },
+  { id: 'n4b', depth: 4, name: '林間公路', scene: 'forest',  next: ['n5'],         diffMul: 1.55, hpMul: 1.75, coinMul: 1,    x: 0.74, y: 0.42 },
   { id: 'n5',  depth: 5, name: '終局高架', scene: 'highway', next: ['p6'],         diffMul: 1,    coinMul: 1.2,  x: 0.50, y: 0.24 },
 ];
 // OBSTACLES (round 7 step 3). Events { type: 'obstacle', kind, x, z, w, d, hp, max, dead, flash, row } in G.events (and __zb.levelObstacles); they have
@@ -1661,7 +1661,7 @@ function hordeSpec(kind, n, side, p) {
   p = Math.pow(p || 0, TUNE.rampPow);
   const sd = Math.pow(n - 1, TUNE.stagePow);      // stage steps: concave when stagePow < 1 (later stages grow more slowly)
   const f = (1 + sd * TUNE.hordeGrow) * (TUNE.early + TUNE.ramp * p * TUNE.stageMul[Math.min(n, TUNE.stageMul.length) - 1]);
-  const hm = TUNE.stageHp[Math.min(n, TUNE.stageHp.length) - 1] * (n > 5 ? TUNE.deepHp * Math.pow(TUNE.deepGrow, n - 6) : 1) * (G.node ? (G.node.hpMul || G.node.diffMul) : 1);   // diffMul: one branch harder than the other (the label); hpMul (optional): the real zombie hp factor when the node's content needs compensating
+  const hm = TUNE.stageHp[Math.min(n, TUNE.stageHp.length) - 1] * (n > 5 ? TUNE.deepHp * Math.pow(TUNE.deepGrow, n - 6) * clamp(Math.pow(Math.max(1, G.entrySquad) / TUNE.deepRef, TUNE.deepSizePow), 0.5, 4) : 1) * (G.node ? (G.node.hpMul || G.node.diffMul) : 1);   // diffMul: one branch harder than the other (the label); hpMul (optional): the real zombie hp factor when the node's content needs compensating
   const hp = (1 + sd * TUNE.hpPerStage) * (1 + TUNE.hpRamp * p) * hm;
   const C = TUNE.count;
   const fx = sceneFx();
@@ -3463,7 +3463,7 @@ function startBoss() {
   const W = WEAPONS[G.weapon];
   // round 8: the estimate carries every permanent / run-long damage multiplier the squad has (damage and fire-rate upgrades, rate gates, the live rank), so the fight lasts about bossDpsSecs whatever the build
   const dps = G.squad * W.rate * W.pellets * W.dmg * Math.pow(W.lvMul, G.weaponLv - 1) * W.bossEff * (1 + upPer('dmg') * upLv('dmg')) * (1 + upPer('rate') * upLv('rate') + G.rateBonus) * (1 + G.rank.bonus) + (G.mech ? 2 * (TUNE.mechDmg + G.level * TUNE.mechDmgPerStage) / TUNE.mechCd : 0);
-  const hp = Math.round(TUNE.bossHp * G.level + dps * TUNE.bossDpsSecs);
+  const hp = Math.round(TUNE.bossHp * G.level + dps * TUNE.bossDpsSecs * (G.level > 5 ? TUNE.bossDeepSecs : 1));
   G.boss = { x: 0, z: G.z - TUNE.bossDist, hp, max: hp, sp: TUNE.bossSpeed + G.level * TUNE.bossSpeedPerStage, flash: 0, alive: true, deadT: 0, spawnT: 2.5, hitT: 0 };
   bossMesh.visible = true;
   bossMesh.rotation.set(0, 0, 0);
