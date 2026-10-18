@@ -604,10 +604,20 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 </section>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>window.THREE || document.write('<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"><\/script>');</script>
 <script>
 (() => {
 'use strict';
 const T = window.THREE;
+// A fatal start-up problem (no three.js, no WebGL) must be visible: the dark menu overlay alone looks like a black page.
+function fatal(msg, detail) {
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;inset:0;z-index:99;display:grid;place-items:center;padding:24px;background:#10151b;color:#f3f1ec;font:16px/1.6 system-ui,sans-serif;text-align:center';
+  d.innerHTML = '<div style="max-width:420px"><b style="font-size:22px">屍潮斷橋 無法啟動</b><p></p><small style="color:#b9c3cc"></small></div>';
+  d.querySelector('p').textContent = msg; d.querySelector('small').textContent = detail || '';
+  document.body.appendChild(d);
+}
+if (!T) { fatal('3D 引擎載入失敗。請檢查網路，或暫時關閉廣告／隱私擋修外掛後重新整理。', 'three.js 無法從 cdnjs / jsdelivr 載入'); return; }
 // Curved world (purely visual): view-space offset that grows with the square of the distance from the camera, applied to every
 // material through a Material.onBeforeCompile hook so instanced meshes, particles and units bend together. Gameplay stays straight.
 const BEND = { value: new T.Vector3(0, 0, 0) };   // x, y per unit^2 (see fxBendTarget); z unused
@@ -636,11 +646,6 @@ const $ = s => document.querySelector(s);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const rr = (a, b) => a + (b - a) * Math.random();
 
-if (!T) {
-  $('#menu .lede').textContent = '3D 引擎載入失敗，請檢查網路後重新整理。';
-  $('#btnStart').hidden = true;
-  return;
-}
 
 // Seeded RNG so every attempt at the same stage gets the same bridge.
 function mulberry(seed) {
@@ -1149,7 +1154,9 @@ const bus = {
 
 // ---------------------------------------------------------------- renderer
 const stage = $('#stage');
-const renderer = new T.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+let renderer;
+try { renderer = new T.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' }); }
+catch (e) { fatal('這個瀏覽器無法使用 WebGL（3D 繪圖）。請在 Chrome 設定開啟「使用圖形加速（硬體加速）」後重新整理。', String(e && e.message || e)); return; }
 stage.appendChild(renderer.domElement);
 renderer.toneMapping = T.LinearToneMapping; renderer.toneMappingExposure = 1;
 const scene = new T.Scene();
