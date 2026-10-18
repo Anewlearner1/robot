@@ -1,0 +1,37 @@
+// Firestore security rules for 屍潮斷橋 (the standalone site, Google login).
+//
+// Each signed-in Google account owns exactly one document: saves/{uid}, where {uid} is that account's Firebase user id.
+// A player can read and write only their own document. Everything else is denied.
+//
+// How to publish: Firebase console → Firestore Database → Rules → paste this whole file → Publish.
+// (See zombie-bridge/FIREBASE.md, step 5.)
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // The save of one player. The document id must equal the signed-in user's uid.
+    match /saves/{uid} {
+
+      // Read your own save (the game reads it on start-up to merge it with the local copy).
+      allow read: if request.auth != null && request.auth.uid == uid;
+
+      // Create or change your own save. Firestore rules cannot measure a document's byte size, so the guard bounds its
+      // shape instead: a save has about ten top-level fields and one entry per map node, far below Firestore's 1 MiB
+      // document limit. (A normal save is a few KB; the guard only stops runaway or malformed writes.)
+      allow create, update: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.size() < 40
+        && (!('nodes' in request.resource.data) || request.resource.data.nodes.size() < 2000);
+
+      // Delete your own save (only useful for a manual reset; the game itself resets with an epoch counter).
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Anything else (other users' saves, other collections, anonymous access): denied.
+    // This is also Firestore's default when no rule matches, written out so the intent is visible.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
