@@ -14,6 +14,7 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Standalone Vite app with its own toolchain.
     "singing-score/**",
+    "lake-fishing/**",
   ]),
 ]);
 

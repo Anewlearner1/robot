@@ -38,6 +38,7 @@
   ],
   "exclude": [
     "node_modules",
-    "singing-score"
+    "singing-score",
+    "lake-fishing"
   ]
 }

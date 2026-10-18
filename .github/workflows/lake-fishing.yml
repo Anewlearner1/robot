@@ -1,0 +1,29 @@
+name: lake-fishing
+
+on:
+  push:
+    paths: ['lake-fishing/**', '.github/workflows/lake-fishing.yml']
+  pull_request:
+    paths: ['lake-fishing/**', '.github/workflows/lake-fishing.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: lake-fishing
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: lake-fishing/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build

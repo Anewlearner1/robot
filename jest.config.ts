@@ -6,9 +6,9 @@ const createJestConfig = nextJest({ dir: './' })
 const config: Config = {
   testEnvironment: 'jsdom',
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
-  // singing-score/ is a standalone Vite app tested with its own vitest setup.
-  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/singing-score/'],
-  modulePathIgnorePatterns: ['<rootDir>/singing-score/'],
+  // singing-score/ and lake-fishing/ are standalone Vite apps tested with their own vitest setup.
+  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/singing-score/', '<rootDir>/lake-fishing/'],
+  modulePathIgnorePatterns: ['<rootDir>/singing-score/', '<rootDir>/lake-fishing/'],
 }
 
 export default createJestConfig(config)
