@@ -1,10 +1,12 @@
-import { getEquipmentEffect } from "../data/equipment";
+import { clampEquipmentLevel, getEquipmentEffect } from "../data/equipment";
 import { FISH } from "../data/fish";
-import { GAME_CONFIG } from "../data/gameConfig";
+import { GAME_CONFIG, RARITY_ORDER } from "../data/gameConfig";
+import type { MinigameConfig, RodConfig } from "../data/gameConfig";
 import type { FishDefinition, FishRarity, GameSave } from "../types/game";
 import { countDiscoveredFish } from "./encyclopediaService";
+import { getStreakBonus } from "./minigameService";
 
-export const RARITY_ORDER: readonly FishRarity[] = ["common", "uncommon", "rare", "epic", "legendary"];
+export { RARITY_ORDER };
 
 /** Rarity weights as percentages. Locked rarities are 0; the rest add up to 100. */
 export type RarityWeights = Record<FishRarity, number>;
@@ -83,38 +85,75 @@ export function applyLegendaryPity(
   return result;
 }
 
+/** Unlocked tiers that count as "special fish" for the perfect-streak boost. */
+const STREAK_BOOSTED: readonly FishRarity[] = ["rare", "epic", "legendary"];
+
+/**
+ * Perfect-streak boost: multiply the weight of every UNLOCKED rare+ tier by (1 + bonus) and
+ * rescale so the total is unchanged. A locked tier has weight 0 and is skipped explicitly, so
+ * a streak can never unlock anything. Does nothing for bonus <= 0.
+ */
+export function applyStreakBonus(
+  weights: RarityWeights,
+  unlocked: readonly FishRarity[],
+  bonus: number
+): RarityWeights {
+  const result = { ...weights };
+  if (!(bonus > 0)) return result;
+  const before = RARITY_ORDER.reduce((sum, rarity) => sum + weights[rarity], 0);
+  for (const rarity of STREAK_BOOSTED) {
+    if (unlocked.includes(rarity)) result[rarity] = weights[rarity] * (1 + bonus);
+  }
+  const after = RARITY_ORDER.reduce((sum, rarity) => sum + result[rarity], 0);
+  if (before <= 0 || after <= 0) return { ...weights };
+  const scale = before / after;
+  for (const rarity of RARITY_ORDER) result[rarity] *= scale;
+  return result;
+}
+
 /**
  * Final rarity weights (percent, total 100 over unlocked rarities, 0 for locked ones):
- * base weights -> line effect -> legendary pity.
+ * base weights (unlock filter) -> line effect -> perfect-streak boost -> legendary pity.
+ * Bait is not involved: it only changes which fish of a rarity is picked.
  * @param lineEffect raw line effectValue (0..0.10); see `getEquipmentEffect("line", level)`.
+ * @param perfectStreak consecutive perfect minigame taps (0 = no boost).
  */
 export function getRarityWeights(
   discoveredFishIds: readonly string[],
   pityCount = 0,
-  lineEffect = 0
+  lineEffect = 0,
+  perfectStreak = 0,
+  minigameConfig: Pick<MinigameConfig, "streakBonusPerPerfect" | "streakBonusMax"> = GAME_CONFIG.minigame
 ): RarityWeights {
   const unlocked = getUnlockedRarities(discoveredFishIds);
   const base = getBaseRarityWeights(unlocked);
   const lined = applyLineEffect(base, unlocked, lineEffect);
-  return applyLegendaryPity(lined, unlocked, pityCount);
+  const boosted = applyStreakBonus(lined, unlocked, getStreakBonus(perfectStreak, minigameConfig));
+  return applyLegendaryPity(boosted, unlocked, pityCount);
 }
 
-/** `getRarityWeights` using a save's discoveries, pity counter and line level. */
+/** `getRarityWeights` using a save's discoveries, pity counter, line level and perfect streak. */
 export function getSaveRarityWeights(
-  save: Pick<GameSave, "discoveredFishIds" | "pity" | "equipmentLevels">
+  save: Pick<GameSave, "discoveredFishIds" | "pity" | "equipmentLevels" | "minigame">
 ): RarityWeights {
   return getRarityWeights(
     save.discoveredFishIds,
     save.pity.consecutiveNonLegendary,
-    getEquipmentEffect("line", save.equipmentLevels.line)
+    getEquipmentEffect("line", save.equipmentLevels.line),
+    save.minigame.perfectStreak
   );
 }
 
-/** Seconds between catches for a rod level (multiplier read from equipment data). */
-export function getFishingIntervalSeconds(rodLevel: number): number {
+/**
+ * Seconds between catches for a rod level (PRD §7):
+ * `Math.max(30, Math.round(90 * (1 - 0.08 * (rodLevel - 1))))`, with the three constants read
+ * from `GAME_CONFIG.rod` (or the `config` argument). Out-of-range levels are clamped to 1..6.
+ */
+export function getFishingIntervalSeconds(rodLevel: number, config: RodConfig = GAME_CONFIG.rod): number {
+  const level = clampEquipmentLevel("rod", rodLevel);
   return Math.max(
-    GAME_CONFIG.minimumFishingIntervalSeconds,
-    Math.round(GAME_CONFIG.baseFishingIntervalSeconds * getEquipmentEffect("rod", rodLevel))
+    config.minimumIntervalSeconds,
+    Math.round(config.baseIntervalSeconds * (1 - config.reductionPerLevel * (level - 1)))
   );
 }
 
@@ -132,14 +171,68 @@ export function pickRarity(weights: RarityWeights, rng: () => number): FishRarit
   return lastAvailable; // only reachable through floating-point drift
 }
 
-/** Pick a fish of this rarity uniformly with one rng draw. */
-export function chooseFishForRarity(rarity: FishRarity, rng: () => number = Math.random): FishDefinition {
+/** Bait pick-weight multiplier of the target group at a level (Lv1 x1.0 -> Lv6 x2.0). */
+export function getBaitMultiplier(baitLevel: number): number {
+  return getEquipmentEffect("bait", baitLevel);
+}
+
+/** The fish the bait favours (`GAME_CONFIG.bait.targetFishIds`), as definitions. */
+export function getBaitTargetFish(targetFishIds: readonly string[] = GAME_CONFIG.bait.targetFishIds): FishDefinition[] {
+  return FISH.filter((fish) => targetFishIds.includes(fish.id));
+}
+
+/** One fish of a rarity with its pick weight and its share (0..1) among that rarity. */
+export interface FishPickChance {
+  fish: FishDefinition;
+  /** 1 for ordinary fish; the bait multiplier for target fish. */
+  weight: number;
+  /** weight / sum of weights of the rarity. */
+  chance: number;
+}
+
+/**
+ * Pick weights of every fish of one rarity at a bait level, in catalogue order. Bait multiplies
+ * the weight of the target fish only; weights are within the rarity, so the rarity's own
+ * probability is not affected.
+ */
+export function getFishPickChances(
+  rarity: FishRarity,
+  baitLevel = 1,
+  targetFishIds: readonly string[] = GAME_CONFIG.bait.targetFishIds
+): FishPickChance[] {
+  const multiplier = getBaitMultiplier(baitLevel);
   const candidates = FISH.filter((fish) => fish.rarity === rarity);
-  if (candidates.length === 0) {
+  const weights = candidates.map((fish) => (targetFishIds.includes(fish.id) ? multiplier : 1));
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  return candidates.map((fish, index) => ({
+    fish,
+    weight: weights[index],
+    chance: total > 0 ? weights[index] / total : 0
+  }));
+}
+
+/**
+ * Pick a fish of this rarity with one rng draw. Fish are weighted 1, except the bait's target
+ * fish, which get the bait multiplier; non-target fish stay possible at every bait level.
+ * With bait level 1 this is a uniform pick.
+ */
+export function chooseFishForRarity(
+  rarity: FishRarity,
+  rng: () => number = Math.random,
+  baitLevel = 1
+): FishDefinition {
+  const chances = getFishPickChances(rarity, baitLevel);
+  if (chances.length === 0) {
     throw new Error(`No fish available for rarity: ${rarity}`);
   }
-  const index = Math.min(candidates.length - 1, Math.floor(rng() * candidates.length));
-  return candidates[index];
+  const total = chances.reduce((sum, entry) => sum + entry.weight, 0);
+  const roll = Math.min(0.999999999999, Math.max(0, rng())) * total;
+  let cumulative = 0;
+  for (const entry of chances) {
+    cumulative += entry.weight;
+    if (roll < cumulative) return entry.fish;
+  }
+  return chances[chances.length - 1].fish;
 }
 
 /** Rarity roll for explicit inputs (see `getRarityWeights`). One rng draw. */
@@ -153,16 +246,22 @@ export function chooseRarity(
 }
 
 /**
- * Decide which fish bites: rarity from the save's weights (unlocks, pity, line), then a
- * uniform fish of that rarity. Uses exactly two rng draws. Does not modify the save;
- * pass the result to `applyCatch`.
+ * Decide which fish bites: rarity from the save's weights (unlocks, line, perfect streak, pity),
+ * then a fish of that rarity weighted by the bait. Uses exactly two rng draws. Does not modify
+ * the save; pass the result to `applyCatch`.
+ * @param options.perfectStreak override the streak used for the roll (offline passes 0).
  */
-export function rollCatch(save: GameSave, rng: () => number = Math.random): FishDefinition {
-  const rarity = pickRarity(getSaveRarityWeights(save), rng);
-  return chooseFishForRarity(rarity, rng);
-}
-
-/** True for fish that trigger the optional reel-in minigame (rare and above). */
-export function isMinigameEligible(fish: FishDefinition): boolean {
-  return !fish.autoSell;
+export function rollCatch(
+  save: GameSave,
+  rng: () => number = Math.random,
+  options: { perfectStreak?: number } = {}
+): FishDefinition {
+  const weights = getRarityWeights(
+    save.discoveredFishIds,
+    save.pity.consecutiveNonLegendary,
+    getEquipmentEffect("line", save.equipmentLevels.line),
+    options.perfectStreak ?? save.minigame.perfectStreak
+  );
+  const rarity = pickRarity(weights, rng);
+  return chooseFishForRarity(rarity, rng, save.equipmentLevels.bait);
 }

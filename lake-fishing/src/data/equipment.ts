@@ -4,7 +4,7 @@ export const EQUIPMENT: EquipmentDefinition[] = [
   {
     id: "rod",
     name: "魚竿",
-    description: "提升釣魚效率，縮短釣魚間隔。",
+    description: "縮短釣魚間隔。",
     maxLevel: 6,
     levels: [
       { level: 1, upgradeCost: null, effectValue: 1.00 },
@@ -32,15 +32,15 @@ export const EQUIPMENT: EquipmentDefinition[] = [
   {
     id: "bait",
     name: "魚餌",
-    description: "提高賣魚金額。",
+    description: "提高鯉科魚群在同一稀有度內被釣到的機率；不改變稀有度機率與賣價。",
     maxLevel: 6,
     levels: [
-      { level: 1, upgradeCost: null, effectValue: 1.00 },
-      { level: 2, upgradeCost: 200, effectValue: 1.05 },
-      { level: 3, upgradeCost: 320, effectValue: 1.10 },
-      { level: 4, upgradeCost: 510, effectValue: 1.15 },
-      { level: 5, upgradeCost: 820, effectValue: 1.20 },
-      { level: 6, upgradeCost: 1310, effectValue: 1.25 }
+      { level: 1, upgradeCost: null, effectValue: 1.0 },
+      { level: 2, upgradeCost: 200, effectValue: 1.2 },
+      { level: 3, upgradeCost: 320, effectValue: 1.4 },
+      { level: 4, upgradeCost: 510, effectValue: 1.6 },
+      { level: 5, upgradeCost: 820, effectValue: 1.8 },
+      { level: 6, upgradeCost: 1310, effectValue: 2.0 }
     ]
   }
 ];
@@ -65,7 +65,8 @@ export function getEquipmentLevelConfig(type: EquipmentType, level: number): Equ
 
 /**
  * The raw effect value at a level.
- * rod: interval multiplier; line: share of weight moved to rarer fish; bait: sell multiplier.
+ * rod: interval multiplier (display only; the interval itself comes from GAME_CONFIG.rod);
+ * line: share of weight moved to rarer fish; bait: pick-weight multiplier of the target group.
  */
 export function getEquipmentEffect(type: EquipmentType, level: number): number {
   return getEquipmentLevelConfig(type, level).effectValue;

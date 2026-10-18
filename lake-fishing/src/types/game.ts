@@ -15,7 +15,7 @@ export interface FishDefinition {
   description: string;
   imageKey: string;
   unlockCollectionCount: number;
-  /** true for common/uncommon: sold immediately. false: goes to the inventory. */
+  /** true for common/uncommon: sold immediately. false: goes to the pending list (sell or keep). */
   autoSell: boolean;
 }
 
@@ -33,33 +33,57 @@ export interface EquipmentDefinition {
   levels: EquipmentLevelConfig[];
 }
 
-/** One rare+ fish kept in the backpack. Each has a unique instance id. */
-export interface InventoryItem {
-  id: string;
-  fishId: string;
-  /** Won the reel-in minigame: sells for x1.5. */
-  perfect: boolean;
-  caughtAt: number;
+/** Where a catch came from. */
+export type CatchSource = "active" | "offline" | "minigame";
+
+/** The result of one bobber-timing tap. */
+export type TapResult = "perfect" | "success" | "miss";
+
+/** A minigame round result; "none" means the player did not tap (or did not take part). */
+export type MinigameResult = TapResult | "none";
+
+/** What the bobber-timing minigame reported for one catch; pass it to `applyCatch`. */
+export interface MinigameOutcome {
+  result: MinigameResult;
 }
 
-export const CURRENT_SAVE_VERSION = 2;
+/**
+ * A rare+ catch waiting for the player to sell or keep it. Entries of the same fish and
+ * source are merged into one row with a larger `quantity`.
+ */
+export interface PendingFish {
+  id: string;
+  fishId: string;
+  /** Positive integer. */
+  quantity: number;
+  /** When the latest fish of this row was caught. */
+  caughtAt: number;
+  source: CatchSource;
+}
+
+export const CURRENT_SAVE_VERSION = 3;
 
 export interface GameSave {
   saveVersion: number;
   createdAt: number;
   lastSavedAt: number;
-  /** Last moment the player was actively in the game (foreground). Offline time is measured from here. */
-  lastActiveAt: number;
+  /**
+   * The moment up to which offline time has already been paid out (or the player was seen
+   * active). Only ever moves forward: a clock that went backwards never moves it back.
+   */
+  lastOfflineSettlementAt: number;
   coins: number;
   equipmentLevels: Record<EquipmentType, number>;
   /** Known fish ids, unique, in order of discovery. */
   discoveredFishIds: string[];
   /** Lifetime catches per fish id (only ids with count >= 1 are present). */
   catchCounts: Record<string, number>;
+  /** Kept fish: fish id -> count (only ids with count >= 1 are present). */
+  fishInventory: Record<string, number>;
   /** Rare+ fish waiting to be sold or kept. */
-  inventory: InventoryItem[];
-  /** Counter used to mint unique inventory item ids. */
-  nextInventoryId: number;
+  pendingFish: PendingFish[];
+  /** Counter used to mint unique pending ids. */
+  nextPendingId: number;
   pity: {
     consecutiveNonLegendary: number;
   };
@@ -68,7 +92,12 @@ export interface GameSave {
     totalFishSold: number;
     totalCoinsEarned: number;
   };
+  minigame: {
+    /** Consecutive perfect minigame taps. */
+    perfectStreak: number;
+  };
   settings: {
+    soundEnabled: boolean;
     musicEnabled: boolean;
     /** 0..1 */
     musicVolume: number;
@@ -81,13 +110,19 @@ export interface CatchEvent {
   fishId: string;
   rarity: FishRarity;
   caughtAt: number;
-  /** "sold": auto-sold for coins. "inventory": added to the backpack. */
-  outcome: "sold" | "inventory";
-  /** Coins credited right now (0 when the fish went to the inventory). */
+  source: CatchSource;
+  /** "sold": auto-sold for coins. "pending": waiting in the pending list. */
+  outcome: "sold" | "pending";
+  /** Coins credited right now: the auto-sale price plus the minigame bonus. */
   coinsEarned: number;
-  /** The backpack entry that was created (null when auto-sold). */
-  inventoryItem: InventoryItem | null;
-  perfect: boolean;
+  /** Part of `coinsEarned` that is the auto-sale price (0 when the fish went to pending). */
+  saleCoins: number;
+  /** Part of `coinsEarned` that is the minigame bonus (0 for a miss / no minigame). */
+  bonusCoins: number;
+  /** The minigame result that was applied; null when no outcome was passed. */
+  minigameResult: MinigameResult | null;
+  /** The pending row this fish went into (after merging); null when auto-sold. */
+  pendingFish: PendingFish | null;
   isNewDiscovery: boolean;
   /** Rarity tiers that became available because of this discovery. */
   newlyUnlockedRarities: FishRarity[];
@@ -97,11 +132,13 @@ export interface CatchEvent {
     /** true when a legendary was caught and the counter went back to 0. */
     reset: boolean;
   };
+  /** Perfect streak before and after this catch (unchanged when no minigame outcome was passed). */
+  perfectStreak: { before: number; after: number };
   /** Lifetime count of this species after this catch. */
   speciesCatchCount: number;
 }
 
-/** Summary shown in the "while you were away..." dialog. */
+/** Summary shown in the "while you were away..." card. */
 export interface OfflineSummary {
   fromTimestamp: number;
   toTimestamp: number;
@@ -117,8 +154,8 @@ export interface OfflineSummary {
   /** Fish ids discovered for the first time, in order. */
   newDiscoveries: string[];
   newlyUnlockedRarities: FishRarity[];
-  /** Rare+ fish added to the backpack. */
-  inventoryAdditions: InventoryItem[];
+  /** Rare+ fish sent to the pending list, summed per species (first-caught order). */
+  pendingAdditions: { fishId: string; quantity: number }[];
   /** Per-species catches during the absence. */
   catchesByFish: Record<string, number>;
 }

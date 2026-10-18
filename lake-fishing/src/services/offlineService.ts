@@ -1,5 +1,5 @@
 import { GAME_CONFIG } from "../data/gameConfig";
-import type { FishRarity, GameSave, InventoryItem, OfflineSummary } from "../types/game";
+import type { FishRarity, GameSave, OfflineSummary } from "../types/game";
 import { applyCatch } from "./catchService";
 import { getFishingIntervalSeconds, rollCatch } from "./fishingService";
 
@@ -28,10 +28,17 @@ export function calculateOfflineCatches(
 }
 
 /**
- * Settle the time since `save.lastActiveAt`. Every effective catch is simulated in full
- * (rarity roll with pity/line/unlocks, encyclopedia, auto-sell or inventory), so discoveries
- * in the middle of the run unlock rarities for the remaining catches. No minigame, no perfects.
- * The returned save has `lastActiveAt = now`. Show the dialog when `summary.effectiveCatches > 0`.
+ * Settle the time since `save.lastOfflineSettlementAt` (PRD §8). Every effective catch is
+ * simulated in full (rarity roll with pity/line/unlocks, bait, encyclopedia, auto-sell, rare+
+ * to `pendingFish` with source "offline"), so discoveries in the middle of the run unlock
+ * rarities for the remaining catches. No minigame: no bonus coins, and the perfect streak neither
+ * helps nor changes.
+ *
+ * The timestamp only ever moves forward: when `now <= lastOfflineSettlementAt` (clock moved
+ * backwards, or already settled at this very moment) nothing is earned, the SAME save object is
+ * returned and the timestamp is not touched. Otherwise the returned save has
+ * `lastOfflineSettlementAt = now`, so settling again at the same `now` yields 0.
+ * Show the card when `summary.effectiveCatches > 0`.
  */
 export function settleOffline(
   save: GameSave,
@@ -39,9 +46,11 @@ export function settleOffline(
   rng: () => number = Math.random
 ): { save: GameSave; summary: OfflineSummary } {
   const intervalSeconds = getFishingIntervalSeconds(save.equipmentLevels.rod);
+  const last = save.lastOfflineSettlementAt;
+  const advances = Number.isFinite(now) && now > last;
   const { elapsedSeconds, cappedSeconds, effectiveCatches } = calculateOfflineCatches(
-    save.lastActiveAt,
-    now,
+    last,
+    advances ? now : last,
     intervalSeconds
   );
 
@@ -50,12 +59,12 @@ export function settleOffline(
   let coinsEarned = 0;
   const newDiscoveries: string[] = [];
   const newlyUnlockedRarities: FishRarity[] = [];
-  const inventoryAdditions: InventoryItem[] = [];
+  const pendingTotals = new Map<string, number>();
   const catchesByFish: Record<string, number> = {};
 
   for (let i = 0; i < effectiveCatches; i++) {
-    const fish = rollCatch(current, rng);
-    const { save: after, event } = applyCatch(current, fish.id, { now });
+    const fish = rollCatch(current, rng, { perfectStreak: 0 });
+    const { save: after, event } = applyCatch(current, fish.id, { source: "offline", now });
     current = after;
     catchesByFish[fish.id] = (catchesByFish[fish.id] ?? 0) + 1;
     if (event.isNewDiscovery) newDiscoveries.push(fish.id);
@@ -63,16 +72,16 @@ export function settleOffline(
     if (event.outcome === "sold") {
       soldCount++;
       coinsEarned += event.coinsEarned;
-    } else if (event.inventoryItem) {
-      inventoryAdditions.push(event.inventoryItem);
+    } else {
+      pendingTotals.set(fish.id, (pendingTotals.get(fish.id) ?? 0) + 1);
     }
   }
 
   return {
-    save: { ...current, lastActiveAt: now },
+    save: advances ? { ...current, lastOfflineSettlementAt: now } : current,
     summary: {
-      fromTimestamp: save.lastActiveAt,
-      toTimestamp: now,
+      fromTimestamp: last,
+      toTimestamp: advances ? now : last,
       elapsedSeconds,
       cappedSeconds,
       intervalSeconds,
@@ -81,7 +90,7 @@ export function settleOffline(
       coinsEarned,
       newDiscoveries,
       newlyUnlockedRarities,
-      inventoryAdditions,
+      pendingAdditions: [...pendingTotals].map(([fishId, quantity]) => ({ fishId, quantity })),
       catchesByFish
     }
   };

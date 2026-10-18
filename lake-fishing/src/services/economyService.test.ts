@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { EQUIPMENT } from "../data/equipment";
+import { GAME_CONFIG } from "../data/gameConfig";
 import { FISH } from "../data/fish";
-import { calculateSalePrice, describeEquipmentUpgrade, getSellMultiplier, tryUpgradeEquipment, upgradeEquipment } from "./economyService";
+import { describeEquipmentUpgrade, getSalePrice, tryUpgradeEquipment, upgradeEquipment } from "./economyService";
 import { createNewSave } from "./saveService";
 
 describe("equipment upgrade", () => {
@@ -71,20 +72,46 @@ describe("describeEquipmentUpgrade", () => {
       nextEffect: 0.92,
       cost: 100,
       canAfford: true,
+      shortfall: 0,
       currentEffectText: "間隔 ×1.00（90 秒）",
       nextEffectText: "間隔 ×0.92（83 秒）"
     });
   });
 
-  it("reports affordability", () => {
-    expect(describeEquipmentUpgrade("bait", 1, 199).canAfford).toBe(false);
-    expect(describeEquipmentUpgrade("bait", 1, 200).canAfford).toBe(true);
+  it("rod texts show the PRD interval at every level", () => {
+    const seconds = [90, 83, 76, 68, 61, 54];
+    seconds.forEach((value, index) => {
+      expect(describeEquipmentUpgrade("rod", index + 1, 0).currentEffectText).toContain(`（${value} 秒）`);
+    });
   });
 
-  it("has no next level at max", () => {
-    const info = describeEquipmentUpgrade("bait", 6, 99999);
-    expect(info).toMatchObject({ isMaxLevel: true, nextEffect: null, nextEffectText: null, cost: null, canAfford: false });
-    expect(info.currentEffectText).toBe("賣價 ×1.25");
+  it("reports affordability and the exact shortfall", () => {
+    expect(describeEquipmentUpgrade("bait", 1, 199)).toMatchObject({ canAfford: false, shortfall: 1 });
+    expect(describeEquipmentUpgrade("bait", 1, 200)).toMatchObject({ canAfford: true, shortfall: 0 });
+    expect(describeEquipmentUpgrade("bait", 1, 0).shortfall).toBe(200);
+    expect(describeEquipmentUpgrade("rod", 1, 40).shortfall).toBe(60);
+    expect(describeEquipmentUpgrade("line", 2, 100).shortfall).toBe(140);
+    expect(describeEquipmentUpgrade("rod", 5, 10_000).shortfall).toBe(0);
+  });
+
+  it("has no next level and no shortfall at max", () => {
+    const info = describeEquipmentUpgrade("bait", 6, 0);
+    expect(info).toMatchObject({ isMaxLevel: true, nextEffect: null, nextEffectText: null, cost: null, canAfford: false, shortfall: 0 });
+  });
+
+  it("describes what the bait does: target-group weight within a rarity, no price or rarity change", () => {
+    const base = describeEquipmentUpgrade("bait", 1, 0);
+    expect(base.currentEffectText).toContain("無加成");
+    expect(base.currentEffectText).toContain(GAME_CONFIG.bait.groupName);
+    const info = describeEquipmentUpgrade("bait", 5, 0);
+    expect(info.currentEffect).toBe(1.8);
+    expect(info.nextEffect).toBe(2);
+    expect(info.nextEffectText).toContain("×2.00");
+    expect(info.nextEffectText).toContain(GAME_CONFIG.bait.groupName);
+    expect(info.nextEffectText).toContain("同稀有度");
+    expect(info.nextEffectText).toContain("不影響稀有度與賣價");
+    expect(info.nextEffectText).not.toContain("賣價 ×");
+    expect(info.description).toContain("同一稀有度");
   });
 
   it("describes line effects and clamps bad levels", () => {
@@ -97,26 +124,14 @@ describe("describeEquipmentUpgrade", () => {
 
 describe("sale price", () => {
   const koi = FISH.find((f) => f.id === "fish_koi")!;
-  it("scales with the bait level", () => {
-    expect(getSellMultiplier(1)).toBe(1);
-    expect(getSellMultiplier(6)).toBe(1.25);
-    expect(calculateSalePrice(koi, 1)).toBe(50);
-    expect(calculateSalePrice(koi, 4)).toBe(58); // 57.5 rounds up
-    expect(calculateSalePrice(koi, 6)).toBe(63); // 62.5 rounds up
+
+  it("is always the fish's sellPrice, times the quantity", () => {
+    expect(getSalePrice(koi)).toBe(50);
+    expect(getSalePrice(koi, 3)).toBe(150);
+    for (const fish of FISH) expect(getSalePrice(fish)).toBe(fish.sellPrice);
   });
 
-  it("applies the perfect x1.5 bonus", () => {
-    expect(calculateSalePrice(koi, 1, true)).toBe(75);
-    expect(calculateSalePrice(koi, 6, true)).toBe(94);
-  });
-
-  it("always returns an integer for every fish, bait level and perfect flag", () => {
-    for (const fish of FISH) {
-      for (let bait = 1; bait <= 6; bait++) {
-        for (const perfect of [false, true]) {
-          expect(Number.isInteger(calculateSalePrice(fish, bait, perfect))).toBe(true);
-        }
-      }
-    }
+  it("has no perfect multiplier left anywhere in the config", () => {
+    expect("perfectSellMultiplier" in GAME_CONFIG).toBe(false);
   });
 });

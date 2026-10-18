@@ -1,9 +1,9 @@
 import { EQUIPMENT } from "../data/equipment";
 import { getFishById, LEGACY_FISH_ID_MAP } from "../data/fish";
 import { CURRENT_SAVE_VERSION } from "../types/game";
-import type { EquipmentType, GameSave } from "../types/game";
-import { calculateSalePrice } from "./economyService";
-import { isCount } from "./saveValidation";
+import type { CatchSource, EquipmentType, GameSave, PendingFish } from "../types/game";
+import { getSalePrice } from "./economyService";
+import { isCatchSource, isCount } from "./saveValidation";
 
 export type MigrationResult =
   | { ok: true; save: GameSave; migratedFrom: number | null }
@@ -20,14 +20,31 @@ const MAX_V1_STACK = 10_000;
 
 const renameFishId = (id: string) => LEGACY_FISH_ID_MAP[id] ?? id;
 
+/** Builds pending rows, merging entries of the same fish + source; ids are minted in order. */
+function createPendingBuilder() {
+  const rows: PendingFish[] = [];
+  return {
+    add(fishId: string, quantity: number, caughtAt: number, source: CatchSource) {
+      const existing = rows.find((row) => row.fishId === fishId && row.source === source);
+      if (existing) {
+        existing.quantity += quantity;
+        existing.caughtAt = Math.max(existing.caughtAt, caughtAt);
+      } else {
+        rows.push({ id: `pending_${rows.length}`, fishId, quantity, caughtAt, source });
+      }
+    },
+    rows
+  };
+}
+
 /**
- * v1 -> v2.
+ * v1 -> v3 (v1 = the PRD-shaped first build).
  * - fish id `fish_cultrure` -> `fish_xenocypris` everywhere; unknown discovered ids are dropped;
- * - lastOfflineSettlementAt -> lastActiveAt;
- * - v1 `fishInventory` / `pendingFish` stacks: rare+ fish become inventory items (not perfect,
- *   caughtAt = lastSavedAt), common/uncommon stacks are sold at current prices;
+ * - `lastOfflineSettlementAt` is kept as is;
+ * - v1 `fishInventory` stacks of rare+ fish stay in `fishInventory`; `pendingFish` rows stay in
+ *   `pendingFish` (same fish + same source merge); common/uncommon stacks are sold at sellPrice;
  * - catchCounts is rebuilt (every discovered fish counts at least 1, plus carried stacks);
- * - settings.soundEnabled -> musicEnabled, musicVolume = 0.5.
+ * - `settings.soundEnabled` is kept and also seeds `musicEnabled`; musicVolume = 0.5.
  * Returns an error reason when the v1 data is structurally broken.
  */
 function migrateV1(input: Record<string, unknown>): MigrationResult {
@@ -55,17 +72,18 @@ function migrateV1(input: Record<string, unknown>): MigrationResult {
   }
   const soundEnabled = isRecord(settings) && typeof settings.soundEnabled === "boolean" ? settings.soundEnabled : true;
   const reducedMotion = isRecord(settings) && typeof settings.reducedMotion === "boolean" ? settings.reducedMotion : false;
+  const lastSavedAt = input.lastSavedAt as number;
 
-  // Stacks carried over from the (never populated, but allowed) v1 inventory fields.
-  const stacks: { fishId: string; quantity: number; caughtAt: number }[] = [];
+  const kept: { fishId: string; quantity: number }[] = [];
   const fishInventory = input.fishInventory;
   if (fishInventory !== undefined) {
     if (!isRecord(fishInventory)) return fail("fishInventory");
     for (const [id, quantity] of Object.entries(fishInventory)) {
       if (!isCount(quantity) || quantity > MAX_V1_STACK) return fail(`fishInventory.${id}`);
-      stacks.push({ fishId: renameFishId(id), quantity, caughtAt: input.lastSavedAt as number });
+      kept.push({ fishId: renameFishId(id), quantity });
     }
   }
+  const pending: { fishId: string; quantity: number; caughtAt: number; source: CatchSource }[] = [];
   const pendingFish = input.pendingFish;
   if (pendingFish !== undefined) {
     if (!Array.isArray(pendingFish)) return fail("pendingFish");
@@ -73,10 +91,11 @@ function migrateV1(input: Record<string, unknown>): MigrationResult {
       if (!isRecord(entry) || typeof entry.fishId !== "string" || !isCount(entry.quantity) || entry.quantity > MAX_V1_STACK) {
         return fail("pendingFish entry");
       }
-      stacks.push({
+      pending.push({
         fishId: renameFishId(entry.fishId),
         quantity: entry.quantity,
-        caughtAt: isTimestamp(entry.caughtAt) ? entry.caughtAt : (input.lastSavedAt as number)
+        caughtAt: isTimestamp(entry.caughtAt) ? entry.caughtAt : lastSavedAt,
+        source: isCatchSource(entry.source) ? entry.source : "active"
       });
     }
   }
@@ -88,27 +107,33 @@ function migrateV1(input: Record<string, unknown>): MigrationResult {
   }
 
   const stackCounts: Record<string, number> = {};
-
   let coins = input.coins;
   let totalFishSold = stats.totalFishSold;
   let totalCoinsEarned = stats.totalCoinsEarned;
-  const inventory: GameSave["inventory"] = [];
-  let nextInventoryId = 0;
-  for (const stack of stacks) {
-    const fish = getFishById(stack.fishId);
-    if (!fish || stack.quantity === 0) continue; // unknown fish: nothing sensible to keep
+  const inventory: Record<string, number> = {};
+  const pendingBuilder = createPendingBuilder();
+
+  const carry = (fishId: string, quantity: number, place: (fishId: string) => void) => {
+    const fish = getFishById(fishId);
+    if (!fish || quantity === 0) return; // unknown fish: nothing sensible to keep
     if (!discovered.includes(fish.id)) discovered.push(fish.id);
-    stackCounts[fish.id] = (stackCounts[fish.id] ?? 0) + stack.quantity;
+    stackCounts[fish.id] = (stackCounts[fish.id] ?? 0) + quantity;
     if (fish.autoSell) {
-      const value = calculateSalePrice(fish, levels.bait) * stack.quantity;
+      const value = getSalePrice(fish, quantity);
       coins += value;
       totalCoinsEarned += value;
-      totalFishSold += stack.quantity;
+      totalFishSold += quantity;
     } else {
-      for (let i = 0; i < stack.quantity; i++) {
-        inventory.push({ id: `item_${nextInventoryId++}`, fishId: fish.id, perfect: false, caughtAt: stack.caughtAt });
-      }
+      place(fish.id);
     }
+  };
+  for (const stack of kept) {
+    carry(stack.fishId, stack.quantity, (id) => {
+      inventory[id] = (inventory[id] ?? 0) + stack.quantity;
+    });
+  }
+  for (const row of pending) {
+    carry(row.fishId, row.quantity, (id) => pendingBuilder.add(id, row.quantity, row.caughtAt, row.source));
   }
 
   // Every discovered fish was caught at least once; carried stacks may imply more.
@@ -119,28 +144,71 @@ function migrateV1(input: Record<string, unknown>): MigrationResult {
   const save: GameSave = {
     saveVersion: CURRENT_SAVE_VERSION,
     createdAt: input.createdAt as number,
-    lastSavedAt: input.lastSavedAt as number,
-    lastActiveAt: input.lastOfflineSettlementAt as number,
+    lastSavedAt,
+    lastOfflineSettlementAt: input.lastOfflineSettlementAt as number,
     coins,
     equipmentLevels: levels,
     discoveredFishIds: discovered,
     catchCounts,
-    inventory,
-    nextInventoryId,
+    fishInventory: inventory,
+    pendingFish: pendingBuilder.rows,
+    nextPendingId: pendingBuilder.rows.length,
     pity: { consecutiveNonLegendary: pity.consecutiveNonLegendary },
     stats: {
       totalCatches: Math.max(stats.totalCatches, countSum),
       totalFishSold,
       totalCoinsEarned
     },
-    settings: { musicEnabled: soundEnabled, musicVolume: 0.5, reducedMotion }
+    minigame: { perfectStreak: 0 },
+    settings: { soundEnabled, musicEnabled: soundEnabled, musicVolume: 0.5, reducedMotion }
   };
   return { ok: true, save, migratedFrom: 1 };
 }
 
 /**
- * Bring any stored save up to the current version. v2 passes through untouched (validate it
- * with `validateSave`); v1 is migrated; anything else is rejected with a reason.
+ * v2 -> v3.
+ * - `inventory[]` (one item per fish, with a `perfect` flag) becomes `pendingFish`: items of the
+ *   same fish merge into one row (source "active", caughtAt = latest); the `perfect` flag is
+ *   dropped without compensation; `nextInventoryId` is dropped;
+ * - `lastActiveAt` becomes `lastOfflineSettlementAt`;
+ * - new fields: `fishInventory = {}`, `minigame.perfectStreak = 0`, `settings.soundEnabled = true`.
+ * Only the structure needed to rebuild the save is checked here; value ranges and cross-field
+ * rules are left to `validateSave`, which the callers run on the result.
+ */
+function migrateV2(input: Record<string, unknown>): MigrationResult {
+  const fail = (reason: string): MigrationResult => ({ ok: false, reason: `v2: ${reason}` });
+  const { settings, inventory } = input;
+  if (!isRecord(settings)) return fail("settings");
+  if (!Array.isArray(inventory)) return fail("inventory");
+  if (!isTimestamp(input.lastActiveAt)) return fail("lastActiveAt");
+
+  const pending = createPendingBuilder();
+  for (const item of inventory) {
+    if (!isRecord(item) || typeof item.fishId !== "string" || !getFishById(item.fishId) || !isTimestamp(item.caughtAt)) {
+      return fail("inventory item");
+    }
+    pending.add(item.fishId, 1, item.caughtAt, "active");
+  }
+
+  const { inventory: _inventory, nextInventoryId: _next, lastActiveAt, ...rest } = input;
+  void _inventory;
+  void _next;
+  const save = {
+    ...rest,
+    saveVersion: CURRENT_SAVE_VERSION,
+    lastOfflineSettlementAt: lastActiveAt,
+    fishInventory: {},
+    pendingFish: pending.rows,
+    nextPendingId: pending.rows.length,
+    minigame: { perfectStreak: 0 },
+    settings: { soundEnabled: true, ...settings }
+  } as unknown as GameSave;
+  return { ok: true, save, migratedFrom: 2 };
+}
+
+/**
+ * Bring any stored save up to the current version (3). v3 passes through untouched (validate it
+ * with `validateSave`); v1 and v2 are migrated; anything else is rejected with a reason.
  * The migrated result is NOT validated here; callers run `validateSave` on `save`.
  */
 export function migrateSave(input: unknown): MigrationResult {
@@ -148,6 +216,8 @@ export function migrateSave(input: unknown): MigrationResult {
   switch (input.saveVersion) {
     case 1:
       return migrateV1(input);
+    case 2:
+      return migrateV2(input);
     case CURRENT_SAVE_VERSION:
       return { ok: true, save: input as unknown as GameSave, migratedFrom: null };
     default:

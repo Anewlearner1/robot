@@ -9,6 +9,7 @@
  * document.addEventListener('visibilitychange', () =>
  *   document.hidden ? audio.pause() : audio.resume());
  * audio.setVolume(0.6);
+ * audio.setSfxEnabled(settings.soundEnabled);   // effects follow PRD settings.soundEnabled
  * audio.playSfx('catch');
  * ```
  */
@@ -38,14 +39,22 @@ export interface AudioController {
    * If music is enabled it starts automatically once the context is unlocked.
    */
   unlock(): Promise<void>;
-  /** Turns the background music on or off (fades over ~300 ms). SFX are unaffected. */
+  /** Turns the background music on or off (fades over ~300 ms). SFX are unaffected (see `setSfxEnabled`). */
   setMusicEnabled(on: boolean): void;
   /**
    * Sets the volume, 0..1 (clamped), with a smooth ramp. Applies to the music; SFX follow at a
    * fixed ratio of it. Can be called before `unlock()`.
    */
   setVolume(v: number): void;
-  /** Plays a sound effect. A silent no-op while locked, paused, disposed or unsupported. */
+  /**
+   * Turns sound effects on or off (default on; PRD `settings.soundEnabled`). Independent of the
+   * music: while off, `playSfx` plays nothing. Can be called before `unlock()`.
+   */
+  setSfxEnabled(on: boolean): void;
+  /**
+   * Plays a sound effect. A silent no-op while SFX are disabled (`setSfxEnabled(false)`),
+   * locked, paused, disposed or unsupported.
+   */
   playSfx(name: SfxName): void;
   /** Fades everything out (~300 ms) and suspends the context. Use when the page is hidden. */
   pause(): void;
@@ -60,6 +69,8 @@ export interface AudioControllerOptions {
   initialVolume?: number;
   /** Whether music plays once unlocked (default true). */
   initialMusicEnabled?: boolean;
+  /** Whether sound effects play (default true). */
+  initialSfxEnabled?: boolean;
   /** Seed for the per-loop variation of the music (default 1). */
   seed?: number;
   /**
@@ -97,6 +108,7 @@ function clamp01(v: number): number {
 export function createAudioController(options: AudioControllerOptions = {}): AudioController {
   let volume = clamp01(options.initialVolume ?? DEFAULT_VOLUME);
   let musicEnabled = options.initialMusicEnabled ?? true;
+  let sfxEnabled = options.initialSfxEnabled ?? true;
   const createContext = options.createContext ?? defaultCreateContext;
 
   let ctx: AudioContext | null = null;
@@ -228,8 +240,13 @@ export function createAudioController(options: AudioControllerOptions = {}): Aud
       }
     },
 
+    setSfxEnabled(on) {
+      if (disposed) return;
+      sfxEnabled = !!on;
+    },
+
     playSfx(name) {
-      if (disposed || !unlocked || paused || !ctx || !graph || !isSfxName(name)) return;
+      if (disposed || !sfxEnabled || !unlocked || paused || !ctx || !graph || !isSfxName(name)) return;
       if (volume <= 0 || (ctx.state as string) === 'closed') return;
       try {
         const now = ctx.currentTime;

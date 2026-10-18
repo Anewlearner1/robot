@@ -1,6 +1,7 @@
-import { FISH, LEGACY_FISH_ID_MAP } from "../data/fish";
+import { FISH, isKnownFishId, LEGACY_FISH_ID_MAP } from "../data/fish";
 import { EQUIPMENT } from "../data/equipment";
 import { GAME_CONFIG } from "../data/gameConfig";
+import { CURRENT_SAVE_VERSION } from "../types/game";
 import type { FishRarity } from "../types/game";
 
 export interface ValidationIssue {
@@ -98,15 +99,70 @@ export function validateStaticGameData(): ValidationIssue[] {
     expectedMin = band.max === null ? band.min : band.max + 1;
   });
 
+  if (GAME_CONFIG.saveVersion !== CURRENT_SAVE_VERSION) {
+    issues.push({ code: "SAVE_VERSION_MISMATCH", message: "GAME_CONFIG.saveVersion must equal CURRENT_SAVE_VERSION." });
+  }
+
+  // Rod: PRD §7 constants, and the display multipliers in equipment.ts must agree with them.
+  const rod = GAME_CONFIG.rod;
+  if (
+    !(rod.baseIntervalSeconds > 0) ||
+    !(rod.reductionPerLevel >= 0) ||
+    !(rod.minimumIntervalSeconds > 0) ||
+    rod.minimumIntervalSeconds > rod.baseIntervalSeconds
+  ) {
+    issues.push({ code: "ROD_CONFIG", message: "gameConfig.rod has values outside the intended ranges." });
+  }
+  const rodDefinition = EQUIPMENT.find((item) => item.id === "rod");
+  rodDefinition?.levels.forEach((level, index) => {
+    const expected = 1 - rod.reductionPerLevel * index;
+    if (Math.abs(level.effectValue - expected) > 0.0001) {
+      issues.push({ code: "ROD_EFFECT_MISMATCH", message: `rod level ${level.level} effect ${level.effectValue} does not match gameConfig.rod (${expected}).` });
+    }
+  });
+
+  // Bait: a within-rarity pick-weight multiplier for a group of known fish.
+  const bait = GAME_CONFIG.bait;
+  if (bait.targetFishIds.length === 0) {
+    issues.push({ code: "BAIT_NO_TARGETS", message: "bait.targetFishIds must not be empty." });
+  }
+  if (new Set(bait.targetFishIds).size !== bait.targetFishIds.length) {
+    issues.push({ code: "BAIT_DUPLICATE_TARGET", message: "bait.targetFishIds must be unique." });
+  }
+  for (const id of bait.targetFishIds) {
+    if (!isKnownFishId(id)) {
+      issues.push({ code: "BAIT_UNKNOWN_TARGET", message: `bait.targetFishIds has unknown fish id ${String(id)}.` });
+    }
+  }
+  if (bait.targetFishIds.length >= FISH.length) {
+    issues.push({ code: "BAIT_TARGETS_ALL", message: "bait.targetFishIds must not cover every fish." });
+  }
+  if (!bait.groupName) {
+    issues.push({ code: "BAIT_GROUP_NAME", message: "bait.groupName is required." });
+  }
+  const baitDefinition = EQUIPMENT.find((item) => item.id === "bait");
+  baitDefinition?.levels.forEach((level, index, levels) => {
+    const previous = index > 0 ? levels[index - 1].effectValue : null;
+    if (
+      !Number.isFinite(level.effectValue) ||
+      level.effectValue < 1 ||
+      (index === 0 && level.effectValue !== 1) ||
+      (previous !== null && level.effectValue < previous)
+    ) {
+      issues.push({ code: "BAIT_EFFECT", message: `bait level ${level.level} must be a pick-weight multiplier >= 1 that starts at 1 and never decreases.` });
+    }
+  });
+
+  // Bobber-timing minigame (PRD §9).
   const mg = GAME_CONFIG.minigame;
   const minigameOk =
-    mg.timeLimitMs >= 8000 && mg.timeLimitMs <= 12_000 &&
-    mg.zoneHalfWidth > 0 && mg.zoneHalfWidth < 0.5 &&
-    mg.zoneAmplitude + mg.zoneHalfWidth <= 0.5 &&
-    mg.startProgress >= 0 && mg.startProgress < 1 &&
-    mg.fillPerSecond > mg.drainPerSecond && mg.drainPerSecond >= 0 &&
-    mg.zonePeriodMs.min > 0 && mg.zonePeriodMs.max >= mg.zonePeriodMs.min &&
-    mg.promptTimeoutMs === 15_000;
+    mg.windowSeconds > 0 && mg.windowSeconds <= 10 &&
+    mg.indicatorSpeed > 0 &&
+    mg.timingZoneWidth > 0 && mg.timingZoneWidth < 1 &&
+    mg.perfectZoneWidth > 0 && mg.perfectZoneWidth < mg.timingZoneWidth &&
+    mg.successRatio >= 0 && mg.successRatio <= mg.perfectRatio && mg.perfectRatio <= 1 &&
+    Number.isInteger(mg.bonusCap) && mg.bonusCap >= 0 && mg.bonusCap <= 25 &&
+    mg.streakBonusPerPerfect >= 0 && mg.streakBonusMax >= 0;
   if (!minigameOk) {
     issues.push({ code: "MINIGAME_CONFIG", message: "gameConfig.minigame has values outside the intended ranges." });
   }

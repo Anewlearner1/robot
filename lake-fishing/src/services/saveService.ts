@@ -15,16 +15,18 @@ export function createNewSave(now = Date.now()): GameSave {
     saveVersion: GAME_CONFIG.saveVersion,
     createdAt: now,
     lastSavedAt: now,
-    lastActiveAt: now,
+    lastOfflineSettlementAt: now,
     coins: GAME_CONFIG.startingCoins,
     equipmentLevels: { rod: 1, line: 1, bait: 1 },
     discoveredFishIds: [],
     catchCounts: {},
-    inventory: [],
-    nextInventoryId: 0,
+    fishInventory: {},
+    pendingFish: [],
+    nextPendingId: 0,
     pity: { consecutiveNonLegendary: 0 },
     stats: { totalCatches: 0, totalFishSold: 0, totalCoinsEarned: 0 },
-    settings: { musicEnabled: true, musicVolume: 0.5, reducedMotion: false }
+    minigame: { perfectStreak: 0 },
+    settings: { soundEnabled: true, musicEnabled: true, musicVolume: 0.5, reducedMotion: false }
   };
 }
 
@@ -83,15 +85,17 @@ function defaultStorage(): Storage | null {
 export type SaveWriteResult = { ok: true; save: GameSave } | { ok: false; error: unknown };
 
 /**
- * Write the save to localStorage, stamping `lastSavedAt` and `lastActiveAt` with `now` (saving
- * means the player is here). Never throws; use the returned (stamped) save as the new state.
+ * Write the save to localStorage, stamping `lastSavedAt` with `now`. It deliberately does NOT
+ * touch `lastOfflineSettlementAt`: a save made before the offline settlement must not swallow
+ * the time away (use `markActive` for the heartbeat). Never throws; use the returned (stamped)
+ * save as the new state.
  */
 export function saveToLocalStorage(
   save: GameSave,
   storage: Pick<Storage, "setItem"> | null = defaultStorage(),
   now = Date.now()
 ): SaveWriteResult {
-  const stamped: GameSave = { ...save, lastSavedAt: now, lastActiveAt: now };
+  const stamped: GameSave = { ...save, lastSavedAt: now };
   if (!storage) return { ok: false, error: new Error("localStorage unavailable") };
   try {
     storage.setItem(SAVE_KEY, exportSaveJson(stamped));
@@ -144,7 +148,7 @@ export function loadFromLocalStorage(
   return { status: "corrupt", save: createNewSave(now), backupKey, reason: result.reason };
 }
 
-/** Update music/motion settings; volume is clamped to 0..1 (NaN keeps the old value). */
+/** Update sound / music / motion settings; volume is clamped to 0..1 (NaN keeps the old value). */
 export function updateSettings(save: GameSave, patch: Partial<GameSave["settings"]>): GameSave {
   const settings = { ...save.settings, ...patch };
   const volume = patch.musicVolume;
@@ -153,7 +157,13 @@ export function updateSettings(save: GameSave, patch: Partial<GameSave["settings
   return { ...save, settings };
 }
 
-/** Record that the player is active right now (offline time is measured from `lastActiveAt`). */
+/**
+ * Heartbeat: the player is here right now, so offline time up to `now` is already accounted for.
+ * Advances `lastOfflineSettlementAt` to `now` only when `now` is later; a clock that moved
+ * backwards (or a repeated call) returns the same save and never moves the timestamp back.
+ * Call `settleOffline` first when coming back to the page, then use this as the heartbeat.
+ */
 export function markActive(save: GameSave, now: number): GameSave {
-  return { ...save, lastActiveAt: now };
+  if (!Number.isFinite(now) || !(now > save.lastOfflineSettlementAt)) return save;
+  return { ...save, lastOfflineSettlementAt: now };
 }

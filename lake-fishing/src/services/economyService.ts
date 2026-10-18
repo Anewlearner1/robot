@@ -6,6 +6,7 @@ import {
 } from "../data/equipment";
 import { GAME_CONFIG } from "../data/gameConfig";
 import type { EquipmentType, FishDefinition, GameSave } from "../types/game";
+import { getFishingIntervalSeconds } from "./fishingService";
 
 export interface UpgradeResult {
   success: boolean;
@@ -62,7 +63,7 @@ export interface EquipmentUpgradeInfo {
   level: number;
   maxLevel: number;
   isMaxLevel: boolean;
-  /** Raw effect values: rod = interval multiplier, line = rarity shift, bait = sell multiplier. */
+  /** Raw effect values: rod = interval multiplier, line = rarity shift, bait = target-fish pick-weight multiplier. */
   currentEffect: number;
   nextEffect: number | null;
   /** Ready-to-display Traditional Chinese text, e.g. "間隔 ×0.92（83 秒）". */
@@ -71,21 +72,20 @@ export interface EquipmentUpgradeInfo {
   /** Coins needed for the next level; null at max level. */
   cost: number | null;
   canAfford: boolean;
+  /** Coins still missing for the next level; 0 when affordable or at max level. */
+  shortfall: number;
 }
 
-function describeEffect(type: EquipmentType, effect: number): string {
+function describeEffect(type: EquipmentType, effect: number, level: number): string {
   switch (type) {
-    case "rod": {
-      const seconds = Math.max(
-        GAME_CONFIG.minimumFishingIntervalSeconds,
-        Math.round(GAME_CONFIG.baseFishingIntervalSeconds * effect)
-      );
-      return `間隔 ×${effect.toFixed(2)}（${seconds} 秒）`;
-    }
+    case "rod":
+      return `間隔 ×${effect.toFixed(2)}（${getFishingIntervalSeconds(level)} 秒）`;
     case "line":
       return effect === 0 ? "無加成" : `${Math.round(effect * 100)}% 機會改釣更稀有的魚`;
     case "bait":
-      return `賣價 ×${effect.toFixed(2)}`;
+      return effect === 1
+        ? `${GAME_CONFIG.bait.groupName}同稀有度內權重 ×1.00（無加成）`
+        : `${GAME_CONFIG.bait.groupName}在同稀有度內被釣到的權重 ×${effect.toFixed(2)}（不影響稀有度與賣價）`;
   }
 }
 
@@ -110,25 +110,18 @@ export function describeEquipmentUpgrade(
     isMaxLevel,
     currentEffect,
     nextEffect: nextConfig?.effectValue ?? null,
-    currentEffectText: describeEffect(type, currentEffect),
-    nextEffectText: nextConfig ? describeEffect(type, nextConfig.effectValue) : null,
+    currentEffectText: describeEffect(type, currentEffect, current),
+    nextEffectText: nextConfig ? describeEffect(type, nextConfig.effectValue, current + 1) : null,
     cost,
-    canAfford: cost !== null && coins >= cost
+    canAfford: cost !== null && coins >= cost,
+    shortfall: cost === null ? 0 : Math.max(0, cost - coins)
   };
 }
 
-/** Sell-price multiplier granted by the bait at this level (1.00 -> 1.25). */
-export function getSellMultiplier(baitLevel: number): number {
-  return getEquipmentEffect("bait", baitLevel);
-}
-
 /**
- * Coins for selling one fish: sellPrice x bait multiplier x (perfect ? 1.5 : 1), rounded
- * to a whole number (halves round up).
+ * Coins for selling `quantity` (default 1) of a fish: always `fish.sellPrice` each. There is no
+ * multiplier of any kind (no bait, no perfect bonus).
  */
-export function calculateSalePrice(fish: FishDefinition, baitLevel: number, perfect = false): number {
-  const raw =
-    fish.sellPrice * getSellMultiplier(baitLevel) * (perfect ? GAME_CONFIG.perfectSellMultiplier : 1);
-  // Strip floating-point noise (e.g. 16.499999999999996) before rounding.
-  return Math.round(Math.round(raw * 1e6) / 1e6);
+export function getSalePrice(fish: Pick<FishDefinition, "sellPrice">, quantity = 1): number {
+  return fish.sellPrice * quantity;
 }

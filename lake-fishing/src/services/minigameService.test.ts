@@ -1,171 +1,297 @@
 import { describe, expect, it } from "vitest";
+import { FISH } from "../data/fish";
 import { GAME_CONFIG } from "../data/gameConfig";
+import type { MinigameConfig } from "../data/gameConfig";
+import type { MinigameResult } from "../types/game";
 import {
-  createMinigameState,
-  getMinigameTimeFraction,
-  isMinigamePromptExpired,
-  isPerfectResult,
-  stepMinigame,
-  type MinigameState
+  applyMinigameStreak,
+  computeMinigameBonus,
+  createTimingRound,
+  evaluateTap,
+  getRoundProgress,
+  getRoundResult,
+  getStreakBonus,
+  hasTapped,
+  indicatorPosition,
+  isMinigameWindowOpen,
+  isWithinWindow,
+  tapRound
 } from "./minigameService";
+import { createNewSave } from "./saveService";
 import { seededRng } from "./testUtils";
 
-const FRAME = 50;
+/**
+ * Binary-friendly config so zone edges are exact in floating point:
+ * zone [0.375, 0.625] and perfect zone [0.4375, 0.5625] when rng() = 0.5.
+ */
+const EXACT: MinigameConfig = {
+  ...GAME_CONFIG.minigame,
+  windowSeconds: 3,
+  indicatorSpeed: 0.5,
+  timingZoneWidth: 0.25,
+  perfectZoneWidth: 0.125
+};
+const exactRound = () => createTimingRound(EXACT, () => 0.5);
 
-/** Play a round with a policy until it ends (or 30 s pass). */
-function play(seed: number, policy: (state: MinigameState, t: number) => boolean): MinigameState {
-  let state = createMinigameState(GAME_CONFIG.minigame, seededRng(seed));
-  for (let t = 0; state.status === "playing" && t < 30_000; t += FRAME) {
-    state = stepMinigame(state, FRAME, policy(state, t));
-  }
-  return state;
-}
-
-/** Follows the green zone's centre. */
-const follow = (s: MinigameState) => s.indicator < s.zoneCenter;
-
-/** Follows it, but only reacts 300 ms late and makes a random wrong choice 25% of the time. */
-function casualPolicy(seed: number) {
-  const rng = seededRng(seed * 31 + 7);
-  let held = false;
-  let nextDecision = 0;
-  return (s: MinigameState, t: number) => {
-    if (t >= nextDecision) {
-      nextDecision = t + 250 + rng() * 300;
-      held = rng() < 0.25 ? rng() < 0.5 : follow(s);
-    }
-    return held;
-  };
-}
-
-describe("minigame config", () => {
-  it("is within the intended 8-12 s / 15 s envelope", () => {
-    expect(GAME_CONFIG.minigame.timeLimitMs).toBeGreaterThanOrEqual(8000);
-    expect(GAME_CONFIG.minigame.timeLimitMs).toBeLessThanOrEqual(12_000);
-    expect(GAME_CONFIG.minigame.promptTimeoutMs).toBe(15_000);
+describe("minigame config (PRD §9)", () => {
+  it("has the intended defaults", () => {
+    const mg = GAME_CONFIG.minigame;
+    expect(mg.windowSeconds).toBe(3);
+    expect(mg.successRatio).toBe(0.2);
+    expect(mg.perfectRatio).toBe(0.5);
+    expect(mg.bonusCap).toBe(25);
+    expect(mg.streakBonusPerPerfect).toBe(0);
+    expect(mg.streakBonusMax).toBeGreaterThanOrEqual(0);
+    expect(mg.indicatorSpeed).toBeGreaterThan(0);
+    expect(mg.perfectZoneWidth).toBeLessThan(mg.timingZoneWidth);
   });
 });
 
-describe("createMinigameState", () => {
-  it("starts playing, in the zone, with the configured progress", () => {
-    const s = createMinigameState(GAME_CONFIG.minigame, seededRng(1));
-    expect(s.status).toBe("playing");
-    expect(s.elapsedMs).toBe(0);
-    expect(s.progress).toBe(GAME_CONFIG.minigame.startProgress);
-    expect(s.inZone).toBe(true);
-    expect(s.indicator).toBe(s.zoneCenter);
-    expect(s.zoneCenter - s.zoneHalfWidth).toBeGreaterThanOrEqual(0);
-    expect(s.zoneCenter + s.zoneHalfWidth).toBeLessThanOrEqual(1);
+describe("createTimingRound", () => {
+  it("keeps the whole timing zone on the bar for any rng value", () => {
+    for (const roll of [0, 0.25, 0.5, 0.75, 0.9999999, 1]) {
+      const round = createTimingRound(GAME_CONFIG.minigame, () => roll);
+      expect(round.zoneStart).toBeGreaterThanOrEqual(0);
+      expect(round.zoneEnd).toBeLessThanOrEqual(1);
+      expect(round.zoneEnd - round.zoneStart).toBeCloseTo(GAME_CONFIG.minigame.timingZoneWidth, 12);
+      expect(round.perfectEnd - round.perfectStart).toBeCloseTo(GAME_CONFIG.minigame.perfectZoneWidth, 12);
+      expect(round.perfectStart).toBeGreaterThanOrEqual(round.zoneStart);
+      expect(round.perfectEnd).toBeLessThanOrEqual(round.zoneEnd);
+      expect((round.perfectStart + round.perfectEnd) / 2).toBeCloseTo(round.zoneCenter, 12);
+    }
   });
 
-  it("is reproducible from a seed and varies between seeds", () => {
-    const a = createMinigameState(GAME_CONFIG.minigame, seededRng(5));
-    const b = createMinigameState(GAME_CONFIG.minigame, seededRng(5));
-    const c = createMinigameState(GAME_CONFIG.minigame, seededRng(6));
+  it("randomises the zone from the rng and is reproducible from a seed", () => {
+    const a = createTimingRound(GAME_CONFIG.minigame, seededRng(5));
+    const b = createTimingRound(GAME_CONFIG.minigame, seededRng(5));
+    const c = createTimingRound(GAME_CONFIG.minigame, seededRng(6));
     expect(a).toEqual(b);
-    expect(a.zonePhase).not.toBe(c.zonePhase);
+    expect(a.zoneCenter).not.toBe(c.zoneCenter);
+    const spread = new Set(Array.from({ length: 50 }, (_, i) => createTimingRound(GAME_CONFIG.minigame, seededRng(i)).zoneCenter.toFixed(3)));
+    expect(spread.size).toBeGreaterThan(30);
+  });
+
+  it("starts with no tap and a window of windowSeconds", () => {
+    const round = createTimingRound(GAME_CONFIG.minigame, seededRng(1));
+    expect(round.tap).toBeNull();
+    expect(hasTapped(round)).toBe(false);
+    expect(round.windowMs).toBe(3000);
+    expect(getRoundResult(round)).toBe("none");
   });
 });
 
-describe("stepMinigame", () => {
-  it("holding raises the indicator, releasing lowers it, both clamp to 0..1", () => {
-    let s = createMinigameState(GAME_CONFIG.minigame, seededRng(1));
-    const start = s.indicator;
-    s = stepMinigame(s, 100, true);
-    expect(s.indicator).toBeCloseTo(start + GAME_CONFIG.minigame.reelPerSecond * 0.1, 6);
-    s = stepMinigame(s, 5000, true);
-    expect(s.indicator).toBe(1);
-    s = stepMinigame(createMinigameState(GAME_CONFIG.minigame, seededRng(1)), 3000, false);
-    expect(s.indicator).toBe(0);
+describe("indicatorPosition", () => {
+  const round = exactRound();
+  it("sweeps 0 -> 1 -> 0 at the configured speed", () => {
+    expect(indicatorPosition(round, 0)).toBe(0);
+    expect(indicatorPosition(round, 1000)).toBe(0.5);
+    expect(indicatorPosition(round, 2000)).toBe(1);
+    expect(indicatorPosition(round, 2500)).toBe(0.75);
+    expect(indicatorPosition(round, 3000)).toBe(0.5);
+    expect(indicatorPosition(round, 4000)).toBe(0);
+    expect(indicatorPosition(round, 4500)).toBe(0.25);
   });
 
-  it("fills while in the zone and drains outside it", () => {
-    let s = createMinigameState(GAME_CONFIG.minigame, seededRng(1));
-    const p0 = s.progress;
-    s = stepMinigame(s, 100, s.indicator < s.zoneCenter);
-    expect(s.inZone).toBe(true);
-    expect(s.progress).toBeGreaterThan(p0);
-    const out = stepMinigame(createMinigameState(GAME_CONFIG.minigame, seededRng(1)), 2000, true);
-    expect(out.inZone).toBe(false);
-    const before = out.progress;
-    expect(stepMinigame(out, 500, true).progress).toBeLessThan(before);
-  });
-
-  it("is deterministic and independent of how frames are sliced", () => {
-    const start = createMinigameState(GAME_CONFIG.minigame, seededRng(9));
-    const big = stepMinigame(start, 1000, true);
-    let small = start;
-    for (let i = 0; i < 20; i++) small = stepMinigame(small, 50, true);
-    expect(big.indicator).toBeCloseTo(small.indicator, 9);
-    expect(big.progress).toBeCloseTo(small.progress, 9);
-    expect(big.elapsedMs).toBe(1000);
-  });
-
-  it("does not mutate the previous state and ignores non-positive dt", () => {
-    const start = createMinigameState(GAME_CONFIG.minigame, seededRng(2));
-    const snapshot = JSON.stringify(start);
-    stepMinigame(start, 100, true);
-    expect(JSON.stringify(start)).toBe(snapshot);
-    expect(stepMinigame(start, 0, true)).toBe(start);
-    expect(stepMinigame(start, -50, true)).toBe(start);
-    expect(stepMinigame(start, Number.NaN, true)).toBe(start);
-  });
-
-  it("freezes a finished round", () => {
-    const done = play(1, follow);
-    expect(done.status).toBe("success");
-    expect(stepMinigame(done, 1000, true)).toBe(done);
-  });
-
-  it("times out as a fail at the time limit", () => {
-    const s = stepMinigame(createMinigameState(GAME_CONFIG.minigame, seededRng(3)), 60_000, false);
-    expect(s.status).toBe("fail");
-    expect(s.elapsedMs).toBeGreaterThanOrEqual(GAME_CONFIG.minigame.timeLimitMs);
-    expect(s.elapsedMs).toBeLessThan(GAME_CONFIG.minigame.timeLimitMs + FRAME);
-    expect(getMinigameTimeFraction(s)).toBe(1);
-  });
-
-  it("success needs a handful of seconds, not an instant win", () => {
-    const done = play(4, follow);
-    expect(done.status).toBe("success");
-    expect(done.elapsedMs).toBeGreaterThan(4000);
-    expect(done.elapsedMs).toBeLessThan(GAME_CONFIG.minigame.timeLimitMs);
-  });
-});
-
-describe("minigame outcomes", () => {
-  it("a player who follows the zone always wins", () => {
-    for (let seed = 1; seed <= 100; seed++) expect(play(seed, follow).status).toBe("success");
-  });
-
-  it("a player who never holds always loses", () => {
-    for (let seed = 1; seed <= 100; seed++) expect(play(seed, () => false).status).toBe("fail");
-  });
-
-  it("a player who holds forever always loses", () => {
-    for (let seed = 1; seed <= 100; seed++) expect(play(seed, () => true).status).toBe("fail");
-  });
-
-  it("a delayed, error-prone casual player wins most rounds", () => {
-    let wins = 0;
-    const n = 200;
-    for (let seed = 1; seed <= n; seed++) {
-      if (play(seed, casualPolicy(seed)).status === "success") wins++;
+  it("stays on the bar and treats negative / junk time as 0", () => {
+    for (let t = -500; t < 20_000; t += 137) {
+      const p = indicatorPosition(round, t);
+      expect(p).toBeGreaterThanOrEqual(0);
+      expect(p).toBeLessThanOrEqual(1);
     }
-    expect(wins / n).toBeGreaterThan(0.8);
-  });
-
-  it("perfect only for a win", () => {
-    expect(isPerfectResult(play(1, follow))).toBe(true);
-    expect(isPerfectResult(play(1, () => false))).toBe(false);
-    expect(isPerfectResult(createMinigameState(GAME_CONFIG.minigame, seededRng(1)))).toBe(false);
+    expect(indicatorPosition(round, -100)).toBe(0);
+    expect(indicatorPosition(round, Number.NaN)).toBe(0);
   });
 });
 
-describe("bite prompt timeout", () => {
-  it("expires after 15 seconds", () => {
-    expect(isMinigamePromptExpired(1000, 1000 + 14_999)).toBe(false);
-    expect(isMinigamePromptExpired(1000, 1000 + 15_000)).toBe(true);
-    expect(isMinigamePromptExpired(1000, 500)).toBe(false); // clock went backwards
+describe("evaluateTap boundaries", () => {
+  const round = exactRound();
+  // zone 0.375..0.625 at 750..1250 ms (going out); perfect 0.4375..0.5625 at 875..1125 ms
+  it.each([
+    [0, "miss"],
+    [749, "miss"],
+    [750, "success"], // zone start edge counts
+    [874, "success"],
+    [875, "perfect"], // perfect start edge counts
+    [1000, "perfect"],
+    [1125, "perfect"], // perfect end edge counts
+    [1126, "success"],
+    [1250, "success"], // zone end edge counts
+    [1251, "miss"],
+    [2000, "miss"]
+  ])("outbound pass: tap at %i ms is %s", (elapsed, expected) => {
+    expect(evaluateTap(round, elapsed)).toBe(expected);
+  });
+
+  it("the return pass counts too (indicator ping-pongs)", () => {
+    expect(evaluateTap(round, 2749)).toBe("miss"); // 0.6255
+    expect(evaluateTap(round, 2750)).toBe("success"); // 0.625
+    expect(evaluateTap(round, 2875)).toBe("perfect"); // 0.5625
+    expect(evaluateTap(round, 3000)).toBe("perfect"); // 0.5, last instant of the window
+  });
+
+  it("anything outside the window is a miss", () => {
+    expect(evaluateTap(round, 3001)).toBe("miss");
+    expect(evaluateTap(round, -1)).toBe("miss");
+    expect(evaluateTap(round, Number.NaN)).toBe("miss");
+    expect(isWithinWindow(round, 0)).toBe(true);
+    expect(isWithinWindow(round, 3000)).toBe(true);
+    expect(isWithinWindow(round, 3001)).toBe(false);
+    expect(isWithinWindow(round, -1)).toBe(false);
+  });
+
+  it("is never a worse result for a tap nearer the centre (perfect <= success <= miss distance)", () => {
+    const rank = { perfect: 0, success: 1, miss: 2 } as const;
+    const r = createTimingRound(GAME_CONFIG.minigame, seededRng(3));
+    for (let t = 0; t <= 3000; t += 7) {
+      const d = Math.abs(indicatorPosition(r, t) - r.zoneCenter);
+      const result = evaluateTap(r, t);
+      if (d <= GAME_CONFIG.minigame.perfectZoneWidth / 2 - 1e-9) expect(rank[result]).toBe(0);
+      else if (d <= GAME_CONFIG.minigame.timingZoneWidth / 2 - 1e-9) expect(rank[result]).toBe(1);
+      else if (d > GAME_CONFIG.minigame.timingZoneWidth / 2 + 1e-9) expect(rank[result]).toBe(2);
+    }
+  });
+
+  it("a perfect and a success are reachable in every default round (zone anywhere on the bar)", () => {
+    for (let i = 0; i <= 100; i++) {
+      const r = createTimingRound(GAME_CONFIG.minigame, () => i / 100);
+      const results = new Set<string>();
+      for (let t = 0; t <= 3000; t += 5) results.add(evaluateTap(r, t));
+      expect(results.has("perfect"), `roll ${i / 100}`).toBe(true);
+      expect(results.has("success")).toBe(true);
+    }
+  });
+});
+
+describe("only the first tap counts", () => {
+  it("tapRound stores the first tap and ignores every later one", () => {
+    const round = exactRound();
+    const first = tapRound(round, 1000);
+    expect(first).toMatchObject({ result: "perfect", counted: true });
+    expect(hasTapped(first.round)).toBe(true);
+    expect(first.round.tap).toEqual({ elapsedMs: 1000, result: "perfect" });
+
+    const second = tapRound(first.round, 100); // would have been a miss
+    expect(second.counted).toBe(false);
+    expect(second.result).toBe("perfect");
+    expect(second.round).toBe(first.round);
+    expect(getRoundResult(second.round)).toBe("perfect");
+  });
+
+  it("a first tap that misses cannot be corrected by a second one", () => {
+    const miss = tapRound(exactRound(), 100);
+    expect(miss).toMatchObject({ result: "miss", counted: true });
+    const retry = tapRound(miss.round, 1000);
+    expect(retry).toMatchObject({ result: "miss", counted: false });
+    expect(evaluateTap(miss.round, 1000)).toBe("miss"); // evaluateTap also honours the stored tap
+  });
+
+  it("does not mutate the round it was given", () => {
+    const round = exactRound();
+    tapRound(round, 1000);
+    expect(round.tap).toBeNull();
+  });
+});
+
+describe("window helpers", () => {
+  it("opens for the last windowSeconds of the countdown", () => {
+    expect(isMinigameWindowOpen(3001)).toBe(false);
+    expect(isMinigameWindowOpen(3000)).toBe(true);
+    expect(isMinigameWindowOpen(1)).toBe(true);
+    expect(isMinigameWindowOpen(0)).toBe(false);
+    expect(isMinigameWindowOpen(-5)).toBe(false);
+  });
+
+  it("reports progress through the window", () => {
+    const round = exactRound();
+    expect(getRoundProgress(round, 0)).toBe(0);
+    expect(getRoundProgress(round, 1500)).toBe(0.5);
+    expect(getRoundProgress(round, 9000)).toBe(1);
+    expect(getRoundProgress(round, -5)).toBe(0);
+  });
+});
+
+describe("computeMinigameBonus", () => {
+  // Independent expectation in integer arithmetic: ceil(price * 0.5) = ceil(price / 2), ceil(price * 0.2) = ceil(price / 5).
+  const expected = (price: number, result: MinigameResult) =>
+    result === "perfect" ? Math.min(25, Math.ceil(price / 2)) : result === "success" ? Math.min(25, Math.ceil(price / 5)) : 0;
+
+  it("is min(cap, ceil(sellPrice x ratio)) for every fish and every result", () => {
+    for (const fish of FISH) {
+      for (const result of ["perfect", "success", "miss", "none"] as const) {
+        const bonus = computeMinigameBonus(fish, result);
+        expect(bonus, `${fish.id} ${result}`).toBe(expected(fish.sellPrice, result));
+        expect(bonus).toBeLessThanOrEqual(25);
+        expect(bonus).toBeGreaterThanOrEqual(0);
+        expect(Number.isInteger(bonus)).toBe(true);
+      }
+    }
+  });
+
+  it("known values", () => {
+    const price = (id: string) => FISH.find((f) => f.id === id)!;
+    expect(computeMinigameBonus(price("fish_carp"), "perfect")).toBe(4); // 8 * 0.5
+    expect(computeMinigameBonus(price("fish_carp"), "success")).toBe(2); // ceil(1.6)
+    expect(computeMinigameBonus(price("fish_catfish"), "success")).toBe(3); // ceil(2.4)
+    expect(computeMinigameBonus(price("fish_koi"), "perfect")).toBe(25); // 25 exactly = cap
+    expect(computeMinigameBonus(price("fish_koi"), "success")).toBe(10);
+    expect(computeMinigameBonus(price("fish_lake_guardian"), "perfect")).toBe(25); // 250 -> capped
+    expect(computeMinigameBonus(price("fish_lake_guardian"), "success")).toBe(25); // 100 -> capped
+    expect(computeMinigameBonus(price("fish_crucian_carp"), "success")).toBe(1); // 5 * 0.2 = 1, not 2
+  });
+
+  it("a miss or no tap gives nothing", () => {
+    for (const fish of FISH) {
+      expect(computeMinigameBonus(fish, "miss")).toBe(0);
+      expect(computeMinigameBonus(fish, "none")).toBe(0);
+    }
+  });
+
+  it("respects a lowered cap and degenerate config", () => {
+    const koi = FISH.find((f) => f.id === "fish_koi")!;
+    expect(computeMinigameBonus(koi, "perfect", { ...GAME_CONFIG.minigame, bonusCap: 10 })).toBe(10);
+    expect(computeMinigameBonus(koi, "perfect", { ...GAME_CONFIG.minigame, bonusCap: 0 })).toBe(0);
+    expect(computeMinigameBonus(koi, "perfect", { ...GAME_CONFIG.minigame, perfectRatio: -1 })).toBe(0);
+    expect(computeMinigameBonus(koi, "perfect", { ...GAME_CONFIG.minigame, perfectRatio: Number.NaN })).toBe(0);
+    expect(computeMinigameBonus({ sellPrice: -5 }, "perfect")).toBe(0);
+  });
+
+  it("never exceeds the cap even with absurd ratios", () => {
+    const absurd = { ...GAME_CONFIG.minigame, perfectRatio: 100, successRatio: 100 };
+    for (const fish of FISH) {
+      expect(computeMinigameBonus(fish, "perfect", absurd)).toBeLessThanOrEqual(25);
+      expect(computeMinigameBonus(fish, "success", absurd)).toBeLessThanOrEqual(25);
+    }
+  });
+});
+
+describe("perfect streak", () => {
+  it("perfect adds one; success, miss and none reset", () => {
+    let save = createNewSave(1);
+    save = applyMinigameStreak(save, "perfect");
+    save = applyMinigameStreak(save, "perfect");
+    expect(save.minigame.perfectStreak).toBe(2);
+    for (const result of ["success", "miss", "none"] as const) {
+      expect(applyMinigameStreak(save, result).minigame.perfectStreak, result).toBe(0);
+    }
+    expect(applyMinigameStreak(save, "perfect").minigame.perfectStreak).toBe(3);
+  });
+
+  it("is pure, and returns the same save when nothing changes", () => {
+    const save = createNewSave(1);
+    expect(applyMinigameStreak(save, "miss")).toBe(save);
+    const next = applyMinigameStreak(save, "perfect");
+    expect(save.minigame.perfectStreak).toBe(0);
+    expect(next).not.toBe(save);
+  });
+
+  it("converts to a capped bonus", () => {
+    const cfg = { streakBonusPerPerfect: 0.05, streakBonusMax: 0.2 };
+    expect(getStreakBonus(0, cfg)).toBe(0);
+    expect(getStreakBonus(2, cfg)).toBeCloseTo(0.1, 12);
+    expect(getStreakBonus(4, cfg)).toBeCloseTo(0.2, 12);
+    expect(getStreakBonus(400, cfg)).toBe(0.2);
+    expect(getStreakBonus(-3, cfg)).toBe(0);
+    expect(getStreakBonus(Number.NaN, cfg)).toBe(0);
+    expect(getStreakBonus(1_000)).toBe(0); // shipped config: off
   });
 });
