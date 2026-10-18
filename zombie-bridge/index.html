@@ -943,7 +943,7 @@ function genDepth(d) {
 }
 // The node object for an id (generating procedural depths on demand), or null for an unknown id.
 function nodeDef(id) {
-  if (NODE_CACHE[id]) return NODE_CACHE[id];
+  if (NODE_CACHE[id]) { const q = NODE_CACHE[id]; if (q.depth >= 5) genDepth(q.depth + 1); return q; }   // a node's `next` is filled in when the next depth is generated: make sure it exists
   const m = /^p(\d{1,3})[ab]?$/.exec(id || '');
   if (!m) return null;
   genDepth(+m[1] + 1);
