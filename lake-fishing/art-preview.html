@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pixel Art Preview (dev)</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #151a28; color: #dfe6f2; font: 13px/1.4 system-ui, sans-serif; }
+      main { max-width: 430px; margin: 0 auto; padding: 8px; }
+      h2 { font-size: 14px; margin: 18px 0 6px; color: #9fb2d8; }
+      #scene-wrap { position: relative; width: 100%; height: 480px; border: 2px solid #2b3550; background: #000; }
+      #scene { display: block; image-rendering: pixelated; }
+      #hud { position: absolute; left: 6px; top: 6px; background: rgba(0, 0, 0, 0.55); padding: 2px 6px; font: 11px monospace; color: #fff; }
+      .row { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+      button { background: #26304a; color: #dfe6f2; border: 1px solid #3a4770; padding: 4px 8px; font: inherit; border-radius: 3px; }
+      button.on { background: #4a63a8; }
+      #fish { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+      .card { background: #1d2438; border: 1px solid #2b3550; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+      .card .imgs { display: flex; gap: 6px; align-items: center; }
+      .card .bg2 { background: #e9e2cf; padding: 2px; }
+      .card img, .icons img { image-rendering: pixelated; display: block; }
+      .name { font-size: 11px; }
+      #icons { display: flex; flex-wrap: wrap; gap: 10px; }
+      .icons-item { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10px; background: #1d2438; padding: 6px; }
+      .light { background: #e9e2cf; padding: 4px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h2>Lake scene (390x480 css px)</h2>
+      <div id="scene-wrap"><canvas id="scene"></canvas><div id="hud"></div></div>
+      <div class="row" id="tod-btns"></div>
+      <div class="row" id="phase-btns"></div>
+      <div class="row" id="rarity-btns"></div>
+      <h2>Fish (normal on dark / normal on light / silhouette)</h2>
+      <div id="fish"></div>
+      <h2>Icons</h2>
+      <div id="icons"></div>
+    </main>
+    <script type="module" src="/src/art/preview.ts"></script>
+  </body>
+</html>
