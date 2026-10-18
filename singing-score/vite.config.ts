@@ -44,6 +44,9 @@ export default defineConfig({
         globPatterns: ['**/*.{js,mjs,css,html,svg,png,ico,json,wasm,woff2}'],
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         navigateFallback: 'index.html',
+        // The Pages site also hosts other apps under this origin (/robot/zombie-bridge/). Without this, this app's service
+        // worker answers their page loads with its own index.html, whose relative assets 404 -> a blank page.
+        navigateFallbackDenylist: [/\/zombie-bridge\//],
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,
