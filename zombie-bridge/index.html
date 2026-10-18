@@ -633,8 +633,8 @@ const rint = (a, b) => Math.floor(rnd(a, b + 1));
 // ---------------------------------------------------------------- constants
 const ROAD = 4;          // half width of the deck
 const BULLET_SPEED = 42;
-// Round 5 (owner): squad cap raised; every soldier is drawn (MAXVIS = cap). Logic owns TUNE.maxSquad and keeps it <= MAXVIS.
-const MAXZ = 900, MAXB = 1200, MAXP = 1400, MAXVIS = 100, SP = 0.62;
+// Round 5 (owner): squad cap raised. Round 8: there is no cap any more (TUNE.maxSquad 1e7 is a sanity ceiling); MAXVIS bounds the drawn figures.
+const MAXZ = 900, MAXB = 1200, MAXP = 1400, MAXVIS = 216, SP = 0.62;   // round 8: MAXVIS is the most FIGURES ever drawn (see UNITS), not soldiers
 const STEP = 1 / 60, MAX_STEPS = 4;   // fixed simulation step and the catch-up cap per rendered frame
 
 // Every balance number lives here (read at use time, so tests can override them through __zb.TUNE before prepare()).
@@ -646,7 +646,7 @@ const TUNE = {
   hpPerStage: 0.5,                // ... ordinary zombies +0.5 hp per step (fractions are rolled per zombie) ...
   stagePow: 0.9,                  // ... where a stage's step count is (stage-1)^stagePow
   stageMul: [3.55, 2.1, 2.5],     // trim of the far-end horde growth (`ramp`) per stage; the last entry covers every later stage
-  stageHp: [1.4, 1.09, 0.98, 1.2, 1.16],       // extra zombie hp factor per stage (campaign tuning: counts are capped by MAXZ, so late stages get tougher, not more numerous); the last entry covers every later stage
+  stageHp: [1.48, 1.07, 1.03, 2.1, 5.6],       // extra zombie hp factor per stage (campaign tuning: counts are capped by MAXZ, so late stages get tougher, not more numerous); the last entry covers every later stage
   early: 0.35, rampPow: 2, ramp: 13, hpRamp: 15.5, bruteRamp: 6,   // along the bridge (position p = 0..1): size x (early + ramp*p^rampPow), hp x (1 + hpRamp*p^rampPow), brute count likewise
   count: { open: 3, wall: 50, blob: 30, line: 20, swarm: 24, runners: 20 },
   bruteBase: 3, brutePerStage: 1, bruteHp: 10, bruteHpPerStage: 4,
@@ -663,12 +663,12 @@ const TUNE = {
   battNeed: 6, battNeedPerStage: 6,
   shieldSecs: 4,
   crateRecruits: 8,               // soldiers that come with every gun crate (so a guns-only route still grows the squad)
-  maxSquad: 100, mulChance: 0.3,   // squad size cap; chance that a good gate (after the first few) is a x2 gate
+  maxSquad: 1e7, mulChance: 0.3,   // squad size cap; chance that a good gate (after the first few) is a x2 gate
   // --- mech
   splashR2: 3.4, splashDmg: 0.4,  // shells: blast radius squared and damage fraction
   mechDmg: 1.4, mechDmgPerStage: 0.6, mechCd: 0.62,
   // --- boss: hp = bossHp*stage + bossDpsSecs * (squad damage per second that can land on it)
-  bossHp: 220, bossDpsSecs: 11.5, bossDist: 26, bossSpeed: 1.3, bossSpeedPerStage: 0.1,   // bossDist: how far ahead it appears
+  bossHp: 220, bossDpsSecs: 12.2, bossDist: 26, bossSpeed: 1.3, bossSpeedPerStage: 0.1,   // bossDist: how far ahead it appears
   knockMax: 1.4,                  // top knock-back speed (u/s); zombies walk 1-1.7, so a heavy push stalls them, never reverses them
   hordeJitter: 0.25,              // every horde is released at x(1 +- this) of its planned size
   bossKnock: 0,                   // fraction of a gun's knock that moves the boss back (0: bosses are immune; >0 let shotguns stall it forever)
@@ -681,13 +681,17 @@ const TUNE = {
   starCoins: 40,                  // win bonus = stars x this x (1 + coinStage*(stage-1))
   loseCoinShare: 0.5,             // a lost run still banks this share of its coins
   critBase: 0.08, critPerLuck: 0.03, critMul: 2,
-  squadMilestones: [10, 25, 50], squadMilestoneCoins: 1,   // coins = milestone x this
+  squadMilestones: [10, 25, 50, 100, 200, 400], squadMilestoneCoins: 1,   // coins = milestone x this
   frenzyMul: 1.4, frenzySecs: 4, splitExtra: 2, splitDmg: 0.3, splitSecs: 5,   // power-ups: fire rate x1.4 / two extra pellets (each at 0.3 of the normal damage)
   dropBrute: 0.3, dropShield: 0.08, dropOther: 0.004, dropChain: 4, dropMagnet: 9,   // drop chances; a drop within dropMagnet units drifts to the squad
   // --- round 3: hazards and new zombies
   barrelChance: 0.7, barrelHp: 5, barrelR: 3.2, barrelDmg: 4, barrelCap: 20, barrelBoss: 0.5,   // a barrel blast hurts at most barrelCap zombies (so it never wipes a dense horde)
   exBase: 0.03, exStage: 0.012, exMax: 0.08, exploderR: 1.8, exploderDmg: 2, exploderCap: 6,   // exploder zombies: share of a horde, blast radius, blast damage (flat: it stops chaining once zombies have more hp than this)
   shBase: 0.03, shStage: 0.015, shMax: 0.12, shieldSlope: 0.5, shieldHp: 1.3, shieldBreak: 4,   // shield zombies: share, how off-axis a bullet must be to get past (|dx| of its direction), hp factor
+  // --- round 8: growth limits for unlimited squads
+  deepHp: 0.46, deepGrow: 1.04, deepRef: 350, deepSizePow: 0.7, bossDeepSecs: 1.35,   // procedural depths also scale with the squad they start with: x clamp((entry / deepRef) ^ deepSizePow, 0.5, 4), so big snowballs meet tougher zombies and a weak squad an easier level; bossDeepSecs: longer boss fights from depth 6 on   // round 8: zombie hp factor of the procedural depths (6+), x deepGrow per further depth, on top of stageHp's last entry
+  mulCapBase: 40, mulCapPerDepth: 10, mulTail: 0.15,   // a x2 gate doubles up to C = base + perDepth x depth soldiers; above C only mulTail of the rest is added (no exponential blow-up)
+  gateWMax: 6, gateShotBase: 24, gateShotPerDepth: 4,  // a heavy bullet counts as at most gateWMax hits on a gate / battery; a gate can be shot up by at most base + perDepth x depth
   // --- round 7: obstacles (lane-footprint blocks on the deck; see the round 7 obstacle contract)
   splitMargin: 0.6, splitDense: 1.3, splitObsW: 0.8,   // split: half-width of the median wall (a fork uses 0.45); dense side hordes; footprint width of a side obstacle (leaves a gap >= obsMinGap in a side)
   obsOn: 1,                       // 0 = no obstacles at all (A/B switch for tests and balance runs)
@@ -757,13 +761,39 @@ const UPGRADES = [
 //   ~100; document it). Losses take one soldier at a time: a zombie reaching a 100-figure costs 1 soldier, and the
 //   formation recomposes. Events: unitMerge { tier, count } when figures of a tier are formed (presentation animates the
 //   merge), unitSplit { tier } when a higher-tier figure breaks back down.
-const UNIT_TIERS = [1, 100];
-// RANKS: lifetime soldiers recruited (SAVE.recruited, every soldier gained from gates, crates, drops, carry-over excluded)
-//   decides the rank: rank index = floor(recruited / 1000), capped at the last entry (元帥; beyond it the badge shows ★n).
-//   Each rank adds a permanent damage bonus (logic owns the per-rank value; suggested +2 %). G.rank = { idx, name, next }
-//   (next = soldiers still needed). Event rankUp { idx, name, bonus } when a promotion happens (presentation shows the
-//   ceremony; logic emits it right away, or queues it to the result screen if mid-run, its call; document it).
+const UNIT_TIERS = [1, 100, 1000];
+//   (round 8 logic, owner revision) TIERS 1, 100, 1000. Composition: floor(n / 1000) thousand-figures, floor((n % 1000) / 100) hundred-figures and
+//   n % 100 singles, so 2,345 = 2 + 3 + 45. Bound: at most UNIT_TOPCAP = 100 thousand-figures are drawn; beyond 100,000 soldiers their number stays 100 and
+//   each one stands for more than 1000 (f.w says how many; 1e6 soldiers = 100 figures of 10,000). So at most 100 + 9 + 99 = 208 figures are ever drawn
+//   (MAXVIS 216). Each figure: { mesh, x, z, cd, tier (index into UNIT_TIERS), w }, sum(w) = G.squad.
+//   Damage: a figure's shot deals w x the per-soldier damage; a w > 1 bullet hits the zombies around its impact one soldier-hit each (damage is
+//   shared out over up to 24 neighbours, so a hundred- or thousand-figure still clears a crowd), gates / the battery count it as at most TUNE.gateWMax hits.
+//   Losses: any contact costs ONE soldier (the loss is taken from the singles first; when no single is left a hundred / thousand figure splits:
+//   bus unitSplit { tier: the broken tier, count: figures it became }); an obstacle costs a whole figure (w soldiers). When figures of a lower tier
+//   add up to a higher one they merge: bus unitMerge { tier, count: figures formed }.
+//   (agreed with the front end) tier in the events is the weight value (100 / 1000), idx the index into UNIT_TIERS, both events carry x, z (the merge point /
+//   the broken figure); the `shot` event has wt = the shooter's w; bullets carry their shooter's weight in the per-bullet array bwt (also __zb.fxBul.bwt).
+//   FORMATION: figures are spaced UNIT_SPACE x SP = 1 / 1.5 / 2.1 (the drawn scale of the tiers); a tier group has its own rows and as many columns as fit in the
+//   width of a row of singles; G.formHalf / G.formDepth = half width and front-to-last-row depth of the layout; every figure has ox / oz, its offset from (G.x, G.z).
+//   A top (thousand) figure's w can exceed 1000 above 100,000 soldiers (UNIT_TOPCAP 100 figures).
+// RANKS (owner revision): decided by the CURRENT squad size, live, reset every stage (it starts at the entry squad, silently).
+//   k = floor(G.squad / 1000). k = 0: no rank. k >= 1: idx = min(k - 1, 16), name = RANKS[idx] (1000 = 二等兵 ... 17000 = 元帥); beyond 17000 the badge is
+//   元帥 with ★(k - 17) (name carries the star text). The rank DROPS when the squad falls below a threshold. cls = the outfit class of the rank, used by the
+//   front end for the thousand-figures: 0 士兵 (idx 0-2), 1 士官 (3-6), 2 尉官 (7-9), 3 校官 (10-12), 4 將官 (13-16); sub = idx - first idx of the class
+//   (insignia stars). G.rank = { k, idx, name, cls, sub, stars, bonus, next } (k 0: idx -1, name '', cls -1; next = soldiers still needed for rank k + 1).
+//   rankOf(squad) is the pure helper (also __zb.rankOf). Events, fired IMMEDIATELY mid-run (no queue) when k changes while G.phase is run / boss:
+//   rankUp { idx, name, cls, sub, k, bonus } on a promotion, rankDown { idx, name, cls, sub, k } on a demotion (a jump of several levels is one event).
+//   Damage bonus (logic): +2 % damage per rank level up to 元帥 (k = 17, +34 %), then +0.5 % per star, at most +60 %; applied live (rankBonus(k)) and gone on demotion.
 const RANKS = ['二等兵', '一等兵', '上等兵', '下士', '中士', '上士', '士官長', '少尉', '中尉', '上尉', '少校', '中校', '上校', '少將', '中將', '上將', '元帥'];
+const RANK_CLS_FIRST = [0, 3, 7, 10, 13];                       // first RANKS index of each outfit class
+const rankClsOf = idx => { let c = 0; for (let i = 0; i < RANK_CLS_FIRST.length; i++) if (idx >= RANK_CLS_FIRST[i]) c = i; return c; };
+const rankBonus = k => Math.min(0.6, 0.02 * Math.min(k, 17) + 0.005 * Math.max(0, k - 17));
+function rankOf(squad) {
+  const k = Math.max(0, Math.floor((squad || 0) / 1000)), next = (k + 1) * 1000 - Math.max(0, Math.floor(squad || 0));
+  if (k < 1) return { k: 0, idx: -1, name: '', cls: -1, sub: 0, stars: 0, bonus: 0, next };
+  const idx = Math.min(k - 1, RANKS.length - 1), cls = rankClsOf(idx), stars = Math.max(0, k - RANKS.length);
+  return { k, idx, name: RANKS[idx] + (stars ? ' ★' + stars : ''), cls, sub: idx - RANK_CLS_FIRST[cls], stars, bonus: rankBonus(k), next };
+}
 // GOOGLE LOGIN (outside claude.ai only): the cloud layer gets a second provider. In the claude.ai viewer (window.claude)
 //   the provider stays 'claude' (db capability). On the standalone site (GitHub Pages) it is 'firebase' when
 //   FIREBASE_CONFIG is filled in: Firebase Auth with the Google provider, the save in Firestore at saves/{uid} (one doc,
@@ -772,6 +802,19 @@ const RANKS = ['二等兵', '一等兵', '上等兵', '下士', '中士', '上�
 //   cloudSignIn() / cloudSignOut() (Google popup, falling back to redirect) and emits authState { provider, signedIn,
 //   name, photo } on every change; cloudSync keeps its meaning. Signed out on the standalone site = local save only.
 const FIREBASE_CONFIG = null;   // the owner pastes the Firebase web config object here (public identifiers, not secrets)
+//   (round 8 logic) PROVIDER DESIGN. The cloud layer is one state machine (merge policy mergeSaves, debounce 1.5 s, epoch resets, one onSnapshot, remote saves
+//   deferred while a run is on, error states) over a document reference with get() / set() / onSnapshot() - both providers just supply that reference:
+//   - 'claude'   window.claude is present (the artifact viewer): the db capability, data/users/<id>/save, exactly as in round 6.
+//   - 'firebase' no window.claude and a config (FIREBASE_CONFIG, or the test hook window.__FIREBASE_CONFIG_OVERRIDE): the compat SDK (app, auth, firestore 10.12.2 from
+//                gstatic) is loaded lazily by script tags (a window.firebase that is already there - preloaded or a test stub - is used as is), Google sign-in via
+//                cloudSignIn() (popup; redirect when the popup is blocked / unsupported or in an iOS standalone web app), cloudSignOut(), onAuthStateChanged starts or stops
+//                the sync; the doc is saves/{uid} holding the plain SAVE object (fits firestore.rules: doc id = uid, < 40 top-level fields, nodes < 2000).
+//   - none       state stays 'off', G.cloud.provider null. The Firebase SDK is NEVER loaded when window.claude exists.
+//   G.cloud = { state, lastSyncAt, user, provider, account }: account = { name, photo } or null; signed out on the standalone site = state 'local' (local save only;
+//   a reset made while signed out does not travel). bus authState { provider, signedIn, name, photo, error? } on every auth change (the claude provider reports
+//   signedIn once the viewer identity is known). Firestore error codes map like the claude ones: permission-denied -> 'error' for the visit (no retry loop),
+//   unauthenticated -> 'local', unavailable / deadline-exceeded / aborted ... -> one retry then 'pending', resource-exhausted -> 30 s back-off, 'pending'.
+//   __zb.cloudSignIn() / cloudSignOut() (promises; bus 'cloudSignIn' / 'cloudSignOut' do the same), __zb.cloud.provider().
 
 // ---------------------------------------------------------------- round 7 contract: world map, scenes, split routes
 // Owner (round 7): (1) a world map with branching routes, (2) new scenes beyond the bridge, (3) real in-stage splits.
@@ -802,10 +845,10 @@ const SCENES = {
 const MAP = [
   { id: 'n1',  depth: 1, name: '新手橋',   scene: 'bridge',  next: ['n2'],         diffMul: 1,    coinMul: 1,    x: 0.50, y: 0.92 },
   { id: 'n2',  depth: 2, name: '雙岔路',   scene: 'bridge',  next: ['n3a', 'n3b'], diffMul: 1,    coinMul: 1,    x: 0.50, y: 0.76 },
-  { id: 'n3a', depth: 3, name: '市區街道', scene: 'city',    next: ['n4a'],        diffMul: 0.97, coinMul: 1.35, x: 0.28, y: 0.60 },
-  { id: 'n3b', depth: 3, name: '港口碼頭', scene: 'harbor',  next: ['n4b'],        diffMul: 0.96, coinMul: 1,    x: 0.72, y: 0.60 },
-  { id: 'n4a', depth: 4, name: '地下隧道', scene: 'tunnel',  next: ['n5'],         diffMul: 1.03, coinMul: 1.35, x: 0.26, y: 0.42 },
-  { id: 'n4b', depth: 4, name: '林間公路', scene: 'forest',  next: ['n5'],         diffMul: 1.0,  coinMul: 1,    x: 0.74, y: 0.42 },
+  { id: 'n3a', depth: 3, name: '市區街道', scene: 'city',    next: ['n4a'],        diffMul: 1.2,  coinMul: 1.35, x: 0.28, y: 0.60 },
+  { id: 'n3b', depth: 3, name: '港口碼頭', scene: 'harbor',  next: ['n4b'],        diffMul: 1.0, hpMul: 1.72, coinMul: 1,    x: 0.72, y: 0.60 },
+  { id: 'n4a', depth: 4, name: '地下隧道', scene: 'tunnel',  next: ['n5'],         diffMul: 1.6,  coinMul: 1.35, x: 0.26, y: 0.42 },
+  { id: 'n4b', depth: 4, name: '林間公路', scene: 'forest',  next: ['n5'],         diffMul: 1.55, hpMul: 1.75, coinMul: 1,    x: 0.74, y: 0.42 },
   { id: 'n5',  depth: 5, name: '終局高架', scene: 'highway', next: ['p6'],         diffMul: 1,    coinMul: 1.2,  x: 0.50, y: 0.24 },
 ];
 // OBSTACLES (round 7 step 3). Events { type: 'obstacle', kind, x, z, w, d, hp, max, dead, flash, row } in G.events (and __zb.levelObstacles); they have
@@ -828,7 +871,7 @@ const MAP = [
 //   mapSelect{id} is handled synchronously (the node is prepared, G.node set, before bus.emit returns).
 // ---- round 7 logic: the node graph (authored MAP + procedural continuation)
 // Logic additions to MAP: n5.next = ['p6'] (the campaign continues). Procedural nodes ('p<depth>' single at even depths, 'p<depth>a' / 'p<depth>b'
-// at odd depths: a = harder (diffMul 1.12, coinMul 1.3), b = easier) are generated on demand, seeded by depth, with x / y laid out like the
+// at odd depths: a = harder (diffMul 1.02, coinMul 1.3), b = easier (0.98); from depth 6 the zombie hp also carries TUNE.deepHp x deepGrow^(depth-6)) are generated on demand, seeded by depth, with x / y laid out like the
 // authored ones (y = 0.92 - 0.17 * (depth - 1): negative from depth 7 on, the map scrolls). Every node object has:
 //   { id, depth, name, scene, next[], diffMul, coinMul, x, y, seed }.
 const NODE_CACHE = {};
@@ -846,7 +889,7 @@ function genDepth(d) {
     const avoid = new Set(parents.map(q => q.scene));
     const pickScene = taken => { const c = pool.filter(sc => !avoid.has(sc) && !taken.includes(sc)); return c[Math.floor(rng() * c.length)] || pool[0]; };
     const mk = (id, scene, a, x) => {
-      const nd = { id, depth: e, name: SCENES[scene].name + '·' + e, scene, next: [], diffMul: a === 'a' ? 1.12 : a === 'b' ? 0.95 : 1, coinMul: a === 'a' ? 1.3 : a === 'b' ? 1 : 1.2, x, y: Math.round((0.92 - 0.17 * (e - 1)) * 1000) / 1000, seed: e + (a === 'a' ? 1000 : a === 'b' ? 2000 : 0) };
+      const nd = { id, depth: e, name: SCENES[scene].name + '·' + e, scene, next: [], diffMul: a === 'a' ? 1.02 : a === 'b' ? 0.98 : 1, coinMul: a === 'a' ? 1.3 : a === 'b' ? 1 : 1.2, x, y: Math.round((0.92 - 0.17 * (e - 1)) * 1000) / 1000, seed: e + (a === 'a' ? 1000 : a === 'b' ? 2000 : 0) };
       NODE_CACHE[id] = nd; return nd;
     };
     let made;
@@ -1011,12 +1054,12 @@ let best = Math.max(SAVE.best, unlockedDepth());
 SAVE.best = best;
 
 const G = {
-  level: best, node: null, scene: 'bridge', spawnAhead: 58, gap: null, phase: 'menu', x: 0, tx: 0, z: 0, L: 200, squad: 1, weapon: 0, weaponLv: 1, kills: 0, time: 0,
+  level: best, node: null, rank: { k: 0, idx: -1, name: '', cls: -1, sub: 0, stars: 0, bonus: 0, next: 1000 }, scene: 'bridge', spawnAhead: 58, gap: null, phase: 'menu', x: 0, tx: 0, z: 0, L: 200, squad: 1, weapon: 0, weaponLv: 1, kills: 0, time: 0,
   events: [], soldiers: [], shield: 0, mech: null, boss: null, shake: 0, dmgMul: 1, safe: false,
   // round 3 (logic writes, presentation reads): combo chain, coins earned this run, timed buffs { id: secondsLeft },
   // the squad this stage started with, and the last stage result (set right before `win` / `gameOver`).
   combo: 0, comboT: 0, comboBest: 0, coins: 0, buffs: {}, entrySquad: 1, result: null,
-  cloud: { state: 'off', lastSyncAt: 0, user: false },   // round 6: cloud save status for the UI (see the cloud layer)
+  cloud: { state: 'off', lastSyncAt: 0, user: false, provider: null, account: null },   // round 6: cloud save status for the UI (see the cloud layer)
   route: [], routeName: '', theme: 'haze',   // round 4: see the lanes-and-routes contract above
   seg: null,                                  // round 4 (logic): the route segment the squad is in now (null before the first step)
   // added by logic in round 3: permanent fire-rate bonus from '射速+' gates (this stage), power-up orbs on the ground (the same
@@ -1463,6 +1506,7 @@ const by = new Float32Array(MAXB).fill(1.25), bt = new Float32Array(MAXB);   // 
 const bs = new Float32Array(MAXB), bph = new Float32Array(MAXB), bvy = new Float32Array(MAXB), btx = new Float32Array(MAXB), btz = new Float32Array(MAXB);   // round 5: speed, phase, vertical speed, lob aim point
 const bw = new Uint8Array(MAXB);   // WEAPONS index that fired the bullet (meaningful when bk === 0; bk 1 = mech shell)
 // pierce bookkeeping: extra zombies a bullet may still pass through, and the zombies it has already hit (so it never hits one twice)
+const bwt = new Float32Array(MAXB);   // round 8: how many soldiers' worth a bullet is (bd is the TOTAL damage = per-soldier x bwt)
 const bpr = new Uint8Array(MAXB), bhn = new Uint8Array(MAXB), bhid = new Int32Array(MAXB * 8);
 let nb = 0;
 // bl[] is the bullet's remaining lifetime in seconds (presentation may fade flames / trails with it); its starting value is WEAPONS[w].range.
@@ -1617,7 +1661,7 @@ function hordeSpec(kind, n, side, p) {
   p = Math.pow(p || 0, TUNE.rampPow);
   const sd = Math.pow(n - 1, TUNE.stagePow);      // stage steps: concave when stagePow < 1 (later stages grow more slowly)
   const f = (1 + sd * TUNE.hordeGrow) * (TUNE.early + TUNE.ramp * p * TUNE.stageMul[Math.min(n, TUNE.stageMul.length) - 1]);
-  const hm = TUNE.stageHp[Math.min(n, TUNE.stageHp.length) - 1] * (G.node ? G.node.diffMul : 1);   // diffMul: one branch harder than the other
+  const hm = TUNE.stageHp[Math.min(n, TUNE.stageHp.length) - 1] * (n > 5 ? TUNE.deepHp * Math.pow(TUNE.deepGrow, n - 6) * clamp(Math.pow(Math.max(1, G.entrySquad) / TUNE.deepRef, TUNE.deepSizePow), 0.5, 4) : 1) * (G.node ? (G.node.hpMul || G.node.diffMul) : 1);   // diffMul: one branch harder than the other (the label); hpMul (optional): the real zombie hp factor when the node's content needs compensating
   const hp = (1 + sd * TUNE.hpPerStage) * (1 + TUNE.hpRamp * p) * hm;
   const C = TUNE.count;
   const fx = sceneFx();
@@ -1685,12 +1729,12 @@ const NODE_PLANS = {
     SEG('straight', { tokens: ['weapon', 'gates', 'line', 'weapon'] }),
     SEG('straight', { tokens: ['wall', 'blob', 'gates'], cycle: ['swarm', 'gates', 'wall', 'brutes', 'gates'] })] },
   // n3b harbor (the easier branch): narrow container lanes; container pairs leave a middle lane on the straights
-  n3b: { extra: 70, segs: [
-    SEG('straight', { tokens: ['weapon', 'wall', 'gates'] }),
-    SEG('narrow', { half: 1.7, tokens: ['blob', 'line', 'bar'] }),
-    SEG('straight', { tokens: ['weapon', 'gates', 'swarm'] }),
-    SEG('narrow', { half: 1.5, tokens: ['swarm', 'bar'] }),
-    SEG('straight', { tokens: ['wall', 'blob', 'weapon', 'gates', 'weapon'], cycle: ['swarm', 'gates', 'wall', 'brutes'] })] },
+  n3b: { extra: 140, segs: [
+    SEG('straight', { tokens: ['weapon', 'wall', 'gates', 'brutes', 'blob'] }),
+    SEG('narrow', { half: 1.7, tokens: ['blob', 'line', 'brutes', 'bar'] }),
+    SEG('straight', { tokens: ['weapon', 'gates', 'swarm', 'wall', 'blob'] }),
+    SEG('narrow', { half: 1.5, tokens: ['swarm', 'blob', 'line', 'brutes', 'bar'] }),
+    SEG('straight', { tokens: ['wall', 'blob', 'weapon', 'gates', 'weapon'], cycle: ['brutes', 'swarm', 'wall', 'gates', 'brutes', 'line', 'blob'] })] },
   // n4a tunnel (harder, richer): dense head-on columns released late (34 ahead), one narrowing, barriers
   n4a: { extra: 40, segs: [
     SEG('straight', { tokens: ['weapon', 'blob', 'gates'] }),
@@ -2057,8 +2101,9 @@ function updateObstacles(dt) {
       const sd = G.soldiers[i];
       if (Math.abs(sd.x - o.x) < hx && Math.abs(sd.z - o.z) < hz) {
         const was = G.soldiers.length;
-        killSoldier(i, 'obstacle', o.kind);
-        if (G.soldiers.length < was) lost++;
+        const wbefore = G.squad;
+        killSoldier(i, 'obstacle', o.kind, sd.w);
+        lost += wbefore - G.squad;
         if (G.phase === 'over') break;
       }
     }
@@ -2254,18 +2299,70 @@ function spawnHorde(spec, z0) {
   }
 }
 
+// Round 8: the drawn formation is a list of FIGURES (see UNITS in the round 8 contract). unitPlan(n) -> how many figures of each tier, and the weight of a top figure.
+const UNIT_TOPCAP = 100;
+function unitPlan(n) {
+  n = Math.max(0, Math.floor(n));
+  const top = Math.floor(n / 1000), nTop = Math.min(top, UNIT_TOPCAP), rest = n - top * 1000;
+  return { c: [rest % 100, Math.floor(rest / 100), nTop], tw: nTop ? top * 1000 / nTop : 0 };
+}
+let unitHint = null;          // the figure a loss happened on: if it has to split, it is the one that does
+// Recomposes G.soldiers for G.squad: removes surplus figures (the hinted one first), merges lower tiers into a higher one (at their centre of mass, bus unitMerge),
+// splits a higher tier into lower ones (at its position, bus unitSplit), adds fresh singles behind the squad for recruits. Figures keep their mesh / cooldown.
 function syncSoldiers() {
-  const want = Math.min(G.squad, MAXVIS);
-  while (G.soldiers.length < want) {
-    const m = new T.Object3D();   // transform carrier only; drawSoldiers() renders every soldier in one instanced draw call
-    const s = { mesh: m, x: G.x + rr(-0.3, 0.3), z: G.z + 1.2, cd: Math.random() * 0.3 };
-    m.position.set(s.x, 0, s.z);
-    scene.add(m);
-    G.soldiers.push(s);
-    if (G.phase !== 'menu') burst(s.x, 1, s.z, 8, [0.3, 0.75, 1], 3, 0.5);
+  const plan = unitPlan(G.squad), cur = [[], [], []];
+  for (const f of G.soldiers) cur[f.tier | 0].push(f);
+  const removed = [[], [], []];
+  for (let t = 0; t < 3; t++) {
+    while (cur[t].length > plan.c[t]) {
+      const hi = unitHint && cur[t].indexOf(unitHint);
+      const f = hi >= 0 && unitHint ? cur[t].splice(hi, 1)[0] : cur[t].pop();
+      G.soldiers.splice(G.soldiers.indexOf(f), 1);
+      scene.remove(f.mesh);
+      removed[t].push(f);
+    }
   }
-  while (G.soldiers.length > want) scene.remove(G.soldiers.pop().mesh);
-  G.dmgMul = G.squad > MAXVIS ? G.squad / MAXVIS : 1;   // round 5: the cap equals MAXVIS (100), so this is always 1; kept for squads loaded above the cap
+  unitHint = null;
+  const make = (t, x, z, quiet) => {
+    const m = new T.Object3D();   // transform carrier only; drawSoldiers() renders every figure in one instanced draw call
+    const f = { mesh: m, x, z, cd: Math.random() * 0.3, tier: t, w: 1 };
+    m.position.set(x, 0, z);
+    scene.add(m);
+    G.soldiers.push(f);
+    cur[t].push(f);
+    if (!quiet && G.phase !== 'menu') burst(x, 1, z, t ? 14 : 8, [0.3, 0.75, 1], 3, 0.5);
+    return f;
+  };
+  for (let t = 2; t >= 1; t--) {                                  // merges: lower figures that vanished add up to new higher ones
+    const need = plan.c[t] - cur[t].length;
+    if (need <= 0) continue;
+    let sx = 0, sz = 0, n = 0;
+    for (let l = 0; l < t; l++) for (const f of removed[l]) { sx += f.x; sz += f.z; n++; }
+    for (let k = 0; k < need; k++) n ? make(t, sx / n + rr(-0.2, 0.2), sz / n, false) : make(t, G.x + rr(-0.3, 0.3), G.z + 1.2, false);
+    if (n) bus.emit('unitMerge', { tier: UNIT_TIERS[t], idx: t, w: UNIT_TIERS[t], x: sx / n, z: sz / n, count: need });
+  }
+  for (let t = 0; t < 2; t++) {                                   // lower figures needed: split from a vanished higher one, else new recruits
+    const need = plan.c[t] - cur[t].length;
+    if (need <= 0) continue;
+    let src = null;
+    for (let h = t + 1; h < 3 && !src; h++) if (removed[h].length) src = removed[h][0];
+    for (let k = 0; k < need; k++) src ? make(t, src.x + rr(-0.5, 0.5), src.z + rr(-0.4, 0.4), true) : make(t, G.x + rr(-0.3, 0.3), G.z + 1.2, false);
+    if (src) bus.emit('unitSplit', { tier: UNIT_TIERS[src.tier], idx: src.tier | 0, w: UNIT_TIERS[src.tier | 0], x: src.x, z: src.z, count: need });
+  }
+  let sorted = true;
+  for (let i = 1; i < G.soldiers.length; i++) if ((G.soldiers[i - 1].tier | 0) < (G.soldiers[i].tier | 0)) { sorted = false; break; }
+  if (!sorted) G.soldiers.sort((p, q) => (q.tier | 0) - (p.tier | 0));      // big figures lead the formation
+  for (const f of G.soldiers) f.w = f.tier === 2 ? plan.tw : UNIT_TIERS[f.tier | 0];
+  G.dmgMul = 1;
+  updateRank();
+}
+// Live rank (see RANKS): recomputed whenever the squad changes; promotions / demotions fire at once while a run is on (silently otherwise).
+function updateRank() {
+  const was = G.rank, now = rankOf(G.squad);
+  G.rank = now;
+  if (now.k === was.k || (G.phase !== 'run' && G.phase !== 'boss')) return;
+  if (now.k > was.k) bus.emit('rankUp', { idx: now.idx, name: now.name, cls: now.cls, sub: now.sub, k: now.k, bonus: now.bonus });
+  else bus.emit('rankDown', { idx: now.idx, name: now.name, cls: now.cls, sub: now.sub, k: now.k });
 }
 // colCap: how many columns fit the road where the squad is (narrow segments and fork sides squeeze the formation, see updateRoute).
 let colCap = 99;
@@ -2274,22 +2371,47 @@ let colCap = 99;
 // fork sides still cap it through colCap.
 function perRow(n) { return Math.min(colCap, n <= 2 ? Math.max(1, n) : Math.min(n < 10 ? 5 : n < 40 ? 6 : n < 80 ? 7 : 8, Math.ceil(Math.sqrt(n * 1.5)))); }
 const laneOf = x => { let b = 0; for (let i = 1; i < 3; i++) if (Math.abs(x - LANES[i]) < Math.abs(x - LANES[b])) b = i; return b; };   // nearest lane index 0..2
-function formationHalf() { return (perRow(G.soldiers.length) - 1) / 2 * SP; }
+// Round 8: figures of a higher tier are drawn bigger (1.5x for a hundred, 2.1x for a thousand, the front end's scale), so the formation spaces them by
+// UNIT_SPACE x SP. Groups (thousands, then hundreds, then singles - the array order) get their own rows; a group uses as many columns as fit in the width a
+// row of singles would have (perRow), so the formation is never wider than before. Each figure gets its offset from the squad centre / front: f.ox, f.oz.
+// G.formHalf is the half width of the widest row, G.formDepth the distance from the front row to the end of the last one (presentation may read both).
+const UNIT_SPACE = [1, 1.5, 2.1];
+const formLay = { half: 0, depth: 0 };
+function layoutFormation() {
+  const fs = G.soldiers, n = fs.length, per = perRow(n);
+  let z = 0, half = 0, i = 0;
+  while (i < n) {
+    const tier = fs[i].tier | 0, sp = SP * UNIT_SPACE[tier];
+    let j = i; while (j < n && (fs[j].tier | 0) === tier) j++;
+    const cnt = j - i, cols = Math.max(1, Math.min(cnt, Math.floor((per - 1) * SP / sp + 1e-6) + 1));
+    const rowsN = Math.ceil(cnt / cols);
+    for (let r = 0; r < rowsN; r++) {
+      const inRow = Math.min(cols, cnt - r * cols);
+      for (let c = 0; c < inRow; c++) { const f = fs[i + r * cols + c]; f.ox = (c - (inRow - 1) / 2) * sp; f.oz = z + r * sp; }
+      half = Math.max(half, (inRow - 1) / 2 * sp);
+    }
+    z += (rowsN - 1) * sp + sp * 1.05;                         // a little more room before the next group
+    i = j;
+  }
+  formLay.half = half; formLay.depth = Math.max(0, z - SP); G.formHalf = half; G.formDepth = formLay.depth;
+}
+function formationHalf() { layoutFormation(); return formLay.half; }
 
 // src: horde kind of the zombie (or 'boss') that caused the death. Safe to call while iterating Z or G.soldiers as long as the
 // caller stops iterating G.soldiers afterwards (the array is spliced / refilled by syncSoldiers).
 // src: 'boss' | 'obstacle' | the horde kind; kind (obstacle only): the obstacle kind, reported as gameOver.kind.
-function killSoldier(i, src, kind) {
+function killSoldier(i, src, kind, count) {
   if (G.safe || G.phase === 'over' || G.phase === 'win') return;
   const s = G.soldiers[i];
   if (!s) return;
+  const lose = Math.max(1, Math.min(G.squad, count | 0 || 1));    // round 8: contact costs ONE soldier (the figure keeps standing while singles remain); an obstacle costs `count` = the figure
   burst(s.x, 1, s.z, 14, [0.9, 0.2, 0.2], 3.5, 0.6);
-  scene.remove(s.mesh);
-  G.soldiers.splice(i, 1);
   bus.emit('soldierDied', { x: s.x, z: s.z });
-  G.squad = Math.max(0, G.squad - 1);
+  G.squad = Math.max(0, G.squad - lose);
   G.shake = Math.max(G.shake, 0.25);
   SFX.thud();
+  if (lose > 1 || (s.tier | 0) === 0) { scene.remove(s.mesh); G.soldiers.splice(i, 1); }       // a whole figure goes (a single, or an obstacle took it)
+  else unitHint = s;
   syncSoldiers();
   if (G.squad <= 0) {
     if (src === 'obstacle') gameOver('小隊全撞上了路障。下次走在障礙之間的空隙。', 'obstacle', kind || '');
@@ -2488,9 +2610,10 @@ function fillBuckets() {
 }
 
 // ph: phase (spray) / drift sign (stream); tx, tz: where a lob should land (default: 14 units straight ahead).
-function spawnBullet(x, z, dx, dz, dmg, kind, w, ph, tx, tz) {
+function spawnBullet(x, z, dx, dz, dmg, kind, w, ph, tx, tz, wt) {
   if (nb >= MAXB) return;
   w = w || 0;
+  bwt[nb] = wt || 1;
   const W = kind ? null : WEAPONS[w];
   bw[nb] = w;
   bpr[nb] = kind ? 0 : W.pierce; bhn[nb] = 0;
@@ -2513,7 +2636,7 @@ function removeBullet(i) {
   fxBulletEnd(i);   // [frontend] one line: end-of-flight FX hook (beam impact, rocket landing)
   const j = --nb;
   if (i === j) return;
-  bw[i] = bw[j];
+  bw[i] = bw[j]; bwt[i] = bwt[j];
   bpr[i] = bpr[j]; bhn[i] = bhn[j];
   for (let q = 0, n = bhn[j]; q < n; q++) bhid[i * 8 + q] = bhid[j * 8 + q];
   bx[i] = bx[j]; bz[i] = bz[j]; bdx[i] = bdx[j]; bdz[i] = bdz[j]; bl[i] = bl[j]; bd[i] = bd[j]; bk[i] = bk[j];
@@ -2521,6 +2644,30 @@ function removeBullet(i) {
   bMesh.setColorAt(i, bk[i] ? tmpC.setRGB(1, 0.5, 0.15) : tmpC.setRGB(1, 0.88, 0.45));
 }
 
+// A bullet standing for w soldiers (round 8) hits `zb` and the zombies around the impact: w single-soldier hits of d each, shared out over the
+// nearest (up to 24, `first` included). A normal bullet is the plain hit.
+const multiTmp = [];
+function strikeZombie(zb, i, x, z, dmg) {
+  const w = bwt[i];
+  if (!(w > 1) || bk[i]) { hitZombie(zb, dmg * critRoll(x, z, dmg)); return; }
+  const d = dmg / w * critRoll(x, z, dmg), R = 0.8 + 0.1 * Math.sqrt(w), r2 = R * R;
+  multiTmp.length = 0; multiTmp.push(zb);
+  const k0 = bIdx(zb.z), reach = Math.ceil(R) + 1;
+  for (let k = k0 - reach; k <= k0 + reach && multiTmp.length < 24; k++) {
+    if (k < 0 || k >= BN) continue;
+    const arr = buckets[k];
+    for (let a = 0; a < arr.length && multiTmp.length < 24; a++) {
+      const q = Z[arr[a]];
+      if (q === zb || q.dying > 0) continue;
+      if ((q.x - zb.x) ** 2 + (q.z - zb.z) ** 2 < r2) multiTmp.push(q);
+    }
+  }
+  const n = multiTmp.length, each = Math.floor(w / n);
+  let extra = w - each * n;
+  for (let a = 0; a < n; a++) { const h = each + (extra > 0 ? 1 : 0); if (extra > 0) extra--; hitZombie(multiTmp[a], d * h); }
+}
+// gate / battery damage of a bullet: its per-soldier damage times at most TUNE.gateWMax soldiers
+const gateDmg = (i, dmg) => bwt[i] > 1 ? dmg / bwt[i] * Math.min(bwt[i], TUNE.gateWMax) : dmg;
 function hitZombie(zb, dmg) {
   if (zb.dying > 0) return;
   zb.hp -= dmg;
@@ -2732,10 +2879,12 @@ function gateHit(e, dmg) {
   bus.emit('gateHit', { e });
   if (e.kind === 'mystery') { e.hits += dmg; if (e.hits >= TUNE.mysteryHits) { e.hits = 0; revealGate(e); } return; }   // shoot a ? gate enough and it shows what it is
   if (e.kind !== 'add') return;                                 // x, rate and level gates cannot be shot up
+  if (e.base === undefined) e.base = e.val;
+  if (e.val - e.base >= TUNE.gateShotBase + TUNE.gateShotPerDepth * G.level) return;      // round 8: a gate can only be shot up so far (unlimited squads)
   e.hits += dmg;
   let changed = false;
   const per = (e.per + TUNE.gatePerSquad * Math.min(G.squad, TUNE.gateSquadRef)) * e.pf;
-  while (e.hits >= per) { e.hits -= per; e.val++; changed = true; }
+  while (e.hits >= per && e.val - e.base < TUNE.gateShotBase + TUNE.gateShotPerDepth * G.level) { e.hits -= per; e.val++; changed = true; }
   if (changed) {
     e.draw(); e.bump = 1;
     SFX.gate(e.val);
@@ -2941,7 +3090,9 @@ function squadSide() {
   return r > l ? 1 : l > r ? -1 : 0;
 }
 // What a gate is worth to the squad (used to break the tie when the squad is exactly on the centre line).
-function gateDelta(e) { return e.kind === 'mul' ? G.squad * (e.val - 1) : e.kind === 'rate' ? G.squad * e.val / 200 : e.kind === 'level' || e.kind === 'mystery' ? 3 : e.val; }
+// A x2 gate (round 8): doubles up to C = mulCapBase + mulCapPerDepth x depth soldiers; above C only mulTail of the rest is added.
+const mulGain = sq => { const C = TUNE.mulCapBase + TUNE.mulCapPerDepth * G.level; return Math.min(sq, C) + TUNE.mulTail * Math.max(0, sq - C); };
+function gateDelta(e) { return e.kind === 'mul' ? mulGain(G.squad) * (e.val - 1) : e.kind === 'rate' ? G.squad * e.val / 200 : e.kind === 'level' || e.kind === 'mystery' ? 3 : e.val; }
 // A '?' gate turns into the gate it was hiding (seeded at level build): e.kind / e.val become the real ones, e.revealed is true, e.hidden keeps the original.
 function revealGate(e) {
   if (e.kind !== 'mystery') return;
@@ -2960,7 +3111,7 @@ function pickGate(e, mate) {
 function passGate(e) {
   if (e.kind === 'mystery') revealGate(e);
   const before = G.squad;
-  if (e.kind === 'mul') G.squad = Math.round(G.squad * e.val);
+  if (e.kind === 'mul') G.squad += Math.round(mulGain(G.squad) * (e.val - 1));
   else if (e.kind === 'rate') { G.rateBonus += e.val / 100; pop('射速 +' + e.val + '%', G.x, 2.6, G.z + 0.5, 'gold'); }
   else if (e.kind === 'level') {
     if (G.weaponLv < WEAPONS[G.weapon].maxLv) { G.weaponLv++; pop(WEAPONS[G.weapon].name + ' Lv' + G.weaponLv + '！', G.x, 2.6, G.z + 0.5, 'gold'); }
@@ -2986,10 +3137,11 @@ function updateSquad(dt) {
   const half = formationHalf();
   { let lo = pLo + half, hi = pHi - half; if (G.gap && G.gap.locked) { lo = Math.max(lo, G.gap.lo + half); hi = Math.min(hi, G.gap.hi - half); } G.tx = lo > hi ? (lo + hi) / 2 : clamp(G.tx, lo, hi); }   // narrow / fork: the road is tighter than the deck
   G.x += (G.tx - G.x) * Math.min(1, dt * 14);
-  const n = G.soldiers.length, per = perRow(n);
+  const n = G.soldiers.length;
+  layoutFormation();
   const W = WEAPONS[G.weapon];
   findTargets();
-  const shotDmg = W.dmg * Math.pow(W.lvMul, G.weaponLv - 1) * G.dmgMul * (1 + upPer('dmg') * upLv('dmg'));
+  const shotDmg = W.dmg * Math.pow(W.lvMul, G.weaponLv - 1) * G.dmgMul * (1 + upPer('dmg') * upLv('dmg')) * (1 + G.rank.bonus);   // rank bonus: live, see RANKS
   const rateMul = (1 + upPer('rate') * upLv('rate') + G.rateBonus) * (G.buffs.frenzy ? TUNE.frenzyMul : 1);
   const extra = G.buffs.split ? TUNE.splitExtra : 0, pellets = W.pellets + extra, spreadW = extra ? Math.max(W.spread, 0.1) : W.spread;   // split: the outermost `extra` pellets of the fan are bonus ones at splitDmg of the normal damage
   const pMid = (pellets - 1) / 2, pMain = (pellets - extra - 1) / 2;
@@ -2997,8 +3149,7 @@ function updateSquad(dt) {
   const running = G.phase === 'run';
   for (let i = 0; i < n; i++) {
     const s = G.soldiers[i];
-    const row = Math.floor(i / per), inRow = Math.min(per, n - row * per), col = i % per;
-    const tx = G.x + (col - (inRow - 1) / 2) * SP, tz = G.z + row * SP;
+    const tx = G.x + s.ox, tz = G.z + s.oz;
     s.x += (tx - s.x) * Math.min(1, dt * 10);
     s.z += (tz - s.z) * Math.min(1, dt * 10);
     let dx = 0, dz = -1, aimX, aimZ;                             // aimX / aimZ: the target's position (a lob lands there)
@@ -3024,10 +3175,10 @@ function updateSquad(dt) {
         const a = (Math.random() - 0.5) * spreadW * 2 + (pellets > 1 ? (p - (pellets - 1) / 2) * spreadW * 0.7 : 0);
         const ca = Math.cos(a), sa = Math.sin(a);
         const rx = dx * ca - dz * sa, rz = dx * sa + dz * ca;
-        spawnBullet(s.x + rx * 0.5 + 0.14, s.z + rz * 0.5, rx, rz, extra && Math.abs(p - pMid) > pMain + 0.01 ? shotDmg * TUNE.splitDmg : shotDmg, 0, G.weapon, i * 1.7, aimX, aimZ);
+        spawnBullet(s.x + rx * 0.5 + 0.14, s.z + rz * 0.5, rx, rz, (extra && Math.abs(p - pMid) > pMain + 0.01 ? shotDmg * TUNE.splitDmg : shotDmg) * s.w, 0, G.weapon, i * 1.7, aimX, aimZ, s.w);
       }
       SFX.shot();
-      bus.emit('shot', { x: s.x, z: s.z, w: G.weapon, lv: G.weaponLv });
+      bus.emit('shot', { x: s.x, z: s.z, w: G.weapon, lv: G.weaponLv, wt: s.w });
     }
   }
   updateObstacles(dt);
@@ -3035,9 +3186,8 @@ function updateSquad(dt) {
   if (G.shield > 0) {
     G.shield -= dt;
     shieldMesh.visible = true;
-    const rows = Math.ceil(n / per);
-    shieldMesh.position.set(G.x, 0.9, G.z + (rows - 1) * SP / 2);
-    const r = Math.max(half, (rows - 1) * SP / 2) + 1.1;
+    shieldMesh.position.set(G.x, 0.9, G.z + formLay.depth / 2);
+    const r = Math.max(half, formLay.depth / 2) + 1.1;
     shieldMesh.scale.setScalar(r * (1 + Math.sin(G.time * 10) * 0.02));
     M.shield.opacity = G.shield < 1 ? 0.16 * (Math.sin(G.time * 30) > 0 ? 1 : 0.3) : 0.16;
   } else shieldMesh.visible = false;
@@ -3129,8 +3279,8 @@ function updateZombies(dt) {
       }
     }
     // contact with the squad / mech: only the buckets around the squad (z within -0.7 .. +rows*SP+0.5 of G.z, mech at G.z+0.6)
-    const rows = Math.ceil(G.soldiers.length / Math.max(1, perRow(G.soldiers.length)));
-    const zmin = G.z - 0.7, zmax = G.z + rows * SP + 0.5;
+    layoutFormation();
+    const zmin = G.z - 0.7, zmax = G.z + formLay.depth + 0.5 + SP;
     const m = G.mech;
     const kLo = Math.max(0, Math.floor(G.z + 10 - zmax) - 1), kHi = Math.min(BN - 1, Math.floor(G.z + 10 - zmin) + 1);
     for (let k = kLo; k <= kHi && G.phase !== 'over'; k++) {
@@ -3232,7 +3382,7 @@ function updateBullets(dt) {
               if (seen) continue;
               if (bhn[i] < 8) bhid[i * 8 + bhn[i]++] = zb.uid;
             }
-            hitZombie(zb, dmg * critRoll(x, z, dmg));
+            strikeZombie(zb, i, x, z, dmg);
             if (kind) splash(x, z, dmg);
             else {
               if (WB.splash) splash(x, z, dmg, WB.splash);
@@ -3252,9 +3402,9 @@ function updateBullets(dt) {
       for (let q = 0; q < na; q++) {                             // gates and batteries count when the path crosses their plane (a lob too, at any height)
         const e = activeE[q];
         if (e.type === 'gate') {
-          if (!e.used && oz > e.z && z <= e.z && Math.abs(x - e.x) < 1.85) { bxHit = x; gateHit(e, dmg); hit = true; break; }
+          if (!e.used && oz > e.z && z <= e.z && Math.abs(x - e.x) < 1.85) { bxHit = x; gateHit(e, gateDmg(i, dmg)); hit = true; break; }
         } else if (!e.done && oz > e.bz && z <= e.bz && Math.abs(x - e.x) < 0.95) {
-          bxHit = x; heroHit(e, dmg); hit = true; break;
+          bxHit = x; heroHit(e, gateDmg(i, dmg)); hit = true; break;
         }
       }
     }
@@ -3311,8 +3461,9 @@ scene.add(bossMesh);
 function startBoss() {
   G.phase = 'boss';
   const W = WEAPONS[G.weapon];
-  const dps = G.squad * W.rate * W.pellets * W.dmg * Math.pow(W.lvMul, G.weaponLv - 1) * W.bossEff + (G.mech ? 2 * (TUNE.mechDmg + G.level * TUNE.mechDmgPerStage) / TUNE.mechCd : 0);
-  const hp = Math.round(TUNE.bossHp * G.level + dps * TUNE.bossDpsSecs);
+  // round 8: the estimate carries every permanent / run-long damage multiplier the squad has (damage and fire-rate upgrades, rate gates, the live rank), so the fight lasts about bossDpsSecs whatever the build
+  const dps = G.squad * W.rate * W.pellets * W.dmg * Math.pow(W.lvMul, G.weaponLv - 1) * W.bossEff * (1 + upPer('dmg') * upLv('dmg')) * (1 + upPer('rate') * upLv('rate') + G.rateBonus) * (1 + G.rank.bonus) + (G.mech ? 2 * (TUNE.mechDmg + G.level * TUNE.mechDmgPerStage) / TUNE.mechCd : 0);
+  const hp = Math.round(TUNE.bossHp * G.level + dps * TUNE.bossDpsSecs * (G.level > 5 ? TUNE.bossDeepSecs : 1));
   G.boss = { x: 0, z: G.z - TUNE.bossDist, hp, max: hp, sp: TUNE.bossSpeed + G.level * TUNE.bossSpeedPerStage, flash: 0, alive: true, deadT: 0, spawnT: 2.5, hitT: 0 };
   bossMesh.visible = true;
   bossMesh.rotation.set(0, 0, 0);
@@ -5697,6 +5848,7 @@ function resetWorld() {
   Object.assign(G, { x: 0, tx: 0, z: 0, squad: entry, weapon: 0, weaponLv: 1, kills: 0, shield: 0, shake: 0, time: 0, safe: false, dmgMul: 1,
     combo: 0, comboT: 0, comboBest: 0, coins: 0, result: null, rateBonus: 0, entrySquad: entry,
     msIdx: TUNE.squadMilestones.filter(m => m <= entry).length });          // only milestones above the entry squad count as "reached this run"
+  G.rank = rankOf(G.squad);
   for (const k in G.buffs) delete G.buffs[k];
   G.drops.length = 0;
   coinAcc = 0; coinT = -9; lastCritT = -9; chainDepth = 0; lastBlockT = -9;
@@ -5755,7 +5907,7 @@ function settleStage(won) {
   let stars = 0, bonus = 0, coins;
   if (won) {
     // 3 stars: 1.5 x the entry squad (at least +10), but never more than 95% of the cap - with squads of 90+ the bar is "nearly full"
-    const thr3 = Math.min(Math.ceil(TUNE.maxSquad * 0.95), Math.max(Math.ceil(entry * 1.5), entry + 10));
+    const thr3 = Math.max(Math.ceil(entry * 1.5), entry + 10);          // round 8: no cap, so 1.5 x the entry (at least +10)
     stars = 1 + (survivors >= entry ? 1 : 0) + (survivors >= thr3 ? 1 : 0);
     bonus = stars * Math.round(TUNE.starCoins * (1 + TUNE.coinStage * (n - 1)) * node.coinMul);
     coins = G.coins + bonus;
@@ -6428,7 +6580,7 @@ const inRun = () => G.phase === 'run' || G.phase === 'boss';
 // CLOUD: internal state. G.cloud = { state, lastSyncAt, user } is what the UI reads; every state change emits bus 'cloudSync' { state, lastSyncAt }
 // (a merge that changed SAVE also emits it, with merged: true, so the UI re-reads SAVE). States: 'off' (no viewer / db / identity), 'local'
 // (db present but this viewer cannot write), 'syncing', 'synced', 'pending' (a write failed transiently, retried on the next save), 'error'.
-const CLOUD = { enabled: false, ref: null, unsub: null, readOk: false, writing: false, again: false, timer: 0, retried: false, dead: false,
+const CLOUD = { agen: 0, fb: null, authUnsub: null, authBusy: Promise.resolve(), enabled: false, ref: null, unsub: null, readOk: false, writing: false, again: false, timer: 0, retried: false, dead: false,
   base: '', queued: null, qTimer: 0, resetPending: false, backoffUntil: 0, gen: 0, ready: Promise.resolve() };
 function cloudState(state, merged) {
   const changed = G.cloud.state !== state;
@@ -6453,13 +6605,17 @@ function cloudMeet(remote) {
 function cloudBackoff(ms) { CLOUD.backoffUntil = Date.now() + ms; }
 function cloudFail(e, phase) {
   const code = e && e.code;
+  if (code === 'permission-denied' || code === 'failed-precondition' || code === 'invalid-argument' || code === 'data-loss') {     // Firestore: refused by the rules (or unusable): 'error' for this visit, no retry loop
+    CLOUD.dead = true; cloudStop(); cloudState('error'); return;
+  }
+  if (code === 'unauthenticated') { CLOUD.dead = true; cloudStop(); cloudState('local'); return; }
   if (code === 'invalid_argument') {                        // a view-only viewer: writes reject, reads look like a missing doc -> local only, no retry loop
     CLOUD.dead = true; cloudStop(); cloudState('local'); return;
   }
   if (code === 'revoked' || code === 'not_granted' || code === 'capability_disabled' || code === 'capability_removed' || code === 'transform_error' || code === 'quota_exceeded') {
     CLOUD.dead = true; cloudStop(); cloudState('error'); return;
   }
-  if (code === 'resource_exhausted') { cloudBackoff(30000); cloudState('pending'); return; }
+  if (code === 'resource_exhausted' || code === 'resource-exhausted') { cloudBackoff(30000); cloudState('pending'); return; }
   // unavailable (and any unknown code): one retry after a short random delay, then 'pending' until the next save
   if (!CLOUD.retried) { CLOUD.retried = true; clearTimeout(CLOUD.timer); CLOUD.timer = setTimeout(cloudRun, 300 + Math.random() * 700); return; }
   CLOUD.retried = false; cloudState('pending');
@@ -6530,27 +6686,128 @@ function cloudApplyQueued() {
   if (needWrite) cloudSchedule();
   return true;
 }
-// Boot (or a test injecting a fake): find db + user, then the first sync. Never blocks the menu or gameplay.
-function cloudInit(c) {
-  CLOUD.gen++; cloudStop();
-  Object.assign(CLOUD, { enabled: false, ref: null, readOk: false, writing: false, again: false, retried: false, dead: false, base: '', queued: null, resetPending: false, backoffUntil: 0 });
-  G.cloud.user = false; cloudState('off');
-  if (!c || typeof c.use !== 'function') return CLOUD.ready = Promise.resolve();
-  CLOUD.enabled = true;
-  const gen = CLOUD.gen;
-  return CLOUD.ready = (async () => {
-    let db = null, user = null;
-    try { db = await c.use('db'); } catch (e) {}
-    try { user = await c.use('user'); } catch (e) {}
-    if (gen !== CLOUD.gen || !db || !user) return;
-    let id = null;
-    try { id = await user.id(); } catch (e) {}
-    if (gen !== CLOUD.gen || !id) return;
-    try { CLOUD.ref = db.doc('data/users/' + id + '/save'); } catch (e) { return; }
-    G.cloud.user = true;
-    await cloudRun();
-  })();
+const cloudAuthEvent = (signedIn, extra) => {
+  const acct = G.cloud.account;
+  bus.emit('authState', Object.assign({ provider: G.cloud.provider, signedIn: !!signedIn, name: acct ? acct.name : '', photo: acct ? acct.photo : '' }, extra || {}));
+};
+const cloudFirebaseConfig = () => window.claude ? null : (window.__FIREBASE_CONFIG_OVERRIDE || FIREBASE_CONFIG);
+function cloudProviderFor(c) {
+  if (c && typeof c.use === 'function') return 'claude';
+  return cloudFirebaseConfig() ? 'firebase' : null;
 }
+// Boot (or a test injecting a fake): pick the provider, then the first sync. Never blocks the menu or gameplay.
+function cloudInit(c) {
+  CLOUD.gen++; CLOUD.agen++; cloudStop();
+  if (CLOUD.authUnsub) { try { CLOUD.authUnsub(); } catch (e) {} CLOUD.authUnsub = null; }
+  Object.assign(CLOUD, { enabled: false, ref: null, readOk: false, writing: false, again: false, retried: false, dead: false, base: '', queued: null, resetPending: false, backoffUntil: 0, fb: null, authBusy: Promise.resolve() });
+  G.cloud.user = false; G.cloud.account = null; G.cloud.provider = null; cloudState('off');
+  const prov = cloudProviderFor(c);
+  if (!prov) return CLOUD.ready = Promise.resolve();
+  G.cloud.provider = prov;
+  return CLOUD.ready = prov === 'claude' ? cloudClaudeStart(c, CLOUD.gen) : cloudFirebaseStart(CLOUD.gen, CLOUD.agen);
+}
+// Provider 'claude': find db + user, the doc data/users/<id>/save.
+async function cloudClaudeStart(c, gen) {
+  CLOUD.enabled = true;
+  let db = null, user = null;
+  try { db = await c.use('db'); } catch (e) {}
+  try { user = await c.use('user'); } catch (e) {}
+  if (gen !== CLOUD.gen || !db || !user) return;
+  let id = null;
+  try { id = await user.id(); } catch (e) {}
+  if (gen !== CLOUD.gen || !id) return;
+  try { CLOUD.ref = db.doc('data/users/' + id + '/save'); } catch (e) { return; }
+  G.cloud.user = true;
+  cloudAuthEvent(true);
+  await cloudRun();
+}
+// Provider 'firebase'.
+function cloudLoadScript(src) {
+  return new Promise((res, rej) => { const el = document.createElement('script'); el.src = src; el.async = false; el.onload = () => res(); el.onerror = () => rej(new Error('load ' + src)); document.head.appendChild(el); });
+}
+async function cloudLoadFirebase() {
+  if (window.firebase && window.firebase.auth && window.firebase.firestore) return window.firebase;
+  const base = 'https://www.gstatic.com/firebasejs/10.12.2/';
+  await cloudLoadScript(base + 'firebase-app-compat.js');
+  await cloudLoadScript(base + 'firebase-auth-compat.js');
+  await cloudLoadScript(base + 'firebase-firestore-compat.js');
+  return window.firebase;
+}
+async function cloudFirebaseStart(gen, agen) {
+  let fb = null;
+  try { fb = await cloudLoadFirebase(); } catch (e) { fb = null; }
+  if (gen !== CLOUD.gen) return;
+  if (!fb) { cloudState('local'); cloudAuthEvent(false, { error: 'sdk' }); return; }       // offline / blocked: the local save keeps working; sign-in tries again
+  let auth, db;
+  try {
+    if (!fb.apps || !fb.apps.length) fb.initializeApp(cloudFirebaseConfig());
+    auth = fb.auth(); db = fb.firestore();
+  } catch (e) { cloudState('local'); cloudAuthEvent(false, { error: 'init' }); return; }
+  CLOUD.fb = { fb, auth, db };
+  try { if (auth.getRedirectResult) { const p = auth.getRedirectResult(); if (p && p.catch) p.catch(() => {}); } } catch (e) {}      // a redirect sign-in lands here; onAuthStateChanged reports the user
+  await new Promise(res => {
+    let first = true;
+    CLOUD.authUnsub = auth.onAuthStateChanged(user => {
+      if (agen !== CLOUD.agen) return;
+      const busy = cloudOnUser(user);
+      CLOUD.authBusy = busy;
+      if (first) { first = false; busy.then(res, res); }
+    }, () => { if (first) { first = false; res(); } });
+  });
+}
+// The signed-in user changed (or was found at boot): stop the old sync, start the new one.
+async function cloudOnUser(user) {
+  CLOUD.gen++; cloudStop();
+  Object.assign(CLOUD, { ref: null, readOk: false, writing: false, again: false, retried: false, dead: false, base: '', queued: null, resetPending: false, backoffUntil: 0, enabled: false });
+  const gen = CLOUD.gen;
+  if (!user) {
+    G.cloud.user = false; G.cloud.account = null;
+    cloudState('local'); cloudAuthEvent(false);
+    return;
+  }
+  G.cloud.user = true;
+  G.cloud.account = { name: user.displayName || user.email || '', photo: user.photoURL || '' };
+  try { CLOUD.ref = CLOUD.fb.db.collection('saves').doc(user.uid); } catch (e) { cloudState('error'); return; }
+  CLOUD.enabled = true;
+  cloudAuthEvent(true);
+  if (gen !== CLOUD.gen) return;
+  await cloudRun();
+}
+// Google sign-in (provider 'firebase' only): popup, redirect when the popup is blocked / unsupported or in an iOS standalone web app. Resolves true when signed in.
+async function cloudSignIn() {
+  if (G.cloud.provider !== 'firebase') return false;
+  await CLOUD.ready;
+  if (!CLOUD.fb) { CLOUD.ready = cloudFirebaseStart(CLOUD.gen, CLOUD.agen); await CLOUD.ready; }        // the SDK did not load earlier: try again now
+  if (!CLOUD.fb) return false;
+  const { fb, auth } = CLOUD.fb, prov = new fb.auth.GoogleAuthProvider();
+  const iosStandalone = (navigator.standalone === true) || (/iPhone|iPad|iPod/.test(navigator.userAgent) && window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  try {
+    if (iosStandalone) { await auth.signInWithRedirect(prov); return true; }
+    await auth.signInWithPopup(prov);
+  } catch (e) {
+    const code = e && e.code;
+    if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
+      try { await auth.signInWithRedirect(prov); return true; } catch (e2) { cloudAuthEvent(false, { error: (e2 && e2.code) || 'redirect' }); return false; }
+    }
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return false;
+    cloudAuthEvent(false, { error: code || 'signin' });
+    return false;
+  }
+  await new Promise(r => setTimeout(r, 0));
+  await CLOUD.authBusy;
+  return !!auth.currentUser;
+}
+async function cloudSignOut() {
+  if (G.cloud.provider !== 'firebase') return false;
+  await CLOUD.ready;
+  if (!CLOUD.fb) return false;
+  try { await CLOUD.fb.auth.signOut(); } catch (e) { return false; }
+  await new Promise(r => setTimeout(r, 0));
+  await CLOUD.authBusy;
+  return true;
+}
+bus.on('cloudSignIn', () => { cloudSignIn(); });
+bus.on('cloudSignOut', () => { cloudSignOut(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && CLOUD.ref && !CLOUD.dead) { clearTimeout(CLOUD.timer); cloudRun(); } });
 window.addEventListener('pagehide', () => { if (CLOUD.ref && !CLOUD.dead) { clearTimeout(CLOUD.timer); cloudRun(); } });
 // Test handle: flush() runs the pending sync now (and applies a queued remote save if the player is not in a run), state() reads G.cloud,
@@ -6568,7 +6825,7 @@ const cloudApi = {
     }
     cloudApplyQueued();
   },
-  state: () => G.cloud.state, _inject: c => cloudInit(c), merge: mergeSaves, internal: CLOUD,
+  state: () => G.cloud.state, _inject: c => cloudInit(c), merge: mergeSaves, internal: CLOUD, provider: () => G.cloud.provider, signIn: cloudSignIn, signOut: cloudSignOut,
 };
 cloudInit(window.claude);
 
@@ -6584,7 +6841,7 @@ function resetSave() {
 }
 // Start stage n from the beginning with its entry squad (same as prepare(n) + startRun()).
 function startStage(n) { prepare(n); startRun(); }
-window.__zb = { mapOpen, mapSelect, mapRefresh, mapNodeStates, MAPV, hordeSpec, sceneFx, levelObstacles, obstacleGaps, makeObstacle, OBS_KINDS, damageObstacle, MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap, gap: G.gap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
+window.__zb = { cloudSignIn, cloudSignOut, mapOpen, mapSelect, mapRefresh, mapNodeStates, MAPV, rankOf, rankBonus, RANKS, UNIT_TIERS, mulGain, gateHit, unitPlan, killSoldier, hordeSpec, sceneFx, levelObstacles, obstacleGaps, makeObstacle, OBS_KINDS, damageObstacle, MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bwt, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap, gap: G.gap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
   stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0), bw: Array.from(bw.subarray(0, nb)), bl: Array.from(bl.subarray(0, nb)), by: Array.from(by.subarray(0, nb)), bt: Array.from(bt.subarray(0, nb)), bs: Array.from(bs.subarray(0, nb)), bx: Array.from(bx.subarray(0, nb)), bz: Array.from(bz.subarray(0, nb)) }),
   perf: () => ({ pr: PR_STEPS[prIdx], steps: PR_STEPS, avg: Perf.avg, fxScale }) };
 })();

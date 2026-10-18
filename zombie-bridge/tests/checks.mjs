@@ -381,7 +381,7 @@ const results = await page.evaluate(() => {
     localStorage.setItem(KEY, '{broken json');
     let threw = false; try { zb.loadSave(); } catch (e) { threw = true; }
     check('save: a corrupt save does not throw, falls back to a fresh one', !threw && zb.SAVE.coins === 0 && zb.entryFor(2) === T.startSquad);
-    localStorage.setItem(KEY, JSON.stringify({ v: 1, coins: -5, best: 2, upgrades: { dmg: 99 }, stages: { 2: { entry: 9999, stars: 9 } } }));
+    localStorage.setItem(KEY, JSON.stringify({ v: 1, coins: -5, best: 2, upgrades: { dmg: 99 }, stages: { 2: { entry: 99999999999, stars: 9 } } }));
     zb.loadSave();
     check('save: out-of-range values are clamped', zb.SAVE.coins === 0 && zb.SAVE.upgrades.dmg === zb.UPGRADES[0].max && zb.entryFor(2) === T.maxSquad && zb.SAVE.nodes[zb.mainId(2)].stars === 3, JSON.stringify(zb.SAVE));
     const setItem = Storage.prototype.setItem;
@@ -444,10 +444,10 @@ const results = await page.evaluate(() => {
     zb.SAVE.nodes[zb.mainId(2)] = { entry: 50, stars: 0 };
     const hi = [playWin(2, 74).r.stars, playWin(2, 75).r.stars, playWin(2, 49).r.stars];
     zb.SAVE.nodes[zb.mainId(2)] = { entry: 94, stars: 0 };
-    const top = [playWin(2, 94).r.stars, playWin(2, 95).r.stars];
-    check('stars: with an entry of 94 the 3-star bar is 95% of the cap (95 survivors), not an impossible 100+', top.join() === '2,3', top.join());
+    const top = [playWin(2, 140).r.stars, playWin(2, 141).r.stars];
+    check('stars (no cap): with an entry of 94 the 3-star bar is 1.5 x the entry = 141 survivors, 2 stars below it', top.join() === '2,3', top.join());
     zb.SAVE.nodes[zb.mainId(2)] = { entry: 50, stars: 0 };
-    check('stars: with the cap at 100 the 3-star bar for entry 50 is 75 survivors (>= 1.5 x entry); below the entry is 1 star', hi.join() === '2,3,1', hi.join());
+    check('stars: the 3-star bar for entry 50 is 75 survivors (>= 1.5 x entry); below the entry is 1 star', hi.join() === '2,3,1', hi.join());
     zb.resetSave();
   }
 
@@ -1113,29 +1113,34 @@ const results = await page.evaluate(() => {
       const ys = []; for (let i = 0; i < 20; i++) { zb.step(1 / 60); const s2 = zb.stats(); if (s2.bullets) ys.push(s2.by[0]); }
       check('by / bt: a mech shell (bk = 1) arcs cosmetically: height rises above 1.25 and the path stays flat', Math.max(...ys) > 1.9 && (() => { const s2 = zb.stats(); return !s2.bullets || Math.abs(s2.bx[0] - 3.9) < 1e-6; })());
     }
-    // squad cap 100
+    // round 8: no squad cap - figures
     {
       zb.resetSave(); zb.startStage(1);
       G.shield = 1e9; G.squad = 99; zb.syncSoldiers();
-      check('cap: the squad cap and the number of drawn soldiers are both 100', T5.maxSquad === 100 && G.soldiers.length === 99);
+      const wsum = () => G.soldiers.reduce((a, f) => a + f.w, 0);
+      check('units: no cap (maxSquad 1e7), 99 soldiers = 99 single figures, damage weights add up to the squad', T5.maxSquad >= 1e6 && G.soldiers.length === 99 && wsum() === 99 && G.soldiers.every(f => f.w === 1 && f.tier === 0));
       G.squad = 100; zb.syncSoldiers();
-      check('cap: all 100 soldiers are drawn and nothing multiplies damage', G.soldiers.length === 100 && G.dmgMul === 1);
+      check('units: 100 soldiers = ONE hundred-figure (w 100, tier 1), nothing else multiplies damage', G.soldiers.length === 1 && G.soldiers[0].w === 100 && G.soldiers[0].tier === 1 && G.dmgMul === 1);
+      G.squad = 2345; zb.syncSoldiers();
+      check('units: 2,345 = 2 thousand-figures + 3 hundred-figures + 45 singles (50 figures), weights add up', G.soldiers.length === 50 && G.soldiers.filter(f => f.w === 1000).length === 2 && G.soldiers.filter(f => f.w === 100).length === 3 && G.soldiers.filter(f => f.w === 1).length === 45 && wsum() === 2345, G.soldiers.length);
       for (const e of G.events) if (e.type === 'gate') e.used = true;
       const wk = G.events.find(e => e.type === 'weapon'); wk.taken = false; G.weapon = 1; G.z = wk.z + 0.3; G.x = G.tx = wk.x; zb.step(1 / 60);
-      check('cap: crates cannot push the squad above 100', G.squad === 100, G.squad);
+      check('crates are not capped any more (recruits are added to 2,345)', G.squad > 2345, G.squad);
       {
-        const rowsFor = n => { G.squad = n; zb.syncSoldiers(); const r = Math.min(G.soldiers.length, 99) && Math.round(zb.formationHalf() * 2 / 0.62) + 1; return r; };
-        const w = [9, 25, 50, 100].map(rowsFor);
-        check('formation: rows widen with the squad (9 -> <=5, 25 -> 6, 50 -> 7, 100 -> 8 per row, ~13 rows for 100)', w[0] <= 5 && w[1] === 6 && w[2] === 7 && w[3] === 8 && Math.ceil(100 / w[3]) <= 13, w.join());
-        G.squad = 100; zb.syncSoldiers(); G.tx = 3.5; for (let i = 0; i < 90; i++) { G.shield = 1e9; zb.step(1 / 60); }
-        check('formation: a squad of 100 in rows of 8 still reaches the side lane (centre in lane 2)', zb.laneOf(G.x) === 2 && G.x + zb.formationHalf() <= 3.56, `x ${G.x.toFixed(2)} half ${zb.formationHalf().toFixed(2)}`);
+        const rowsFor = n => { G.squad = n; zb.syncSoldiers(); return Math.round(zb.formationHalf() * 2 / 0.62) + 1; };
+        const w = [9, 25, 50, 99].map(rowsFor);
+        check('formation: rows widen with the figure count (9 -> <=5, 25 -> 6, 50 -> 7, 99 figures -> 8 per row, ~13 rows)', w[0] <= 5 && w[1] === 6 && w[2] === 7 && w[3] === 8 && Math.ceil(99 / w[3]) <= 13, w.join());
+        G.squad = 99; zb.syncSoldiers(); G.tx = 3.5; for (let i = 0; i < 90; i++) { G.shield = 1e9; zb.step(1 / 60); }
+        check('formation: a wide formation still reaches the side lane (centre in lane 2)', zb.laneOf(G.x) === 2 && G.x + zb.formationHalf() <= 3.56, `x ${G.x.toFixed(2)} half ${zb.formationHalf().toFixed(2)}`);
         G.tx = -3.5; for (let i = 0; i < 90; i++) { G.shield = 1e9; zb.step(1 / 60); }
         check('formation: ... and the other side lane too', zb.laneOf(G.x) === 0, `x ${G.x.toFixed(2)}`);
+        G.squad = 9999; zb.syncSoldiers(); G.tx = 3.5; for (let i = 0; i < 90; i++) { G.shield = 1e9; zb.step(1 / 60); }
+        check('formation: even 9,999 soldiers (9 + 9 + 99 = 117 figures) reach a side lane', G.soldiers.length === 117 && zb.laneOf(G.x) === 2, `${G.soldiers.length} x ${G.x.toFixed(2)}`);
       }
       zb.SAVE.nodes[zb.mainId(2)] = { entry: 100, stars: 0 };
       localStorage.setItem('zombie-bridge-save', JSON.stringify({ v: 1, coins: 0, best: 2, upgrades: {}, stages: { 2: { entry: 999, stars: 0 } } }));
       zb.loadSave();
-      check('cap: an entry squad above the cap loads clamped to 100', zb.entryFor(2) === 100, zb.entryFor(2));
+      check('carry-over has no cap: an entry of 999 loads as 999', zb.entryFor(2) === 999, zb.entryFor(2));
       zb.resetSave();
     }
   }
@@ -1506,6 +1511,139 @@ const results = await page.evaluate(() => {
     const mn = zb.mapNodes();
     check('mapNodes fields: id, state, stars, entry, cleared, x, y, next, name, scene, depth, diffMul, coinMul', mn.every(q => ['id', 'state', 'stars', 'entry', 'cleared', 'x', 'y', 'next', 'name', 'scene', 'depth', 'diffMul', 'coinMul'].every(k => k in q)) && ['locked', 'open', 'cleared'].includes(mn[0].state));
     check('procedural ids: p<d> for a single node (even depth), p<d>a / p<d>b for a two-way branch (odd depth)', zb.nodeDef('p6') && zb.nodeDef('p6').next.join() === 'p7a,p7b' && zb.nodeDef('p7a') && zb.nodeDef('p7b') && zb.nodeDef('p7') === null && zb.nodeDef('p8a') === null);
+    zb.resetSave(); zb.prepareNode('n1');
+  }
+
+
+  // ================================================================ round 8: units (1 / 100 / 1000), growth limits, live ranks
+  {
+    const wsum = () => G.soldiers.reduce((a, f) => a + f.w, 0);
+    const labU = squad => {
+      zb.resetSave(); zb.prepareNode('n2'); zb.start();
+      for (const e of G.events) { if (e.type === 'horde') e.spawned = true; else if (e.type === 'gate') e.used = true; else if (e.type === 'weapon') e.taken = true; else if (e.type === 'hero') e.missed = true; }
+      G.phase = 'boss'; G.squad = squad; zb.syncSoldiers(); G.shield = 0;
+      for (const f of G.soldiers) f.cd = 1e9;
+    };
+    // composition
+    {
+      const P = zb.unitPlan;
+      check('unitPlan: n = 1000 a + 100 b + c (a thousand-, b hundred-figures, c = n % 100 singles); 2,345 -> [45, 3, 2]; 999 -> [99, 9, 0]; 0 -> nothing', JSON.stringify([P(2345).c, P(999).c, P(0).c, P(100).c, P(1000).c]) === JSON.stringify([[45, 3, 2], [99, 9, 0], [0, 0, 0], [0, 1, 0], [0, 0, 1]]));
+      check('unitPlan: the drawn count is bounded - 1e5 -> 100 thousand-figures of weight 1000, 1e6 -> 100 figures of weight 10,000, and never more than 208 figures', P(1e5).c[2] === 100 && P(1e5).tw === 1000 && P(1e6).c[2] === 100 && P(1e6).tw === 10000 && [1e3, 9999, 99999, 123456, 1e7].every(n => { const c = P(n).c; return c[0] + c[1] + c[2] <= 208; }));
+      labU(123456);
+      check('units: 123,456 soldiers = 100 + 4 + 56 figures; weights add up to the squad; the thousand-figures carry the rest', G.soldiers.length === 160 && wsum() === 123456 && G.soldiers.filter(f => f.tier === 2).length === 100 && G.soldiers.filter(f => f.tier === 2).every(f => Math.abs(f.w - 1230) < 1e-9), `${G.soldiers.length} ${wsum()}`);
+      labU(1e5);
+      check('units: 100,000 soldiers draw 100 figures, 1e7 draws 100 as well (a sanity ceiling: maxSquad = 1e7)', G.soldiers.length === 100 && (G.squad = 1e7, zb.syncSoldiers(), G.soldiers.length === 100 && wsum() === 1e7) && zb.TUNE.maxSquad === 1e7);
+      labU(1); check('units: the big figures lead the formation (sorted by tier)', (() => { G.squad = 2345; zb.syncSoldiers(); return G.soldiers.slice(0, 2).every(f => f.tier === 2) && G.soldiers[G.soldiers.length - 1].tier === 0; })());
+    }
+    // merge / split events
+    {
+      labU(99);
+      const mg = [], sp = []; const o1 = listen('unitMerge', mg), o2 = listen('unitSplit', sp);
+      G.squad = 100; zb.syncSoldiers();
+      check('unitMerge { tier: 100, count: 1 } when 99 singles become 100 (one hundred-figure remains, no singles)', mg.length === 1 && mg[0].tier === 100 && mg[0].count === 1 && G.soldiers.length === 1 && G.soldiers[0].w === 100, JSON.stringify(mg));
+      zb.killSoldier(0, 'horde');
+      check('unitSplit { tier: 100, count: 99 } when the last single is gone and a loss takes a soldier from the hundred-figure: 99 singles again, the squad lost exactly 1', sp.length === 1 && sp[0].tier === 100 && sp[0].count === 99 && G.squad === 99 && G.soldiers.length === 99 && wsum() === 99, JSON.stringify(sp));
+      mg.length = 0; G.squad = 1000; zb.syncSoldiers();
+      check('unitMerge { tier: 1000 } for 100 -> 1000 (ten hundred-figures were not drawn: 99 singles -> one thousand-figure)', mg.some(m => m.tier === 1000 && m.count === 1) && G.soldiers.length === 1 && G.soldiers[0].w === 1000, JSON.stringify(mg));
+      zb.killSoldier(0, 'horde'); G.squad = 999;
+      check('unitSplit { tier: 1000 }: a thousand-figure hit with no singles left breaks into 9 hundreds + 99 singles', sp.some(m => m.tier === 1000) && G.squad === 999 && wsum() === 999 && G.soldiers.filter(f => f.w === 100).length === 9, JSON.stringify(sp));
+      o1(); o2();
+    }
+    // losses
+    {
+      labU(250); G.phase = 'run'; G.z = -60;
+      for (let i = 0; i < 40; i++) { G.shield = 0; zb.step(1 / 60); }
+      const f0 = G.soldiers[0];
+      zb.spawnHorde({ kind: 'lab', cx: f0.x, w: 0, d: 0, count: 1, hp: 50 }, f0.z - 0.1);
+      const zz = Z[Z.length - 1]; zz.x = f0.x; zz.z = f0.z; zz.sp = 0;
+      const sq0 = G.squad; zb.step(1 / 60);
+      check('contact with a hundred-figure costs ONE soldier (250 -> 249), the figure keeps its weight, a single is removed', G.squad === sq0 - 1 && G.soldiers[0].w === 100 && wsum() === 249, `${G.squad}`);
+    }
+    // damage weight: one hundred-figure deals what 100 singles deal, a single bullet cleaves a crowd
+    {
+      const dealt = squad => {
+        labU(squad); G.phase = 'run'; G.z = -80; G.weapon = 1; G.shield = 1e9;
+        for (const f of G.soldiers) f.cd = 0;
+        const t = (zb.spawnHorde({ kind: 'lab', cx: G.x, w: 0, d: 0, count: 1, hp: 1e9 }, G.z - 8), Z[Z.length - 1]); t.x = G.x; t.sp = 0; t.hp = 1e9; const h0 = t.hp;
+        for (let i = 0; i < 120; i++) { G.shield = 1e9; zb.step(1 / 60); t.sp = 0; t.x = G.x; t.z = G.z - 8; }
+        return h0 - t.hp;
+      };
+      const a = dealt(100), b = dealt(99) * 100 / 99;
+      check('damage weight: one hundred-figure deals at least what 100 singles deal against ONE target and at most 2.3x (singles lose shots past a lone target)', a > 0 && a / b >= 0.9 && a / b <= 2.3, `${a.toFixed(0)} vs ${b.toFixed(0)}`);
+    }
+    {
+      labU(100); G.phase = 'boss';
+      const crowd = []; for (let i = 0; i < 30; i++) { zb.spawnHorde({ kind: 'lab', cx: 0, w: 0, d: 0, count: 1, hp: 3 }, G.z - 10); const q = Z[Z.length - 1]; q.x = (i % 6) * 0.2 - 0.5; q.z = G.z - 10 - Math.floor(i / 6) * 0.2; q.sp = 0; q.hp = 3; crowd.push(q); }
+      zb.fillBuckets && zb.fillBuckets();
+      zb.step(1 / 60);
+      zb.spawnBullet(0, G.z - 9.5, 0, -1, 100, 0, 0, 0, undefined, undefined, 100);
+      for (let i = 0; i < 6; i++) zb.step(1 / 60);
+      check('a hundred-weight bullet (dmg 100, w 100) kills a crowd: hp-3 zombies around the impact die (>= 20 of 30 from one bullet)', crowd.filter(q => q.hp <= 0 || q.dying > 0).length >= 20, crowd.filter(q => q.hp <= 0 || q.dying > 0).length);
+    }
+    // formation spacing of the big figures, events with positions, bullet weight
+    {
+      labU(23456); G.phase = 'run'; G.z = -80; G.shield = 1e9;
+      for (let i = 0; i < 90; i++) { G.shield = 1e9; zb.step(1 / 60); }
+      const SPx = 0.62, minDist = tier => { const fs = G.soldiers.filter(f => f.tier === tier); let m = 1e9; for (let i = 0; i < fs.length; i++) for (let j = i + 1; j < fs.length; j++) m = Math.min(m, Math.hypot(fs[i].x - fs[j].x, fs[i].z - fs[j].z)); return m; };
+      check('formation spacing: thousand-figures stand >= 2.1 x SP apart, hundred-figures >= 1.5 x SP, singles >= SP (no overlap of the bigger figures)', minDist(2) >= 2.1 * SPx - 0.08 && minDist(1) >= 1.5 * SPx - 0.08 && minDist(0) >= SPx - 0.08, [minDist(2), minDist(1), minDist(0)].map(v => v.toFixed(2)).join('/'));
+      check('formation: never wider than a row of singles would be (23,456 soldiers: half width <= 3.5), G.formHalf / G.formDepth are set', zb.formationHalf() <= (8 - 1) / 2 * SPx + 1e-9 && G.formHalf === zb.formationHalf() && G.formDepth > 0, `${zb.formationHalf()} ${G.formDepth}`);
+      const mg = [], sp = []; const o1 = listen('unitMerge', mg), o2 = listen('unitSplit', sp);
+      G.squad = 23999; zb.syncSoldiers(); G.squad = 24000; zb.syncSoldiers();
+      G.squad = 23999; zb.syncSoldiers();
+      check('unitMerge / unitSplit carry tier (the weight), idx, x, z and count', mg.length >= 1 && sp.length >= 1 && [...mg, ...sp].every(e => (e.tier === 100 || e.tier === 1000) && (e.idx === 1 || e.idx === 2) && typeof e.x === 'number' && typeof e.z === 'number' && e.count >= 1), JSON.stringify([mg[0], sp[0]]));
+      o1(); o2();
+      const sh = []; const o3 = listen('shot', sh);
+      G.squad = 1250; zb.syncSoldiers(); for (const f of G.soldiers) f.cd = 0;
+      zb.step(1 / 60); o3();
+      check('shot events carry wt (the shooter weight); bullets keep it in bwt (also zb.fxBul.bwt)', sh.length > 0 && sh.every(e => e.wt === 1000 || e.wt === 200 || e.wt === 100 || e.wt === 1) && sh.some(e => e.wt === 1000) && zb.fxBul.bwt instanceof Float32Array && zb.fxBul.bwt[0] >= 1, sh.map(e => e.wt).join());
+    }
+    // growth limits
+    {
+      labU(1); G.level = 1;
+      const g1 = zb.mulGain;
+      const Cd = d => T.mulCapBase + T.mulCapPerDepth * d;
+      check('growth: a x2 gate doubles small squads (30 -> +30) but above the cap C = mulCapBase + mulCapPerDepth x depth adds only mulTail of the rest (1000 at depth 1: +C + tail x (1000 - C)); a million adds ~tail x a million', g1(30) === 30 && Math.abs(g1(1000) - (Cd(1) + T.mulTail * (1000 - Cd(1)))) < 1e-9 && g1(1e6) < 1e6 * (T.mulTail + 0.01));
+      G.level = 5; check('growth: the cap grows with the depth (depth 5)', Math.abs(g1(1000) - (Cd(5) + T.mulTail * (1000 - Cd(5)))) < 1e-9 && g1(1000) > (G.level = 1, g1(1000)));
+      zb.prepareNode('n2'); zb.start();
+      const gate = G.events.find(e => e.type === 'gate' && e.kind === 'add');
+      gate.base = undefined; const v0 = gate.val;
+      zb.fxBul.bx; G.level = 2;
+      for (let i = 0; i < 20000; i++) zb.gateHit(gate, 50);
+      check('growth: a gate can be shot up by at most 24 + 4 x depth', gate.val - v0 <= 24 + 4 * 2 && gate.val - v0 >= 8, gate.val - v0);
+    }
+    // boss hp with huge squads
+    {
+      labU(1e6); G.phase = 'run'; G.z = -G.L + 2;
+      zb.step(1 / 60); for (let i = 0; i < 70 && G.phase === 'run'; i++) { G.shield = 1e9; zb.step(1 / 60); }
+      check('boss: with a 1,000,000 squad the boss hp is finite and scales with the dps (hp / dps ~ bossDpsSecs)', G.boss && isFinite(G.boss.hp) && G.boss.hp > 1e6 && G.boss.hp < 1e12, G.boss && G.boss.hp);
+    }
+    // ranks: live, by the current squad
+    {
+      const R = zb.rankOf;
+      check('rankOf: 0-999 no rank; 1000 = 二等兵 (idx 0, cls 0); 2000 = 一等兵; 4000 = 下士 (cls 1, sub 0); 7999 -> 士官長 (idx 6, sub 3); 17000 = 元帥 (idx 16, cls 4, sub 3)', R(0).k === 0 && R(999).idx === -1 && R(1000).name === '二等兵' && R(1000).cls === 0 && R(2000).name === '一等兵' && R(4000).name === '下士' && R(4000).cls === 1 && R(4000).sub === 0 && R(7999).idx === 6 && R(7999).sub === 3 && R(17000).name === '元帥' && R(17000).cls === 4 && R(17000).sub === 3, JSON.stringify([R(1000), R(7999)]));
+      check('rankOf: classes - idx 0-2 士兵(0), 3-6 士官(1), 7-9 尉官(2), 10-12 校官(3), 13-16 將官(4); beyond 17000 the badge is 元帥 ★(k - 17)', [1000, 3000, 4000, 7000, 8000, 10000, 11000, 13000, 14000, 17000].map(n => R(n).cls).join() === '0,0,1,1,2,2,3,3,4,4' && R(18000).name === '元帥 ★1' && R(18000).stars === 1 && R(40000).stars === 23);
+      check('rankOf: next = soldiers still needed for the next rank; bonus +2% per level, +0.5% per star after 元帥, at most +60%', R(1234).next === 766 && R(0).next === 1000 && Math.abs(R(3000).bonus - 0.06) < 1e-9 && Math.abs(R(17000).bonus - 0.34) < 1e-9 && Math.abs(R(18000).bonus - 0.345) < 1e-9 && R(1e6).bonus === 0.6);
+      labU(500); G.phase = 'run';
+      const up = [], dn = []; const o1 = listen('rankUp', up), o2 = listen('rankDown', dn);
+      check('G.rank: a squad of 500 has no rank (k 0, idx -1)', G.rank.k === 0 && G.rank.idx === -1 && G.rank.next === 500);
+      G.squad = 1500; zb.syncSoldiers();
+      check('rankUp { idx, name, cls, sub, k, bonus } fires immediately when the squad crosses 1000 mid-run', up.length === 1 && up[0].idx === 0 && up[0].name === '二等兵' && up[0].cls === 0 && up[0].k === 1 && Math.abs(up[0].bonus - 0.02) < 1e-9 && G.rank.name === '二等兵' && G.rank.next === 500, JSON.stringify(up));
+      G.squad = 4200; zb.syncSoldiers();
+      check('a jump of several ranks is one event (4200 -> 下士, cls 1)', up.length === 2 && up[1].name === '下士' && up[1].cls === 1 && up[1].k === 4);
+      G.squad = 3900; zb.syncSoldiers();
+      check('the rank DROPS with the squad: rankDown { idx, name, cls, sub, k } (4200 -> 3900 = 上等兵)', dn.length === 1 && dn[0].name === '上等兵' && dn[0].k === 3 && G.rank.k === 3 && G.rank.bonus === 0.06, JSON.stringify(dn));
+      G.squad = 3950; zb.syncSoldiers();
+      check('no event while the rank does not change', up.length === 2 && dn.length === 1);
+      G.squad = 900; zb.syncSoldiers();
+      check('falling below 1000 removes the rank (rankDown idx -1) and the bonus', dn.length === 2 && dn[1].idx === -1 && G.rank.k === 0 && G.rank.bonus === 0);
+      o1(); o2();
+      zb.prepareNode('n2'); zb.SAVE.nodes.n2 = { entry: 5500, stars: 0, cleared: false }; zb.prepareNode('n2');
+      check('every stage starts from the entry squad: a 5,500 entry shows rank 5 (中士) at once, no event', G.rank.k === 5 && G.rank.name === '中士', G.rank.name);
+      // the damage bonus is live
+      labU(1000); G.phase = 'run'; G.z = -80; G.weapon = 0; G.shield = 1e9;
+      const rk = G.rank.bonus;
+      check('the damage bonus follows the rank: 1000 soldiers = +2% (shot damage x 1.02)', Math.abs(rk - 0.02) < 1e-9);
+    }
     zb.resetSave(); zb.prepareNode('n1');
   }
 
