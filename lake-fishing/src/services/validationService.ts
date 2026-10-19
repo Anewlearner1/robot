@@ -1,12 +1,40 @@
 import { FISH, isKnownFishId, LEGACY_FISH_ID_MAP } from "../data/fish";
 import { EQUIPMENT } from "../data/equipment";
-import { GAME_CONFIG } from "../data/gameConfig";
+import { GAME_CONFIG, RARITY_ORDER } from "../data/gameConfig";
 import { CURRENT_SAVE_VERSION } from "../types/game";
-import type { FishRarity } from "../types/game";
+import type { FishDefinition, FishRarity } from "../types/game";
+import { GameLogicError } from "./errors";
 
 export interface ValidationIssue {
   code: string;
   message: string;
+}
+
+/**
+ * Problems that would corrupt a save if this fish were settled: a missing id, an unknown rarity,
+ * a sell price that is not a non-negative safe integer (coins must stay integers) or a non-boolean
+ * autoSell flag. Empty list = usable. Accepts `unknown` so it can check data from anywhere.
+ */
+export function getFishDataIssues(fish: unknown): string[] {
+  if (typeof fish !== "object" || fish === null) return ["fish is not an object"];
+  const candidate = fish as Partial<Record<keyof FishDefinition, unknown>>;
+  const issues: string[] = [];
+  if (typeof candidate.id !== "string" || candidate.id === "") issues.push("id must be a non-empty string");
+  if (!RARITY_ORDER.includes(candidate.rarity as FishRarity)) issues.push(`rarity ${String(candidate.rarity)} is not a known rarity`);
+  if (!Number.isSafeInteger(candidate.sellPrice) || (candidate.sellPrice as number) < 0) {
+    issues.push(`sellPrice ${String(candidate.sellPrice)} must be a non-negative integer`);
+  }
+  if (typeof candidate.autoSell !== "boolean") issues.push("autoSell must be a boolean");
+  return issues;
+}
+
+/** Throw a `GameLogicError("INVALID_FISH_DATA")` naming the problems when `fish` is not usable. */
+export function assertValidFish(fish: unknown): asserts fish is FishDefinition {
+  const issues = getFishDataIssues(fish);
+  if (issues.length > 0) {
+    const id = typeof fish === "object" && fish !== null ? String((fish as { id?: unknown }).id) : String(fish);
+    throw new GameLogicError("INVALID_FISH_DATA", `Invalid fish data for ${id}: ${issues.join("; ")}.`);
+  }
 }
 
 export function validateStaticGameData(): ValidationIssue[] {

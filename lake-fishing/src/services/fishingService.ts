@@ -4,7 +4,9 @@ import { GAME_CONFIG, RARITY_ORDER } from "../data/gameConfig";
 import type { MinigameConfig, RodConfig } from "../data/gameConfig";
 import type { FishDefinition, FishRarity, GameSave } from "../types/game";
 import { countDiscoveredFish } from "./encyclopediaService";
+import { GameLogicError } from "./errors";
 import { getStreakBonus } from "./minigameService";
+import { assertValidFish } from "./validationService";
 
 export { RARITY_ORDER };
 
@@ -13,19 +15,48 @@ export type RarityWeights = Record<FishRarity, number>;
 
 const emptyWeights = (): RarityWeights => ({ common: 0, uncommon: 0, rare: 0, epic: 0, legendary: 0 });
 
+/** A usable weight: a finite number above 0. Negative, NaN, +-Infinity and non-numbers count as 0. */
+const validWeight = (value: unknown): number =>
+  typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+
+/** The largest double below 1, so `unit * total` can never reach `total`. */
+const MAX_UNIT = 1 - Number.EPSILON / 2;
+
+/**
+ * One draw from the injected `random()`, clamped into [0, 1). A value that is not a finite number
+ * (NaN, +-Infinity, undefined) is a broken random source and throws `INVALID_RANDOM_VALUE`
+ * instead of silently picking the rarest option.
+ */
+function drawUnit(rng: () => number): number {
+  const value = rng();
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new GameLogicError("INVALID_RANDOM_VALUE", `random() must return a finite number, got ${String(value)}.`);
+  }
+  return Math.min(MAX_UNIT, Math.max(0, value));
+}
+
 /** Rarities available to the player, based on how many distinct fish were discovered. */
 export function getUnlockedRarities(discoveredFishIds: readonly string[]): FishRarity[] {
   const collectionCount = countDiscoveredFish(discoveredFishIds);
   return RARITY_ORDER.filter((rarity) => collectionCount >= GAME_CONFIG.collectionUnlocks[rarity]);
 }
 
-/** Base weights restricted to unlocked rarities and rescaled to total 100. */
-export function getBaseRarityWeights(unlocked: readonly FishRarity[]): RarityWeights {
+/**
+ * Base weights restricted to unlocked rarities and rescaled to total 100. Invalid configured
+ * weights (negative, NaN, +-Infinity) are treated as 0, so such a rarity is never rolled and the
+ * others still total 100. When no unlocked rarity has a valid weight every weight is 0 (and
+ * `pickRarity` then throws `NO_VALID_RARITY_WEIGHTS`). `baseWeights` is injectable for tests.
+ */
+export function getBaseRarityWeights(
+  unlocked: readonly FishRarity[],
+  baseWeights: Readonly<Record<FishRarity, number>> = GAME_CONFIG.rarityWeights
+): RarityWeights {
   const weights = emptyWeights();
-  const total = unlocked.reduce((sum, rarity) => sum + GAME_CONFIG.rarityWeights[rarity], 0);
-  if (total <= 0) return weights;
-  for (const rarity of unlocked) {
-    weights[rarity] = (GAME_CONFIG.rarityWeights[rarity] / total) * 100;
+  const tiers = [...new Set(unlocked)];
+  const total = tiers.reduce((sum, rarity) => sum + validWeight(baseWeights[rarity]), 0);
+  if (!(total > 0)) return weights;
+  for (const rarity of tiers) {
+    weights[rarity] = (validWeight(baseWeights[rarity]) / total) * 100;
   }
   return weights;
 }
@@ -157,15 +188,26 @@ export function getFishingIntervalSeconds(rodLevel: number, config: RodConfig = 
   );
 }
 
-/** Pick a rarity from weights with one rng draw. */
+/**
+ * Pick a rarity from weights with one rng draw: `roll = random() * sum(valid weights)` is walked
+ * through the cumulative weights in `RARITY_ORDER`, so a value exactly on a boundary (e.g. 0.6
+ * with 60/25/11/3.5/0.5) belongs to the next rarity. Weights that are negative, NaN or infinite
+ * count as 0 and are never picked. Throws `GameLogicError("NO_VALID_RARITY_WEIGHTS")`, without
+ * drawing, when no rarity has a valid weight, and `INVALID_RANDOM_VALUE` for a non-finite draw.
+ */
 export function pickRarity(weights: RarityWeights, rng: () => number): FishRarity {
-  const roll = rng() * 100;
+  const valid = RARITY_ORDER.map((rarity) => validWeight(weights[rarity]));
+  const total = valid.reduce((sum, weight) => sum + weight, 0);
+  if (!(total > 0) || !Number.isFinite(total)) {
+    throw new GameLogicError("NO_VALID_RARITY_WEIGHTS", "No rarity has a finite, positive weight; nothing can be rolled.");
+  }
+  const roll = drawUnit(rng) * total;
   let cumulative = 0;
   let lastAvailable: FishRarity = "common";
-  for (const rarity of RARITY_ORDER) {
-    if (weights[rarity] <= 0) continue;
+  for (const [index, rarity] of RARITY_ORDER.entries()) {
+    if (valid[index] <= 0) continue;
     lastAvailable = rarity;
-    cumulative += weights[rarity];
+    cumulative += valid[index];
     if (roll < cumulative) return rarity;
   }
   return lastAvailable; // only reachable through floating-point drift
@@ -198,10 +240,11 @@ export interface FishPickChance {
 export function getFishPickChances(
   rarity: FishRarity,
   baitLevel = 1,
-  targetFishIds: readonly string[] = GAME_CONFIG.bait.targetFishIds
+  targetFishIds: readonly string[] = GAME_CONFIG.bait.targetFishIds,
+  pool: readonly FishDefinition[] = FISH
 ): FishPickChance[] {
   const multiplier = getBaitMultiplier(baitLevel);
-  const candidates = FISH.filter((fish) => fish.rarity === rarity);
+  const candidates = pool.filter((fish) => fish.rarity === rarity);
   const weights = candidates.map((fish) => (targetFishIds.includes(fish.id) ? multiplier : 1));
   const total = weights.reduce((sum, weight) => sum + weight, 0);
   return candidates.map((fish, index) => ({
@@ -214,19 +257,26 @@ export function getFishPickChances(
 /**
  * Pick a fish of this rarity with one rng draw. Fish are weighted 1, except the bait's target
  * fish, which get the bait multiplier; non-target fish stay possible at every bait level.
- * With bait level 1 this is a uniform pick.
+ * With bait level 1 this is a uniform pick. The roll is `random() * sum(weights)` walked through
+ * the cumulative weights in catalogue order (a value exactly on a boundary belongs to the next fish).
+ * `pool` is injectable for tests. Throws `GameLogicError("EMPTY_FISH_POOL")` when the pool has no
+ * fish of this rarity, `INVALID_FISH_DATA` for a candidate that would corrupt a save, and
+ * `INVALID_RANDOM_VALUE` for a non-finite draw (checked after the pool, so an empty pool never
+ * consumes a draw).
  */
 export function chooseFishForRarity(
   rarity: FishRarity,
   rng: () => number = Math.random,
-  baitLevel = 1
+  baitLevel = 1,
+  pool: readonly FishDefinition[] = FISH
 ): FishDefinition {
-  const chances = getFishPickChances(rarity, baitLevel);
+  const chances = getFishPickChances(rarity, baitLevel, GAME_CONFIG.bait.targetFishIds, pool);
   if (chances.length === 0) {
-    throw new Error(`No fish available for rarity: ${rarity}`);
+    throw new GameLogicError("EMPTY_FISH_POOL", `No fish available for rarity: ${rarity}`);
   }
+  for (const entry of chances) assertValidFish(entry.fish);
   const total = chances.reduce((sum, entry) => sum + entry.weight, 0);
-  const roll = Math.min(0.999999999999, Math.max(0, rng())) * total;
+  const roll = drawUnit(rng) * total;
   let cumulative = 0;
   for (const entry of chances) {
     cumulative += entry.weight;

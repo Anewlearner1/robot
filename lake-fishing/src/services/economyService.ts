@@ -33,7 +33,8 @@ export function tryUpgradeEquipment(
   if (cost === null || cost === undefined) {
     return { success: false, reason: "INVALID_LEVEL", coins, level: currentLevel };
   }
-  if (coins < cost) {
+  // A non-finite coin amount (NaN, Infinity) is never enough: it must not produce a NaN balance.
+  if (!Number.isFinite(coins) || coins < cost) {
     return { success: false, reason: "INSUFFICIENT_COINS", coins, level: currentLevel };
   }
   return { success: true, coins: coins - cost, level: currentLevel + 1 };

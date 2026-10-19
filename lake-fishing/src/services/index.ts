@@ -59,6 +59,22 @@ export type {
   RodConfig
 } from "../data/gameConfig";
 
+// --- Errors & data guards -----------------------------------------------------------------
+export {
+  /** Thrown for broken data / contracts (no valid rarity weights, empty fish pool, unknown or invalid fish, non-finite random()); has a `.code`. */
+  GameLogicError
+} from "./errors";
+export type {
+  /** The `.code` values of a `GameLogicError`. */
+  GameLogicErrorCode
+} from "./errors";
+export {
+  /** Problems that would corrupt a save if this fish were settled (empty = usable). */
+  getFishDataIssues,
+  /** Throw `GameLogicError("INVALID_FISH_DATA")` for an unusable fish definition. */
+  assertValidFish
+} from "./validationService";
+
 // --- Catching -----------------------------------------------------------------------------
 export {
   /** Seconds between catches: `Math.max(30, Math.round(90 * (1 - 0.08 * (rodLevel - 1))))`, constants from config. */

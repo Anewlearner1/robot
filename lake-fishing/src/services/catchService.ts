@@ -9,12 +9,15 @@ import type {
 } from "../types/game";
 import { getSalePrice } from "./economyService";
 import { getKnownDiscoveredIds } from "./encyclopediaService";
+import { GameLogicError } from "./errors";
 import { getUnlockedRarities } from "./fishingService";
 import { applyMinigameStreak, computeMinigameBonus } from "./minigameService";
+import { assertValidFish } from "./validationService";
 
 function requireFish(fishId: string): FishDefinition {
   const fish = getFishById(fishId);
-  if (!fish) throw new Error(`Unknown fish id: ${fishId}`);
+  if (!fish) throw new GameLogicError("UNKNOWN_FISH_ID", `Unknown fish id: ${fishId}`);
+  assertValidFish(fish);
   return fish;
 }
 
@@ -47,7 +50,9 @@ export interface ApplyCatchOptions {
  * - the first catch of a species is registered in the encyclopedia;
  * - pity: +1 for a non-legendary catch only if legendary was already unlocked before this
  *   catch, reset to 0 on a legendary.
- * Throws on an unknown fish id.
+ * Throws `GameLogicError("UNKNOWN_FISH_ID")` for an id that is not in the catalogue and
+ * `GameLogicError("INVALID_FISH_DATA")` for a catalogue entry with a bad rarity / price / flag,
+ * before anything is computed.
  */
 export function applyCatch(
   save: GameSave,
