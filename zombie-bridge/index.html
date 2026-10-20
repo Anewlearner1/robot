@@ -330,6 +330,7 @@ h2 { margin: 0; font-weight: 900; font-size: clamp(36px, 11vw, 52px); line-heigh
 .shopc { gap: 12px; }
 .shophead { display: flex; align-items: center; justify-content: space-between; width: 100%; }
 .shophead h2 { font-size: 34px; }
+.upsec { font: 900 13px var(--body); letter-spacing: .2em; color: #8fe9ff; padding: 6px 4px 0; }
 .upl { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; width: 100%; }
 .upi { display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; align-items: center; padding: 9px 12px; background: var(--panel); border-radius: 12px; text-align: left; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
 .upi .nm { font: 900 16px var(--body); color: var(--paper); }
@@ -782,6 +783,18 @@ const UPGRADES = [
   { id: 'shield',  name: '護盾',   desc: '機甲護盾 +1 秒',      per: 1,    max: 5, base: 120, grow: 1.8 },
   { id: 'luck',    name: '幸運',   desc: '金幣 +15%、爆擊率 +3%', per: 0.15, max: 5, base: 150, grow: 1.9 },
 ];
+// ---------------------------------------------------------------- drones: coins buy hovering gun drones, and upgrade them
+// Stored in SAVE.upgrades next to UPGRADES (same id -> level map, same cost rule), so saving, cloud merge and the shop reuse the same paths.
+//   drone: how many drones are owned (each one orbits the squad and shoots the nearest zombie by itself); the others upgrade all drones at once.
+const DRONE_UPS = [
+  { id: 'drone',    name: '購買無人機', desc: '無人機 +1 架',       per: 1,    max: 4, base: 300, grow: 1.9, drone: true },
+  { id: 'dr_dmg',   name: '無人機火力', desc: '無人機傷害 +25%',    per: 0.25, max: 5, base: 160, grow: 1.8, drone: true },
+  { id: 'dr_rate',  name: '無人機射速', desc: '無人機射速 +15%',    per: 0.15, max: 5, base: 160, grow: 1.8, drone: true },
+  { id: 'dr_range', name: '無人機射程', desc: '無人機射程 +1.5 公尺', per: 1.5,  max: 5, base: 140, grow: 1.7, drone: true },
+];
+const ALL_UPS = UPGRADES.concat(DRONE_UPS);
+// drone numbers: damage = droneDmg x stage scale x upgrade; one shot every droneGap / rate seconds; reach = droneRange + range upgrades
+const DRONE = { dmg: 5, stageScale: 0.35, gap: 0.45, range: 9, orbitR: 1.9, height: 3.1, splash: 1.3, splashShare: 0.6 };
 // ---------------------------------------------------------------- round 8 contract: unlimited squad, 100-soldier units, ranks, Google login
 // Owner (round 8): (1) other players bind progress to a Google account, (2) no squad cap: on screen one figure stands for
 //   100 soldiers' damage, (3) a rank system: every 1000 soldiers accumulated is a promotion, (4) brighter scenes.
@@ -1043,7 +1056,7 @@ function resetSaveData() { SAVE.v = 2; SAVE.coins = 0; SAVE.upgrades = {}; SAVE.
 function sanitizeSave(o) {
   const r = { v: 2, coins: toInt(o.coins, 0, 1e9, 0), upgrades: {}, best: toInt(o.best, 1, 999, 1), nodes: {}, cur: 'n1',
     rev: toInt(o.rev, 0, 1e9, 0), updatedAt: toInt(o.updatedAt, 0, 9e15, 0), epoch: toInt(o.epoch, 0, 1e9, 0) };
-  if (o.upgrades && typeof o.upgrades === 'object') for (const u of UPGRADES) r.upgrades[u.id] = toInt(o.upgrades[u.id], 0, u.max, 0);
+  if (o.upgrades && typeof o.upgrades === 'object') for (const u of ALL_UPS) r.upgrades[u.id] = toInt(o.upgrades[u.id], 0, u.max, 0);
   const rec = st => ({ entry: toInt(st.entry, 1, TUNE.maxSquad, TUNE.startSquad), stars: toInt(st.stars, 0, 3, 0), cleared: !!st.cleared });
   if (o.nodes && typeof o.nodes === 'object') {                       // v2
     for (const k of Object.keys(o.nodes).slice(0, 400)) { const st = o.nodes[k]; if (NODE_ID_RE.test(k) && st && typeof st === 'object') r.nodes[k] = rec(st); }
@@ -1319,7 +1332,8 @@ const SGEO = fxChBuild((() => {
 
 // ---- round 8: figure tiers. A figure stands for w soldiers: 1 (rifleman), 100 (百人隊: gold trim, a banner) or 1000 (千人隊: the commander,
 // whose OUTFIT follows the current rank class G.rank.cls 0..4). Built from the same part-list builder, one merged geometry per look.
-const FX_TIER_SCALE = [1, 1.5, 2.1];
+const FIG_K = 0.65;                          // PM: every figure is drawn (and spaced, see UNIT_SPACE) at this share of its old size; the camera stays put
+const FX_TIER_SCALE = [1, 1.5, 2.1].map(v => v * FIG_K);
 const fxTierOf = w => w >= 1000 ? 2 : w >= 100 ? 1 : 0;
 const FX_CLS = [
   { name: '士兵', acc: 0x7aa05a }, { name: '士官', acc: 0xd9453f }, { name: '尉官', acc: 0x4f86e8 }, { name: '校官', acc: 0xe3a42a }, { name: '將官', acc: 0xffd75e },
@@ -2508,7 +2522,7 @@ const laneOf = x => { let b = 0; for (let i = 1; i < 3; i++) if (Math.abs(x - LA
 // UNIT_SPACE x SP. Groups (thousands, then hundreds, then singles - the array order) get their own rows; a group uses as many columns as fit in the width a
 // row of singles would have (perRow), so the formation is never wider than before. Each figure gets its offset from the squad centre / front: f.ox, f.oz.
 // G.formHalf is the half width of the widest row, G.formDepth the distance from the front row to the end of the last one (presentation may read both).
-const UNIT_SPACE = [1, 1.5, 2.1];
+const UNIT_SPACE = [1, 1.5, 2.1].map(v => v * FIG_K);
 const formLay = { half: 0, depth: 0 };
 function layoutFormation() {
   const fs = G.soldiers, n = fs.length, per = perRow(n);
@@ -2815,7 +2829,7 @@ function hitZombie(zb, dmg) {
 
 // ---------------------------------------------------------------- round 3 systems: rewards, buffs, drops, upgrades
 const upLv = id => SAVE.upgrades[id] | 0;
-const upgradeById = id => UPGRADES.find(u => u.id === id);
+const upgradeById = id => ALL_UPS.find(u => u.id === id);
 function upgradeCost(id) { const u = upgradeById(id); return u ? Math.round(u.base * Math.pow(u.grow, upLv(id))) : Infinity; }
 // Buys one level: false if the id is unknown, already maxed, or the wallet is short. SAVE is written before the event fires.
 function buyUpgrade(id) {
@@ -3308,7 +3322,7 @@ function updateSquad(dt) {
         const a = (Math.random() - 0.5) * spreadW * 2 + (pellets > 1 ? (p - (pellets - 1) / 2) * spreadW * 0.7 : 0);
         const ca = Math.cos(a), sa = Math.sin(a);
         const rx = dx * ca - dz * sa, rz = dx * sa + dz * ca;
-        spawnBullet(s.x + rx * 0.5 + 0.14, s.z + rz * 0.5, rx, rz, (extra && Math.abs(p - pMid) > pMain + 0.01 ? shotDmg * TUNE.splitDmg : shotDmg) * s.w, 0, G.weapon, i * 1.7, aimX, aimZ, s.w);
+        spawnBullet(s.x + rx * 0.5 * FIG_K + 0.14 * FIG_K, s.z + rz * 0.5 * FIG_K, rx, rz, (extra && Math.abs(p - pMid) > pMain + 0.01 ? shotDmg * TUNE.splitDmg : shotDmg) * s.w, 0, G.weapon, i * 1.7, aimX, aimZ, s.w);
       }
       SFX.shot();
       bus.emit('shot', { x: s.x, z: s.z, w: G.weapon, lv: G.weaponLv, wt: s.w });
@@ -5908,7 +5922,7 @@ bus.on('shot', d => {
 });
 function shotFx(d) {
   const w = d.w >= 0 && d.w < WEAPONS.length ? d.w : G.weapon, W = WEAPONS[w], c = WRGB[w];
-  const x = d.x + 0.14, z = d.z + MUZZLE[w], gl = (1 + 0.25 * ((d.lv || 1) - 1)) * (d.wt >= 1000 ? 1.8 : d.wt >= 100 ? 1.35 : 1);   // 百人隊 / 千人隊 fire bigger flashes
+  const x = d.x + 0.14 * FIG_K, z = d.z + MUZZLE[w] * FIG_K, gl = (1 + 0.25 * ((d.lv || 1) - 1)) * (d.wt >= 1000 ? 1.8 : d.wt >= 100 ? 1.35 : 1);   // 百人隊 / 千人隊 fire bigger flashes
   switch (W.fx) {
     case 'pellet':
       flashAt(x - 0.06, 1.28, z, 0.1, 1.2 * gl, 0.75 * gl, 0.4); flashAt(x + 0.06, 1.28, z - 0.1, 0.08, 1, 0.6, 0.3);
@@ -6632,7 +6646,9 @@ function renderShop(fresh) {
   const coins = SAVE.coins | 0;
   $r('shopCoins').textContent = String(coins);
   shopList.textContent = '';
-  for (const u of UPGRADES) {
+  let dronesHead = false;
+  for (const u of ALL_UPS) {
+    if (u.drone && !dronesHead) { dronesHead = true; const h = document.createElement('li'); h.className = 'upsec'; h.textContent = '無人機'; shopList.appendChild(h); }
     const lv = upLv(u.id), maxed = lv >= u.max, cost = maxed ? 0 : upCost(u, lv), can = !maxed && coins >= cost;
     const li = document.createElement('li'); li.className = 'upi'; li.dataset.id = u.id;
     const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = u.name;
@@ -6658,7 +6674,7 @@ function buy(id, btn) {
 bus.on('upgradeBought', d => {
   shopBought = true;
   SFX.buyBig(d.lv | 0);
-  const u = UPGRADES.find(x => x.id === d.id);
+  const u = ALL_UPS.find(x => x.id === d.id);
   if (u && !shopEl.hidden && shopToast.animate) {            // weighty feedback: the new total floats up
     shopToast.children[0].textContent = upTotalText(u, d.lv | 0);
     shopToast.children[1].textContent = u.name + ' Lv ' + (d.lv | 0) + (d.lv >= u.max ? '　滿級！' : '');
@@ -6727,6 +6743,72 @@ window.addEventListener('keyup', e => {
 // ---------------------------------------------------------------- loop
 let last = performance.now();
 // Simulation only: no DOM writes besides HUD text, no rendering. Safe to call many times per frame (fast-forward tests).
+
+// ---------------------------------------------------------------- drones (see DRONE_UPS): orbit the squad, each one shoots the nearest zombie in reach on its own
+const drones = [];
+const droneGeo = { body: new T.BoxGeometry(0.46, 0.14, 0.46), arm: new T.BoxGeometry(0.9, 0.04, 0.06), rotor: new T.CylinderGeometry(0.2, 0.2, 0.015, 14), eye: new T.BoxGeometry(0.12, 0.08, 0.12), beam: new T.BoxGeometry(0.06, 0.06, 1) };
+const droneMat = { body: new T.MeshLambertMaterial({ color: 0x39434f }), arm: new T.MeshLambertMaterial({ color: 0x1d242c }), rotor: new T.MeshBasicMaterial({ color: 0xbfe9ff, transparent: true, opacity: 0.4 }),
+  eye: new T.MeshBasicMaterial({ color: 0x5cf0ff }), beam: new T.MeshBasicMaterial({ color: 0x8ff3ff, transparent: true, opacity: 0.85 }) };
+function makeDrone(i) {
+  const g = new T.Group(), body = new T.Mesh(droneGeo.body, droneMat.body), eye = new T.Mesh(droneGeo.eye, droneMat.eye);
+  eye.position.set(0, -0.02, -0.26);
+  const a1 = new T.Mesh(droneGeo.arm, droneMat.arm), a2 = new T.Mesh(droneGeo.arm, droneMat.arm); a2.rotation.y = Math.PI / 2;
+  g.add(body, eye, a1, a2);
+  const rotors = [];
+  for (const [x, z] of [[0.45, 0], [-0.45, 0], [0, 0.45], [0, -0.45]]) { const r = new T.Mesh(droneGeo.rotor, droneMat.rotor); r.position.set(x, 0.06, z); g.add(r); rotors.push(r); }
+  g.visible = false; scene.add(g);
+  const beam = new T.Mesh(droneGeo.beam, droneMat.beam); beam.visible = false; scene.add(beam);
+  return { i, mesh: g, rotors, beam, beamT: 0, x: 0, y: DRONE.height, z: 0, cd: 0.4 + 0.15 * i, init: false };
+}
+const droneDmg = () => DRONE.dmg * (1 + upPer('dr_dmg') * upLv('dr_dmg')) * (1 + DRONE.stageScale * (G.level - 1));
+const droneReach = () => DRONE.range + upPer('dr_range') * upLv('dr_range');
+function droneFire(d) {
+  const reach = droneReach(), r2 = reach * reach;
+  let best = null, bd = r2;
+  for (let k = 0; k < Z.length; k++) {
+    const zb = Z[k]; if (zb.dying > 0 || zb.z > G.z) continue;          // only what is ahead of the squad's rear
+    const dd = (zb.x - d.x) ** 2 + (zb.z - d.z) ** 2;
+    if (dd < bd) { bd = dd; best = zb; }
+  }
+  const b = G.boss;
+  let tx, tz, boss = false;
+  if (b && b.alive && (b.x - d.x) ** 2 + (b.z - d.z) ** 2 < r2 && (!best || G.phase === 'boss')) { tx = b.x; tz = b.z; boss = true; }
+  else if (best) { tx = best.x; tz = best.z; } else return false;
+  const dmg = droneDmg();
+  if (boss) hitBoss(dmg * 0.9);
+  else {
+    const sp2 = DRONE.splash * DRONE.splash;
+    for (let k = 0; k < Z.length; k++) {
+      const zb = Z[k]; if (zb.dying > 0) continue;
+      if (zb === best) hitZombie(zb, dmg);
+      else if ((zb.x - tx) ** 2 + (zb.z - tz) ** 2 < sp2) hitZombie(zb, dmg * DRONE.splashShare);
+    }
+    burst(tx, 0.9, tz, 4, [0.5, 0.95, 1], 2.2, 0.25);
+  }
+  // tracer
+  const bm = d.beam, dx = tx - d.x, dy = (boss ? 2 : 0.9) - d.y, dz = tz - d.z, len = Math.hypot(dx, dy, dz) || 1;
+  bm.position.set(d.x + dx / 2, d.y + dy / 2, d.z + dz / 2); bm.scale.z = len; bm.lookAt(tx, d.y + dy, tz); bm.visible = true; d.beamT = 0.07;
+  return true;
+}
+function updateDrones(dt) {
+  const playing = G.phase === 'run' || G.phase === 'boss', n = playing ? upLv('drone') : 0;
+  while (drones.length < n) drones.push(makeDrone(drones.length));
+  const half = G.formHalf || 0;
+  for (let i = 0; i < drones.length; i++) {
+    const d = drones[i], on = i < n;
+    d.mesh.visible = on;
+    if (!on) { d.beam.visible = false; d.init = false; continue; }
+    const a = G.time * 1.5 + i * (Math.PI * 2 / n), rad = DRONE.orbitR + half * 0.5;
+    const tx = clamp(G.x + Math.cos(a) * rad, -ROAD - 0.6, ROAD + 0.6), tz = G.z + 0.8 + Math.sin(a) * 1.5, ty = DRONE.height + Math.sin(G.time * 3 + i * 1.7) * 0.18;
+    if (!d.init) { d.x = tx; d.z = tz; d.y = ty; d.init = true; }
+    const k = Math.min(1, dt * 6); d.x += (tx - d.x) * k; d.z += (tz - d.z) * k; d.y += (ty - d.y) * k;
+    d.mesh.position.set(d.x, d.y, d.z); d.mesh.rotation.y = -0.25 * (tx - d.x);
+    for (let r = 0; r < 4; r++) d.rotors[r].rotation.y += dt * 40;
+    d.cd -= dt;
+    if (d.cd <= 0) d.cd = droneFire(d) ? DRONE.gap / (1 + upPer('dr_rate') * upLv('dr_rate')) * rr(0.9, 1.1) : 0.15;
+    if (d.beamT > 0) { d.beamT -= dt; if (d.beamT <= 0) d.beam.visible = false; }
+  }
+}
 function step(dt) {
   const playing = G.phase === 'run' || G.phase === 'boss';
   G.time += dt;
@@ -6739,6 +6821,7 @@ function step(dt) {
     }
     updateEvents(dt);
     updateSquad(dt);
+    updateDrones(dt);
     updateMech(dt);
     updateZombies(dt);
     if (G.phase === 'over') return;       // the last soldier fell during this step: nothing else may act on it
@@ -6746,6 +6829,7 @@ function step(dt) {
     updateBoss(dt);
     updateCombo(dt); updateBuffs(dt); updateDrops(dt); flushCoins(false); checkMilestones();
   } else {
+    if (drones.length) updateDrones(dt);
     updateEvents(0);
     updateZombies(dt);
     if (G.boss && !G.boss.alive) updateBoss(dt);
@@ -6886,15 +6970,15 @@ function mergeSaves(a, b) {
   const m = { v: 2, epoch: a.epoch, best: Math.max(a.best, b.best), rev: Math.max(a.rev, b.rev), updatedAt: Math.max(a.updatedAt, b.updatedAt), upgrades: {}, nodes: {} };
   m.coins = a.updatedAt > b.updatedAt ? a.coins : b.updatedAt > a.updatedAt ? b.coins : Math.max(a.coins, b.coins);
   m.cur = a.updatedAt >= b.updatedAt ? a.cur : b.cur;
-  for (const u of UPGRADES) m.upgrades[u.id] = Math.max(a.upgrades[u.id] | 0, b.upgrades[u.id] | 0);
+  for (const u of ALL_UPS) m.upgrades[u.id] = Math.max(a.upgrades[u.id] | 0, b.upgrades[u.id] | 0);
   for (const src of [a, b]) for (const k of Object.keys(src.nodes)) {                           // union of nodes; entry max, stars max, cleared OR
     const st = src.nodes[k], cur = m.nodes[k] || (m.nodes[k] = { entry: 1, stars: 0, cleared: false });
     cur.entry = Math.max(cur.entry, st.entry); cur.stars = Math.max(cur.stars, st.stars); cur.cleared = cur.cleared || !!st.cleared;
   }
   return m;
 }
-const saveCore = o => JSON.stringify([o.epoch, o.coins, o.best, UPGRADES.map(u => o.upgrades[u.id] | 0), Object.keys(o.nodes).sort().map(k => [k, o.nodes[k].entry, o.nodes[k].stars, o.nodes[k].cleared ? 1 : 0])]);
-const saveHasProgress = o => o.rev > 0 || o.best > 1 || o.coins > 0 || Object.keys(o.nodes).length > 0 || UPGRADES.some(u => o.upgrades[u.id] > 0);
+const saveCore = o => JSON.stringify([o.epoch, o.coins, o.best, ALL_UPS.map(u => o.upgrades[u.id] | 0), Object.keys(o.nodes).sort().map(k => [k, o.nodes[k].entry, o.nodes[k].stars, o.nodes[k].cleared ? 1 : 0])]);
+const saveHasProgress = o => o.rev > 0 || o.best > 1 || o.coins > 0 || Object.keys(o.nodes).length > 0 || ALL_UPS.some(u => o.upgrades[u.id] > 0);
 const remoteNewer = (r, l) => r.epoch !== l.epoch ? r.epoch > l.epoch : r.rev !== l.rev ? r.rev > l.rev : r.updatedAt > l.updatedAt;
 const inRun = () => G.phase === 'run' || G.phase === 'boss';
 
@@ -7162,7 +7246,7 @@ function resetSave() {
 }
 // Start stage n from the beginning with its entry squad (same as prepare(n) + startRun()).
 function startStage(n) { prepare(n); startRun(); }
-window.__zb = { fxSetLum, LUM, cloudSignIn, cloudSignOut, mapOpen, mapSelect, mapRefresh, mapNodeStates, MAPV, rankOf, rankBonus, RANKS, UNIT_TIERS, mulGain, gateHit, unitPlan, killSoldier, hordeSpec, sceneFx, levelObstacles, obstacleGaps, makeObstacle, OBS_KINDS, damageObstacle, MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bwt, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap, gap: G.gap }), SAVE, UPGRADES, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
+window.__zb = { fxSetLum, LUM, cloudSignIn, cloudSignOut, mapOpen, mapSelect, mapRefresh, mapNodeStates, MAPV, rankOf, rankBonus, RANKS, UNIT_TIERS, mulGain, gateHit, unitPlan, killSoldier, hordeSpec, sceneFx, levelObstacles, obstacleGaps, makeObstacle, OBS_KINDS, damageObstacle, MAP, SCENES, mainId, nodeDef, nodeState, mapNodes, prepareNode, startNode, selectNode, unlockedDepth, cloud: cloudApi, persistLocal, fxBul: { beams, remove: removeBullet, bwt, bx, bz, bdx, bdz, bw, by, bt, bl, bk, get nb() { return nb; }, set nb(v) { nb = v; } }, ZV, scene, BEND, LANES, laneOf, routePlan, segAt, pathBounds: () => ({ lo: pLo, hi: pHi, cols: colCap, gap: G.gap }), SAVE, UPGRADES, DRONE_UPS, ALL_UPS, DRONE, G_drones: () => drones, saveGame, loadSave, resetSave, startStage, buyUpgrade, upgradeCost, entryFor, levelBarrels, renderer, G, Z, TUNE, WEAPONS, pickGate, squadSide, pops, start: startRun, prepare, step, render, syncSoldiers, formationHalf, spawnHorde, activateHero, spawnBullet, setPaused, bus,
   stats: () => ({ bullets: nb, particles: np, buckets: buckets.reduce((a, b) => a + b.length, 0), bw: Array.from(bw.subarray(0, nb)), bl: Array.from(bl.subarray(0, nb)), by: Array.from(by.subarray(0, nb)), bt: Array.from(bt.subarray(0, nb)), bs: Array.from(bs.subarray(0, nb)), bx: Array.from(bx.subarray(0, nb)), bz: Array.from(bz.subarray(0, nb)) }),
   perf: () => ({ pr: PR_STEPS[prIdx], steps: PR_STEPS, avg: Perf.avg, fxScale }) };
 })();

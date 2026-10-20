@@ -1584,8 +1584,8 @@ const results = await page.evaluate(() => {
     {
       labU(23456); G.phase = 'run'; G.z = -80; G.shield = 1e9;
       for (let i = 0; i < 90; i++) { G.shield = 1e9; zb.step(1 / 60); }
-      const SPx = 0.62, minDist = tier => { const fs = G.soldiers.filter(f => f.tier === tier); let m = 1e9; for (let i = 0; i < fs.length; i++) for (let j = i + 1; j < fs.length; j++) m = Math.min(m, Math.hypot(fs[i].x - fs[j].x, fs[i].z - fs[j].z)); return m; };
-      check('formation spacing: thousand-figures stand >= 2.1 x SP apart, hundred-figures >= 1.5 x SP, singles >= SP (no overlap of the bigger figures)', minDist(2) >= 2.1 * SPx - 0.08 && minDist(1) >= 1.5 * SPx - 0.08 && minDist(0) >= SPx - 0.08, [minDist(2), minDist(1), minDist(0)].map(v => v.toFixed(2)).join('/'));
+      const SPx = 0.62 * 0.65, minDist = tier => { const fs = G.soldiers.filter(f => f.tier === tier); let m = 1e9; for (let i = 0; i < fs.length; i++) for (let j = i + 1; j < fs.length; j++) m = Math.min(m, Math.hypot(fs[i].x - fs[j].x, fs[i].z - fs[j].z)); return m; };
+      check('formation spacing (figures drawn at 0.65x): thousand-figures stand >= 2.1 x SP apart, hundred-figures >= 1.5 x SP, singles >= SP (no overlap of the bigger figures)', minDist(2) >= 2.1 * SPx - 0.08 && minDist(1) >= 1.5 * SPx - 0.08 && minDist(0) >= SPx - 0.08, [minDist(2), minDist(1), minDist(0)].map(v => v.toFixed(2)).join('/'));
       check('formation: never wider than a row of singles would be (23,456 soldiers: half width <= 3.5), G.formHalf / G.formDepth are set', zb.formationHalf() <= (8 - 1) / 2 * SPx + 1e-9 && G.formHalf === zb.formationHalf() && G.formDepth > 0, `${zb.formationHalf()} ${G.formDepth}`);
       const mg = [], sp = []; const o1 = listen('unitMerge', mg), o2 = listen('unitSplit', sp);
       G.squad = 23999; zb.syncSoldiers(); G.squad = 24000; zb.syncSoldiers();
@@ -1644,6 +1644,36 @@ const results = await page.evaluate(() => {
       const rk = G.rank.bonus;
       check('the damage bonus follows the rank: 1000 soldiers = +2% (shot damage x 1.02)', Math.abs(rk - 0.02) < 1e-9);
     }
+    zb.resetSave(); zb.prepareNode('n1');
+  }
+
+  // ---------------------------------------------------------------- 19. drones: bought with coins, upgraded, shoot on their own
+  {
+    zb.resetSave(); zb.prepareNode('n1');
+    const D = id => zb.DRONE_UPS.find(u => u.id === id);
+    check('drones: shop table has count + damage + rate + range', ['drone', 'dr_dmg', 'dr_rate', 'dr_range'].every(id => D(id)) && D('drone').max === 4);
+    zb.SAVE.coins = 0;
+    check('drones: cannot buy without coins', zb.buyUpgrade('drone') === false && !zb.SAVE.upgrades.drone);
+    zb.SAVE.coins = 100000;
+    const c0 = zb.SAVE.coins, cost1 = zb.upgradeCost('drone');
+    check('drones: buying one costs coins and persists in the save', zb.buyUpgrade('drone') === true && zb.SAVE.upgrades.drone === 1 && zb.SAVE.coins === c0 - cost1 && JSON.parse(localStorage.getItem('zombie-bridge-save')).upgrades.drone === 1);
+    for (let i = 0; i < 5; i++) zb.buyUpgrade('drone');
+    check('drones: count is capped at 4', zb.SAVE.upgrades.drone === 4 && zb.buyUpgrade('drone') === false);
+    zb.SAVE.upgrades.drone = 2;
+    // a drone kills a lone zombie in front of an empty squad-less field
+    const kill = (dmgLv) => {
+      zb.SAVE.upgrades.dr_dmg = dmgLv; zb.prepareNode('n1'); G.phase = 'run'; G.z = -40; G.shield = 1e9; G.squad = 1; zb.syncSoldiers();
+      zb.spawnHorde({ kind: 'lab', cx: 0, w: 0, d: 0, count: 1, hp: 50 }, G.z - 5); const q = zb.Z[zb.Z.length - 1]; q.x = 0; q.sp = 0; q.hp = 50;
+      G.soldiers.forEach(f => f.cd = 99);
+      for (let i = 0; i < 120; i++) { G.shield = 1e9; G.soldiers.forEach(f => f.cd = 99); q.x = 0; q.sp = 0; zb.step(1 / 60); }
+      return 50 - q.hp;
+    };
+    const d0 = kill(0), d5 = kill(5);
+    check('drones: they shoot a zombie with no help from the squad', d0 > 0, d0);
+    check('drones: damage upgrade raises the damage dealt', d5 > d0 * 1.5, `${d0} vs ${d5}`);
+    G.phase = 'run'; zb.step(1 / 60);
+    check('drones: one mesh per owned drone is shown while playing', zb.G_drones().filter(d => d.mesh.visible).length === 2, G.phase + ' ' + zb.G_drones().length + ' ' + zb.SAVE.upgrades.drone);
+    zb.SAVE.upgrades.dr_dmg = 0;
     zb.resetSave(); zb.prepareNode('n1');
   }
 
